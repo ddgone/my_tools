@@ -1,14 +1,15 @@
 # My Tools
 
-个人工作工具合集项目，基于插件化架构的命令行工具箱。
+个人工作工具合集项目，基于交互式菜单的命令行工具箱。
 
-## 特性
+## ✨ 特性
 
-- ✅ **插件化架构**：每个工具独立开发，易于扩展
-- ✅ **统一接口**：所有工具实现统一的 Tool 接口
+- ✅ **交互式菜单**：友好的 TUI 界面，无需记忆命令
+- ✅ **分类管理**：支持多级分类，清晰组织工具
+- ✅ **即开即用**：运行可执行文件即可使用
 - ✅ **跨平台**：纯 Go 实现，支持 Windows/Linux/Mac
-- ✅ **简单易用**：清晰的命令行参数和友好的帮助信息
-- ✅ **快速开发**：提供工具模板，5分钟创建新工具
+- ✅ **易于扩展**：插件化架构，添加新工具只需几行代码
+- ✅ **零依赖**：只使用 Go 标准库
 
 ## 快速开始
 
@@ -21,29 +22,37 @@ go build -o my_tools        # Linux/Mac
 
 ### 使用
 
+直接运行可执行文件，进入交互式菜单：
+
 ```bash
-# 查看所有工具
-./my_tools
-
-# 列出工具列表
-./my_tools list
-
-# 使用文本工具
-echo "hello" | ./my_tools text -upper
+./my_tools.exe
 ```
 
-详细用法请查看 [QUICKSTART.md](QUICKSTART.md)
+然后通过数字选择功能：
+
+```
+============================================================
+  🛠️  My Tools - 个人工具箱
+============================================================
+
+  1. 📝 文本处理                    文本转换、格式化等工具
+  2. ℹ️  关于                       查看工具箱信息
+
+============================================================
+请选择 (输入数字，0退出): 
+```
+
+详细用法请查看 [docs/DEMO.md](docs/DEMO.md)
 
 ## 项目结构
 
 ```
 my_tools/
-├── main.go                    # 主程序入口
-├── utils/
-│   ├── tool/                  # 工具接口定义
-│   ├── registry/              # 工具注册表
-│   ├── template/              # 新工具模板
-│   └── text_tool/             # 示例工具：文本处理
+├── main.go                    # 主程序入口，定义菜单结构
+├── internal/
+│   └── menu/                  # 交互式菜单系统
+│       └── menu.go            # 菜单核心逻辑
+├── utils/                     # 工具实现（可选）
 ├── config/                    # 配置文件
 ├── scripts/                   # 脚本文件
 └── docs/                      # 文档
@@ -51,16 +60,69 @@ my_tools/
 
 ## 已包含的工具
 
-- **text** - 文本处理工具（大小写转换、反转、去空格等）
+### 📝 文本处理
+- **大小写转换** - 将文本转换为大写或小写
+- **文本反转** - 反转字符串内容
+- **去除空格** - 去除首尾空格
+
+### ℹ️ 系统
+- **关于** - 查看工具箱信息
 
 ## 添加新工具
 
-1. 复制 `utils/template` 目录
-2. 修改代码实现你的功能
-3. 在 `main.go` 中注册工具
-4. 编译运行
+### 方法 1：在现有分类下添加工具
 
-详见 [docs/USAGE.md](docs/USAGE.md)
+编辑 `main.go` 中的 `createMainMenu()` 函数，在对应分类下添加：
+
+```go
+menu.NewToolItem(
+    "统计字数",           // 标题
+    "统计文本字数",       // 描述
+    "word_count",        // 命令标识
+    func() error {      // 执行函数
+        return runWordCountTool()
+    },
+)
+```
+
+然后实现工具函数：
+
+```go
+func runWordCountTool() error {
+    scanner := bufio.NewScanner(os.Stdin)
+    
+    fmt.Print("\n请输入文本: ")
+    if !scanner.Scan() {
+        return fmt.Errorf("读取输入失败")
+    }
+    text := scanner.Text()
+    
+    count := len(strings.Fields(text))
+    fmt.Printf("\n字数: %d\n", count)
+    return nil
+}
+```
+
+### 方法 2：创建新的分类
+
+```go
+menu.NewItem(
+    "🔧 系统工具",          // 分类标题
+    "系统相关工具",         // 分类描述
+    []menu.MenuItem{       // 子菜单项
+        menu.NewToolItem(
+            "查看系统信息",
+            "显示系统详细信息",
+            "system_info",
+            func() error {
+                return runSystemInfoTool()
+            },
+        ),
+    },
+)
+```
+
+详见 [docs/DEMO.md](docs/DEMO.md) 的完整示例
 
 ## 技术栈
 

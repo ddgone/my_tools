@@ -1,88 +1,158 @@
 package main
 
 import (
-	"context"
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
-	"my_tools/utils/registry"
-	"my_tools/utils/text_tool"
+	"my_tools/internal/menu"
 )
 
 func main() {
-	// 创建工具注册表
-	reg := registry.NewRegistry()
+	// 创建主菜单
+	mainMenu := createMainMenu()
 	
-	// 注册所有工具
-	registerTools(reg)
-	
-	// 如果没有参数，显示帮助信息
-	if len(os.Args) < 2 {
-		printHelp(reg)
-		os.Exit(0)
-	}
-	
-	// 获取工具名称
-	toolName := os.Args[1]
-	
-	// 特殊命令：列出所有工具
-	if toolName == "list" || toolName == "ls" {
-		printToolList(reg)
-		return
-	}
-	
-	// 查找工具
-	tool, exists := reg.Get(toolName)
-	if !exists {
-		fmt.Fprintf(os.Stderr, "错误: 未找到工具 '%s'\n\n", toolName)
-		printToolList(reg)
-		os.Exit(1)
-	}
-	
-	// 执行工具
-	ctx := context.Background()
-	if err := tool.Execute(ctx, os.Args[2:]); err != nil {
-		fmt.Fprintf(os.Stderr, "执行失败: %v\n", err)
+	// 显示菜单
+	if err := mainMenu.Show(); err != nil {
+		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// registerTools 注册所有工具
-func registerTools(reg *registry.Registry) {
-	// 注册文本处理工具
-	reg.Register(text_tool.NewTextTool())
+// createMainMenu 创建主菜单
+func createMainMenu() *menu.Menu {
+	return &menu.Menu{
+		Title: "🛠️  My Tools - 个人工具箱",
+		Items: []menu.MenuItem{
+			menu.NewItem(
+				"📝 文本处理",
+				"文本转换、格式化等工具",
+				[]menu.MenuItem{
+					menu.NewToolItem(
+						"大小写转换",
+						"转换文本为大写或小写",
+						"text_case",
+						func() error {
+							return runTextCaseTool()
+						},
+					),
+					menu.NewToolItem(
+						"文本反转",
+						"反转字符串内容",
+						"text_reverse",
+						func() error {
+							return runTextReverseTool()
+						},
+					),
+					menu.NewToolItem(
+						"去除空格",
+						"去除首尾空格",
+						"text_trim",
+						func() error {
+							return runTextTrimTool()
+						},
+					),
+				},
+			),
+			menu.NewCustomItem(
+				"ℹ️  关于",
+				"查看工具箱信息",
+				func() error {
+					showAbout()
+					return nil
+				},
+			),
+		},
+	}
+}
+
+// runTextCaseTool 运行大小写转换工具
+func runTextCaseTool() error {
+	scanner := bufio.NewScanner(os.Stdin)
 	
-	// TODO: 在这里添加新工具
-	// reg.Register(your_tool.NewYourTool())
+	fmt.Print("\n请输入文本: ")
+	if !scanner.Scan() {
+		return fmt.Errorf("读取输入失败")
+	}
+	text := scanner.Text()
+	
+	fmt.Println("\n请选择操作:")
+	fmt.Println("  1. 转换为大写")
+	fmt.Println("  2. 转换为小写")
+	fmt.Print("请选择 (1/2): ")
+	
+	if !scanner.Scan() {
+		return fmt.Errorf("读取输入失败")
+	}
+	choice := strings.TrimSpace(scanner.Text())
+	
+	var result string
+	switch choice {
+	case "1":
+		result = strings.ToUpper(text)
+	case "2":
+		result = strings.ToLower(text)
+	default:
+		return fmt.Errorf("无效选择")
+	}
+	
+	fmt.Printf("\n结果: %s\n", result)
+	return nil
 }
 
-// printHelp 打印帮助信息
-func printHelp(reg *registry.Registry) {
-	fmt.Println("My Tools - 个人工作工具合集")
-	fmt.Println()
-	fmt.Println("使用方法:")
-	fmt.Println("  my_tools <tool_name> [options]")
-	fmt.Println()
-	fmt.Println("可用命令:")
-	fmt.Println("  list, ls    列出所有可用工具")
-	fmt.Println()
-	fmt.Println("已注册的工具:")
-	for _, name := range reg.Names() {
-		if tool, ok := reg.Get(name); ok {
-			fmt.Printf("  %-15s %s\n", name, tool.Description())
-		}
+// runTextReverseTool 运行文本反转工具
+func runTextReverseTool() error {
+	scanner := bufio.NewScanner(os.Stdin)
+	
+	fmt.Print("\n请输入文本: ")
+	if !scanner.Scan() {
+		return fmt.Errorf("读取输入失败")
 	}
-	fmt.Println()
-	fmt.Println("使用 'my_tools <tool_name> -h' 查看具体工具的用法")
+	text := scanner.Text()
+	
+	// 反转文本
+	runes := []rune(text)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	result := string(runes)
+	
+	fmt.Printf("\n结果: %s\n", result)
+	return nil
 }
 
-// printToolList 打印工具列表
-func printToolList(reg *registry.Registry) {
-	fmt.Println("可用工具列表:")
-	fmt.Println()
-	for _, name := range reg.Names() {
-		if tool, ok := reg.Get(name); ok {
-			fmt.Printf("  %-15s %s\n", name, tool.Description())
-		}
+// runTextTrimTool 运行去除空格工具
+func runTextTrimTool() error {
+	scanner := bufio.NewScanner(os.Stdin)
+	
+	fmt.Print("\n请输入文本: ")
+	if !scanner.Scan() {
+		return fmt.Errorf("读取输入失败")
 	}
+	text := scanner.Text()
+	
+	result := strings.TrimSpace(text)
+	
+	fmt.Printf("\n结果: %s\n", result)
+	return nil
+}
+
+// showAbout 显示关于信息
+func showAbout() {
+	fmt.Println("\n" + strings.Repeat("=", 60))
+	fmt.Println("  My Tools - 个人工作工具合集")
+	fmt.Println(strings.Repeat("=", 60))
+	fmt.Println()
+	fmt.Println("  版本: 1.0.0")
+	fmt.Println("  描述: 一个简单易用的命令行工具箱")
+	fmt.Println("  架构: 插件化设计，易于扩展")
+	fmt.Println()
+	fmt.Println("  技术栈:")
+	fmt.Println("    - Go 语言")
+	fmt.Println("    - 纯标准库实现")
+	fmt.Println("    - 跨平台支持")
+	fmt.Println()
+	fmt.Println("  GitHub: (待添加)")
+	fmt.Println(strings.Repeat("=", 60))
 }
