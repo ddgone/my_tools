@@ -9,86 +9,78 @@ go build -o my_tools        # Linux/Mac
 
 ## 基本使用
 
-### 1. 查看所有工具
+### 1. 启动工具箱
+
+直接运行可执行文件：
 
 ```bash
-./my_tools
-# 或
-./my_tools list
+./my_tools.exe
 ```
 
-### 2. 查看工具帮助
+你会看到交互式菜单界面。
 
-```bash
-./my_tools text -h
+### 2. 导航菜单
+
+- **数字选择**：输入对应的数字选择功能
+- **0 退出**：在任何层级输入 0 可以退出或返回上级
+- **回车继续**：执行完工具后按回车返回菜单
+
+### 3. 使用工具示例
+
+以文本处理为例：
+
 ```
-
-### 3. 使用文本处理工具
-
-```bash
-# 转换为大写
-echo "hello" | ./my_tools text -upper
-
-# 转换为小写
-echo "HELLO" | ./my_tools text -lower
-
-# 反转文本
-echo "abcdefg" | ./my_tools text -reverse
-
-# 去除空格并转大写
-echo "  hello world  " | ./my_tools text -trim -upper
-
-# 从文件读取并输出到新文件
-./my_tools text -lower -input input.txt -output output.txt
+主菜单 -> 选择 1 (文本处理) -> 选择 1 (大小写转换)
+-> 输入文本: hello world
+-> 选择操作: 1 (大写)
+-> 结果: HELLO WORLD
 ```
 
 ## 添加新工具
 
-### 1. 复制模板
+### 简单三步走
 
-```bash
-# PowerShell
-Copy-Item -Recurse utils/template utils/my_new_tool
-
-# Linux/Mac
-cp -r utils/template utils/my_new_tool
-```
-
-### 2. 重命名文件
-
-将 `utils/my_new_tool/tool_template.go` 重命名为 `my_tool.go`
-
-### 3. 编辑代码
-
-打开文件，替换占位符：
-- `{{TOOL_NAME}}` → 你的工具名（如：`mytool`）
-- `{{TOOL_NAME|title}}` → 工具名大写形式（如：`Mytool`）
-
-实现你的业务逻辑。
-
-### 4. 注册工具
-
-在 `main.go` 中添加：
+**步骤 1**: 在 `main.go` 的菜单定义中添加工具项
 
 ```go
-import "my_tools/utils/my_new_tool"
+menu.NewToolItem(
+    "工具名称",
+    "工具描述",
+    "command_id",
+    func() error {
+        return runMyTool()  // 你的工具函数
+    },
+)
+```
 
-func registerTools(reg *registry.Registry) {
-    reg.Register(text_tool.NewTextTool())
-    reg.Register(my_new_tool.NewMytoolTool())  // 添加这行
+**步骤 2**: 实现工具函数
+
+```go
+func runMyTool() error {
+    // 获取用户输入
+    scanner := bufio.NewScanner(os.Stdin)
+    
+    fmt.Print("\n请输入: ")
+    scanner.Scan()
+    input := scanner.Text()
+    
+    // 处理逻辑
+    result := process(input)
+    
+    // 显示结果
+    fmt.Printf("\n结果: %s\n", result)
+    return nil
 }
 ```
 
-### 5. 编译测试
+**步骤 3**: 重新编译
 
 ```bash
 go build -o my_tools.exe
-./my_tools list
-./my_tools mytool -h
 ```
+
+就这么简单！
 
 ## 更多示例
 
-查看 `utils/text_tool/text_tool.go` 了解完整的工具实现。
-
-详细文档请参考 [docs/USAGE.md](docs/USAGE.md)
+查看 [docs/DEMO.md](docs/DEMO.md) 了解完整的使用演示和添加工具的详细教程。
