@@ -1,6 +1,7 @@
 package python_tools
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io"
@@ -62,14 +63,14 @@ func (t *PythonTool) Execute(ctx framework.AppContext) {
 arg1 "arg 2 with space" --flag value
 `, t.scriptName)
 
-	ctx.ShowPythonTerminal(t.Name(), usage, func(env string, args string, out io.Writer) error {
+	ctx.ShowPythonTerminal(t.Name(), usage, func(runCtx context.Context, env string, args string, out io.Writer) error {
 		// Handle special pip installation command
 		if strings.HasPrefix(args, "!pip ") {
-			pkgName := strings.TrimSpace(strings.TrimPrefix(args, "!pip "))
+			pkgName := strings.TrimPrefix(args, "!pip ")
 			cmdArgs := []string{"-m", "pip", "install"}
 			cmdArgs = append(cmdArgs, strings.Fields(pkgName)...)
 
-			cmd := exec.Command(env, cmdArgs...)
+			cmd := exec.CommandContext(runCtx, env, cmdArgs...)
 			cmd.Stdout = out
 			cmd.Stderr = out
 			return cmd.Run()
@@ -98,10 +99,11 @@ arg1 "arg 2 with space" --flag value
 
 		// Prepare command
 		cmdArgs := append([]string{tempPath}, parsedArgs...)
-		cmd := exec.Command(env, cmdArgs...)
+		cmd := exec.CommandContext(runCtx, env, cmdArgs...)
 
 		// Fallback logic is removed because user explicitly specified the env
-		// Pipe output directly to the TUI terminal
+		// The TUI enforces "python" as the default if empty
+
 		cmd.Stdout = out
 		cmd.Stderr = out
 

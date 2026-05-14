@@ -1,16 +1,23 @@
 package tui
 
 import (
+	"context"
 	_ "embed"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"my_tools/internal/storage"
 	"my_tools/pkg/framework"
 
+	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -45,11 +52,39 @@ func init() {
 	tview.Styles.MoreContrastBackgroundColor = colorBgLight
 }
 
+type ExecRecord struct {
+	Cmd    string
+	Env    string
+	Output string
+}
+
+type TermUIState struct {
+	Flex        *tview.Flex
+	Input       *tview.TextArea
+	Env         *tview.InputField
+	Output      *tview.TextView
+	UndoBuffer  string
+	Records     []*ExecRecord
+	UndoRecords []*ExecRecord
+	CancelFunc  context.CancelFunc
+}
+
+type historyWriter struct {
+	target io.Writer
+	record *ExecRecord
+}
+
+func (hw *historyWriter) Write(p []byte) (n int, err error) {
+	hw.record.Output += string(p)
+	return hw.target.Write(p)
+}
+
 type App struct {
 	TviewApp *tview.Application
 	Pages    *tview.Pages
 	Tree     *SalamanderTreeView // 改用自定义带背景的树
 	Store    *storage.Storage
+	TermUI   map[string]*TermUIState
 
 	// context state
 	currentTool framework.Tool
@@ -230,11 +265,11 @@ func (c *AppContextImpl) PromptChoice(title, prompt string, options []string, ca
 	c.app.PromptChoice(title, prompt, options, callback)
 }
 
-func (c *AppContextImpl) ShowTerminal(title string, usage string, run func(args string, out io.Writer) error) {
+func (c *AppContextImpl) ShowTerminal(title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
 	c.app.ShowTerminal(c.tool, title, usage, run)
 }
 
-func (c *AppContextImpl) ShowPythonTerminal(title string, usage string, run func(env string, args string, out io.Writer) error) {
+func (c *AppContextImpl) ShowPythonTerminal(title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
 	c.app.ShowPythonTerminal(c.tool, title, usage, run)
 }
 
@@ -257,16 +292,34 @@ func NewApp(store *storage.Storage) *App {
 		TviewApp: tview.NewApplication(),
 		Pages:    tview.NewPages(),
 		Store:    store,
+		TermUI:   make(map[string]*TermUIState),
 	}
 
 	a.setupUI()
 
 	// 全局按键
 	a.TviewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// q 退出
-		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
-			a.TviewApp.Stop()
+		// 拦截 Ctrl+C 防止程序意外退出，交由具体的页面组件处理
+		if event.Key() == tcell.KeyCtrlC {
 			return nil
+		}
+		// q 退出 (仅在没有输入框获得焦点时生效，避免输入内容时误退)
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
+				if _, isTextArea := a.TviewApp.GetFocus().(*tview.TextArea); !isTextArea {
+					a.TviewApp.Stop()
+					return nil
+				}
+			}
+		}
+		// Ctrl+P 或 '/' 呼出全局搜索
+		if event.Key() == tcell.KeyCtrlP || (event.Key() == tcell.KeyRune && event.Rune() == '/') {
+			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
+				if _, isTextArea := a.TviewApp.GetFocus().(*tview.TextArea); !isTextArea {
+					a.showCommandPalette()
+					return nil
+				}
+			}
 		}
 		return event
 	})
@@ -275,6 +328,7 @@ func NewApp(store *storage.Storage) *App {
 }
 
 func (a *App) Run() error {
+	// 移除 EnableMouse(true)，因为启用鼠标会接管终端的鼠标事件，导致用户无法通过鼠标原生框选复制文本。
 	return a.TviewApp.SetRoot(a.Pages, true).Run()
 }
 
@@ -325,7 +379,7 @@ func (a *App) setupUI() {
 
 	banner := NewBannerBox(logoArt, fontArt, descText)
 	banner.SetBorder(true).
-		SetTitle(" 🦎 火蜥蜴工具箱 [gray](←/→/↑/↓:导航, Enter:展开/执行, r:重置, b:折叠横幅, q:退出)[-] ").
+		SetTitle(" 🦎 火蜥蜴工具箱 [gray](←/→/↑/↓:导航, Enter:执行, Ctrl+P:搜索, r:重置, b:折叠, q:退出)[-] ").
 		SetTitleColor(tcell.ColorRed).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -417,6 +471,32 @@ func getNodeID(node *tview.TreeNode) string {
 	text := node.GetText()
 	// 简单过滤掉图标和空格作为 ID
 	return strings.TrimSpace(text)
+}
+
+type sysTerminalTool struct{}
+
+func (s *sysTerminalTool) ID() string       { return "sys_terminal" }
+func (s *sysTerminalTool) Name() string     { return "命令行 Shell" }
+func (s *sysTerminalTool) Category() string { return "💻 内置系统终端" }
+func (s *sysTerminalTool) Execute(ctx framework.AppContext) {
+	pwd, _ := os.Getwd()
+	cmdPrompt := "dir"
+	if runtime.GOOS != "windows" {
+		cmdPrompt = "ls"
+	}
+	usage := fmt.Sprintf("直接输入系统命令 (如 %s, ping, echo) 并回车执行。\n[red](注: 按 Ctrl+C 可以随时中断正在执行的命令)[-]\n当前工作目录: %s", cmdPrompt, pwd)
+
+	ctx.ShowTerminal("系统终端", usage, func(runCtx context.Context, args string, out io.Writer) error {
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(runCtx, "cmd", "/c", args)
+		} else {
+			cmd = exec.CommandContext(runCtx, "sh", "-c", args)
+		}
+		cmd.Stdout = out
+		cmd.Stderr = out
+		return cmd.Run()
+	})
 }
 
 func (a *App) refreshTree() {
@@ -549,6 +629,21 @@ func (a *App) refreshTree() {
 	root.AddChild(nativeNode)
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
 	root.AddChild(scriptNode)
+	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
+
+	// --- 4. 终端系统 ---
+	sysTermNode := tview.NewTreeNode(" 💻 内置系统终端 ").
+		SetColor(tcell.ColorSkyblue).
+		SetSelectable(true).
+		SetExpanded(a.Store.GetNodeState("💻 内置系统终端", true))
+
+	termTool := &sysTerminalTool{}
+	termItem := tview.NewTreeNode(fmt.Sprintf(" 📟 %s", termTool.Name())).
+		SetReference(termTool).
+		SetColor(tcell.ColorLightCyan).
+		SetSelectable(true)
+	sysTermNode.AddChild(termItem)
+	root.AddChild(sysTermNode)
 
 	a.Tree.SetRoot(root)
 	a.Tree.SetCurrentNode(root)
@@ -565,13 +660,20 @@ func (a *App) executeTool(t framework.Tool) {
 // --- UI 辅助组件 ---
 
 func (a *App) ShowModal(title, message string) {
+	frontPage, _ := a.Pages.GetFrontPage()
+	focus := a.TviewApp.GetFocus()
+
 	modal := tview.NewModal().
 		SetText(message).
 		AddButtons([]string{"确定"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			a.Pages.RemovePage("modal")
-			a.Pages.SwitchToPage("main")
-			a.TviewApp.SetFocus(a.Tree)
+			if frontPage != "" {
+				a.Pages.SwitchToPage(frontPage)
+			}
+			if focus != nil {
+				a.TviewApp.SetFocus(focus)
+			}
 		})
 	modal.SetBorder(true).
 		SetTitle(" " + title + " ").
@@ -582,6 +684,9 @@ func (a *App) ShowModal(title, message string) {
 }
 
 func (a *App) PromptInput(title, prompt, defaultValue string, callback func(string)) {
+	frontPage, _ := a.Pages.GetFrontPage()
+	focus := a.TviewApp.GetFocus()
+
 	form := tview.NewForm()
 	inputField := tview.NewInputField().
 		SetLabel(prompt).
@@ -599,14 +704,22 @@ func (a *App) PromptInput(title, prompt, defaultValue string, callback func(stri
 	form.AddButton("确定", func() {
 		text := inputField.GetText()
 		a.Pages.RemovePage("input")
-		a.Pages.SwitchToPage("main")
-		a.TviewApp.SetFocus(a.Tree)
+		if frontPage != "" {
+			a.Pages.SwitchToPage(frontPage)
+		}
+		if focus != nil {
+			a.TviewApp.SetFocus(focus)
+		}
 		callback(text)
 	})
 	form.AddButton("取消", func() {
 		a.Pages.RemovePage("input")
-		a.Pages.SwitchToPage("main")
-		a.TviewApp.SetFocus(a.Tree)
+		if frontPage != "" {
+			a.Pages.SwitchToPage(frontPage)
+		}
+		if focus != nil {
+			a.TviewApp.SetFocus(focus)
+		}
 	})
 	form.SetBorder(true).
 		SetTitle(" " + title + " ").
@@ -652,14 +765,326 @@ func (a *App) PromptChoice(title, prompt string, options []string, callback func
 	a.TviewApp.SetFocus(form)
 }
 
+func (a *App) showCommandPalette() {
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+
+	tree := tview.NewTreeView().SetGraphics(true)
+	tree.SetBorder(true).
+		SetBorderColor(tcell.ColorDarkGray).
+		SetTitle(" 🔍 搜索结果 (Tab:切换焦点, ↑/↓/←/→:导航, Enter:展开/执行) ").
+		SetTitleColor(tcell.ColorGray)
+
+	input := tview.NewInputField().
+		SetLabel(" 🔎 搜索工具/目录: ").
+		SetLabelColor(tcell.ColorOrange).
+		SetFieldBackgroundColor(colorBgDark).
+		SetFieldTextColor(tcell.ColorWhite)
+
+	input.SetBorder(true).
+		SetBorderColor(tcell.ColorYellow).
+		SetTitle(" ⚡ 快捷命令面板 [gray](ESC:退出)[-] ").
+		SetTitleColor(tcell.ColorYellow)
+
+	// 更新树
+	updateTree := func(query string) {
+		query = strings.ToLower(query)
+		root := tview.NewTreeNode("搜索结果").SetSelectable(false)
+
+		nativeNode := tview.NewTreeNode(" 🚀 内置原生应用 ").SetColor(tcell.ColorSalmon).SetSelectable(true)
+		scriptNode := tview.NewTreeNode(" 📜 扩展兼容脚本 ").SetColor(tcell.ColorKhaki).SetSelectable(true)
+
+		nativeCategories := make(map[string]*tview.TreeNode)
+		scriptCategories := make(map[string]*tview.TreeNode)
+
+		hasNative := false
+		hasScript := false
+
+		for _, t := range framework.Registry {
+			name := strings.ToLower(t.Name())
+			cat := strings.ToLower(t.Category())
+
+			matchTool := strings.Contains(name, query)
+			matchCat := strings.Contains(cat, query)
+
+			if query == "" || matchTool || matchCat {
+				var parentNode *tview.TreeNode
+				var catMap map[string]*tview.TreeNode
+				isScript := strings.Contains(t.Category(), "脚本")
+
+				if isScript {
+					parentNode = scriptNode
+					catMap = scriptCategories
+					hasScript = true
+				} else {
+					parentNode = nativeNode
+					catMap = nativeCategories
+					hasNative = true
+				}
+
+				catNode, exists := catMap[t.Category()]
+				if !exists {
+					icon := "📁"
+					color := tcell.ColorLightSalmon
+					if strings.Contains(t.Category(), "Python") {
+						icon = "🐍"
+						color = tcell.ColorPaleGoldenrod
+					}
+					catNode = tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, t.Category())).
+						SetColor(color).
+						SetSelectable(true).
+						SetExpanded(true)
+					catMap[t.Category()] = catNode
+					parentNode.AddChild(catNode)
+				}
+
+				icon := "🔧"
+				color := colorGo
+				if strings.Contains(t.Category(), "Python") {
+					icon = "📄"
+					color = colorPy
+				}
+				toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, t.Name())).
+					SetReference(t).
+					SetColor(color).
+					SetSelectable(true)
+				catNode.AddChild(toolNode)
+			}
+		}
+
+		if hasNative {
+			root.AddChild(nativeNode)
+			nativeNode.SetExpanded(true)
+		}
+		if hasScript {
+			root.AddChild(scriptNode)
+			scriptNode.SetExpanded(true)
+		}
+		if !hasNative && !hasScript {
+			root.AddChild(tview.NewTreeNode(" (无匹配结果) ").SetColor(tcell.ColorGray).SetSelectable(false))
+		}
+
+		tree.SetRoot(root)
+		tree.SetCurrentNode(root)
+		if len(root.GetChildren()) > 0 {
+			tree.SetCurrentNode(root.GetChildren()[0])
+		}
+	}
+
+	// 初始显示全部
+	updateTree("")
+
+	input.SetChangedFunc(func(text string) {
+		updateTree(text)
+	})
+
+	tree.SetSelectedFunc(func(node *tview.TreeNode) {
+		ref := node.GetReference()
+		if ref == nil {
+			node.SetExpanded(!node.IsExpanded())
+			return
+		}
+		if tool, ok := ref.(framework.Tool); ok {
+			a.Pages.RemovePage("palette")
+			a.Pages.SwitchToPage("main")
+			a.executeTool(tool)
+		}
+	})
+
+	focusables := []tview.Primitive{input, tree}
+	currentFocus := 0
+
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyTab {
+			currentFocus = (currentFocus + 1) % len(focusables)
+			a.TviewApp.SetFocus(focusables[currentFocus])
+			return nil
+		}
+		if event.Key() == tcell.KeyBacktab {
+			currentFocus = (currentFocus - 1 + len(focusables)) % len(focusables)
+			a.TviewApp.SetFocus(focusables[currentFocus])
+			return nil
+		}
+		return event
+	})
+
+	input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyDown {
+			a.TviewApp.SetFocus(tree)
+			currentFocus = 1
+			return nil
+		}
+		return event
+	})
+
+	tree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyRight:
+			node := tree.GetCurrentNode()
+			if node != nil {
+				if len(node.GetChildren()) > 0 && !node.IsExpanded() {
+					node.SetExpanded(true)
+				} else if len(node.GetChildren()) > 0 && node.IsExpanded() {
+					tree.SetCurrentNode(node.GetChildren()[0])
+				} else if ref := node.GetReference(); ref != nil {
+					if tool, ok := ref.(framework.Tool); ok {
+						a.Pages.RemovePage("palette")
+						a.Pages.SwitchToPage("main")
+						a.executeTool(tool)
+					}
+				}
+			}
+			return nil
+		case tcell.KeyLeft:
+			node := tree.GetCurrentNode()
+			if node != nil {
+				if parent := a.findParent(tree.GetRoot(), node); parent != nil && parent != tree.GetRoot() {
+					tree.SetCurrentNode(parent)
+				}
+			}
+			return nil
+		}
+		return event
+	})
+
+	flex.AddItem(input, 3, 1, true).
+		AddItem(tree, 0, 1, false)
+
+	// 使用一个空 Box 来做背景遮罩，使模态框居中
+	modalLayout := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(flex, 20, 1, true).              // 高度 20
+			AddItem(nil, 0, 1, false), 60, 1, true). // 宽度 60
+		AddItem(nil, 0, 1, false)
+
+	modalLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			a.Pages.RemovePage("palette")
+			a.Pages.SwitchToPage("main")
+			a.TviewApp.SetFocus(a.Tree)
+			return nil
+		}
+		return event
+	})
+
+	a.Pages.AddAndSwitchToPage("palette", modalLayout, true)
+	a.TviewApp.SetFocus(input)
+}
+
+func (a *App) showHistoryModal(ui *TermUIState) {
+	if len(ui.Records) == 0 {
+		a.ShowModal("提示", "当前会话暂无执行历史。")
+		return
+	}
+
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+
+	list := tview.NewList().
+		SetMainTextColor(tcell.ColorWhite).
+		SetSecondaryTextColor(tcell.ColorGray).
+		SetSelectedBackgroundColor(colorBgLight).
+		SetSelectedTextColor(tcell.ColorYellow).
+		ShowSecondaryText(true)
+	list.SetBorder(true).SetTitle(" 📜 历史记录 (↑/↓:选择, Enter:载入) ").SetBorderColor(tcell.ColorDarkGray)
+
+	preview := tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
+	preview.SetBorder(true).SetTitle(" 📺 输出预览 ").SetBorderColor(tcell.ColorDarkGray)
+
+	for i := len(ui.Records) - 1; i >= 0; i-- { // 倒序，最新的在前面
+		rec := ui.Records[i]
+		title := rec.Cmd
+		if rec.Env != "" {
+			title = fmt.Sprintf("[%s] %s", rec.Env, rec.Cmd)
+		}
+		sec := fmt.Sprintf("输出长度: %d 字节", len(rec.Output))
+		list.AddItem(title, sec, 0, nil)
+	}
+
+	list.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		if index >= 0 && index < len(ui.Records) {
+			rec := ui.Records[len(ui.Records)-1-index]
+			preview.Clear()
+			tview.ANSIWriter(preview).Write([]byte(rec.Output))
+		}
+	})
+
+	list.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		if index >= 0 && index < len(ui.Records) {
+			rec := ui.Records[len(ui.Records)-1-index]
+			ui.Input.SetText(rec.Cmd, true)
+			if ui.Env != nil && rec.Env != "" {
+				ui.Env.SetText(rec.Env)
+			}
+			a.Pages.RemovePage("history_modal")
+			a.TviewApp.SetFocus(ui.Input)
+		}
+	})
+
+	// 初始触发预览
+	if list.GetItemCount() > 0 {
+		list.SetCurrentItem(0)
+		rec := ui.Records[len(ui.Records)-1]
+		tview.ANSIWriter(preview).Write([]byte(rec.Output))
+	}
+
+	flex.AddItem(list, 0, 1, true).AddItem(preview, 0, 2, false)
+
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if ui.CancelFunc != nil {
+				ui.CancelFunc()
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyEscape {
+			a.Pages.RemovePage("history_modal")
+			a.TviewApp.SetFocus(ui.Input)
+			return nil
+		}
+		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyRight || event.Key() == tcell.KeyLeft {
+			if list.HasFocus() {
+				a.TviewApp.SetFocus(preview)
+			} else {
+				a.TviewApp.SetFocus(list)
+			}
+			return nil
+		}
+		return event
+	})
+
+	// 弹窗居中
+	modalLayout := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(flex, 0, 8, true).              // 高度占比 80%
+			AddItem(nil, 0, 1, false), 0, 8, true). // 宽度占比 80%
+		AddItem(nil, 0, 1, false)
+
+	a.Pages.AddAndSwitchToPage("history_modal", modalLayout, true)
+	a.TviewApp.SetFocus(list)
+}
+
 func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 	a.Store.AddRecentTool(name, toolID, params)
 	a.Store.Save()
 	a.refreshTree()
 }
 
-func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run func(args string, out io.Writer) error) {
+func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
+	pageID := "term_" + tool.ID()
+	if ui, ok := a.TermUI[tool.ID()]; ok {
+		a.Pages.SwitchToPage(pageID)
+		a.TviewApp.SetFocus(ui.Input)
+		return
+	}
+
+	uiState := &TermUIState{}
+	a.TermUI[tool.ID()] = uiState
+
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	uiState.Flex = flex
 
 	// 上半部分：使用说明
 	usageView := tview.NewTextView().
@@ -667,7 +1092,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetText(usage).
 		SetScrollable(true)
 	usageView.SetBorder(true).
-		SetTitle(" 📖 使用说明 ").
+		SetTitle(" 📖 使用说明 [gray](Ctrl+E:全屏/还原)[-] ").
 		SetTitleColor(colorGo).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -678,22 +1103,22 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetChangedFunc(func() {
 			a.TviewApp.Draw()
 		})
+	uiState.Output = outputView
+
 	outputView.SetBorder(true).
-		SetTitle(" 📺 终端输出 ").
+		SetTitle(" 📺 终端输出 [gray](Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏)[-] ").
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 查找最近一次的参数
+	// 查找最近一次的参数和历史
 	initialCmd := ""
-	recentTools := a.Store.GetRecentTools()
-	for _, rt := range recentTools {
-		if rt.ToolPath == tool.ID() {
-			if cmd, ok := rt.LastParams["cmd"]; ok {
-				initialCmd = cmd
-			}
-			break
+	history := a.Store.GetToolHistory(tool.ID())
+	if len(history) > 0 {
+		if cmd, ok := history[0]["cmd"]; ok {
+			initialCmd = cmd
 		}
 	}
+	historyIndex := -1 // -1 表示当前新输入，0 表示历史的第一条
 
 	// 下半部分：输入区域 (多行文本框更适合较长的命令参数)
 	inputField := tview.NewTextArea().
@@ -701,15 +1126,55 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetText(initialCmd, true)
 	inputField.SetBackgroundColor(colorBgDark)
 	inputField.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
+	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](输入参数后按 Enter 执行，按 ESC 返回，按 Tab 切换焦点滚动)[-] ").
+		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+H:历史, Ctrl+A:复制)[-] ").
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
 	flex.AddItem(usageView, 0, 1, false).
 		AddItem(outputView, 0, 3, false).
 		AddItem(inputField, 5, 1, true) // 给输入框多一点高度 (5行)
+
+	type layoutItem struct {
+		p     tview.Primitive
+		fixed int
+		prop  int
+	}
+	layoutItems := []layoutItem{
+		{usageView, 0, 1},
+		{outputView, 0, 3},
+		{inputField, 5, 1},
+	}
+	isMaximized := false
+
+	toggleMaximize := func() {
+		if isMaximized {
+			for _, item := range layoutItems {
+				flex.ResizeItem(item.p, item.fixed, item.prop)
+			}
+			isMaximized = false
+		} else {
+			found := false
+			for _, item := range layoutItems {
+				if item.p.HasFocus() {
+					found = true
+					break
+				}
+			}
+			if found {
+				for _, item := range layoutItems {
+					if item.p.HasFocus() {
+						flex.ResizeItem(item.p, 0, 1)
+					} else {
+						flex.ResizeItem(item.p, 0, 0)
+					}
+				}
+				isMaximized = true
+			}
+		}
+	}
 
 	// 焦点高亮效果
 	usageView.SetFocusFunc(func() { usageView.SetBorderColor(colorGo) })
@@ -723,8 +1188,17 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	currentFocus := 0
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.CancelFunc != nil {
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyEscape {
-			a.Pages.RemovePage("terminal")
+			if isMaximized {
+				toggleMaximize()
+				return nil
+			}
 			a.Pages.SwitchToPage("main")
 			a.TviewApp.SetFocus(a.Tree)
 			return nil
@@ -739,34 +1213,121 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			a.TviewApp.SetFocus(focusables[currentFocus])
 			return nil
 		}
+		if event.Key() == tcell.KeyCtrlE {
+			toggleMaximize()
+			return nil
+		}
+		return event
+	})
+
+	outputView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlS {
+			a.exportLog(tool.Name(), outputView.GetText(true))
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlL {
+			uiState.UndoBuffer = outputView.GetText(false)
+			uiState.UndoRecords = append([]*ExecRecord(nil), uiState.Records...)
+			outputView.Clear()
+			uiState.Records = nil
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlU {
+			if uiState.UndoBuffer != "" {
+				outputView.SetText(uiState.UndoBuffer)
+				uiState.Records = uiState.UndoRecords
+				uiState.UndoBuffer = ""
+				uiState.UndoRecords = nil
+			}
+			return nil
+		}
 		return event
 	})
 
 	inputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlA {
+			cmdText := inputField.GetText()
+			if err := a.copyToClipboard(cmdText); err == nil {
+				a.ShowModal("复制成功", "命令已复制到剪贴板！")
+			} else {
+				a.ShowModal("复制失败", err.Error())
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlH {
+			a.showHistoryModal(uiState)
+			return nil
+		}
+		if event.Key() == tcell.KeyUp {
+			if len(history) > 0 && historyIndex < len(history)-1 {
+				historyIndex++
+				if cmd, ok := history[historyIndex]["cmd"]; ok {
+					inputField.SetText(cmd, true)
+				}
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyDown {
+			if historyIndex > 0 {
+				historyIndex--
+				if cmd, ok := history[historyIndex]["cmd"]; ok {
+					inputField.SetText(cmd, true)
+				}
+			} else if historyIndex == 0 {
+				historyIndex = -1
+				inputField.SetText("", true)
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
 			cmdText := strings.TrimSpace(inputField.GetText())
-			outputView.Clear()
+
+			// 对于系统终端，执行后清空输入框
+			if tool.ID() == "sys_terminal" {
+				inputField.SetText("", true)
+			}
 
 			// 记录使用
 			a.RecordToolUsage(tool.Name(), tool.ID(), map[string]string{"cmd": cmdText})
+			// 更新当前的历史记录列表，以便在不刷新的情况下能立即使用新的历史
+			history = a.Store.GetToolHistory(tool.ID())
+			historyIndex = -1
+
+			uiState.UndoBuffer = ""
+			uiState.UndoRecords = nil
+
+			record := &ExecRecord{Cmd: cmdText}
+			uiState.Records = append(uiState.Records, record)
 
 			// 开始执行
 			go func() {
+				prefix := fmt.Sprintf("\n[yellow]❯ 执行命令: %s[-]\n", cmdText)
 				a.TviewApp.QueueUpdateDraw(func() {
 					inputField.SetDisabled(true)
-					outputView.Write([]byte(fmt.Sprintf("[yellow]执行命令: %s[-]\n", cmdText)))
+					outputView.Write([]byte(prefix))
 				})
+				record.Output += prefix
 
-				err := run(cmdText, outputView)
+				runCtx, cancel := context.WithCancel(context.Background())
+				uiState.CancelFunc = cancel
+
+				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
+				err := run(runCtx, cmdText, hw)
 
 				a.TviewApp.QueueUpdateDraw(func() {
+					uiState.CancelFunc = nil
 					if err != nil {
-						outputView.Write([]byte(fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)))
+						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
+						outputView.Write([]byte(errStr))
+						record.Output += errStr
 					} else {
-						outputView.Write([]byte("\n[green]执行完成[-]\n"))
+						succStr := "\n[green]执行完成[-]\n"
+						outputView.Write([]byte(succStr))
+						record.Output += succStr
 					}
 					inputField.SetDisabled(false)
 					a.TviewApp.SetFocus(inputField)
+					outputView.ScrollToEnd()
 				})
 			}()
 			return nil // 拦截按键，防止输入换行
@@ -778,12 +1339,23 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		return event
 	})
 
-	a.Pages.AddAndSwitchToPage("terminal", flex, true)
+	a.Pages.AddAndSwitchToPage(pageID, flex, true)
 	a.TviewApp.SetFocus(inputField)
 }
 
-func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string, run func(env string, args string, out io.Writer) error) {
+func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
+	pageID := "term_" + tool.ID()
+	if ui, ok := a.TermUI[tool.ID()]; ok {
+		a.Pages.SwitchToPage(pageID)
+		a.TviewApp.SetFocus(ui.Input)
+		return
+	}
+
+	uiState := &TermUIState{}
+	a.TermUI[tool.ID()] = uiState
+
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	uiState.Flex = flex
 
 	// 上半部分：使用说明
 	usageView := tview.NewTextView().
@@ -791,7 +1363,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetText(usage).
 		SetScrollable(true)
 	usageView.SetBorder(true).
-		SetTitle(" 📖 使用说明 (Python专属) ").
+		SetTitle(" 📖 使用说明 (Python专属) [gray](Ctrl+E:全屏/还原)[-] ").
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -802,26 +1374,26 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetChangedFunc(func() {
 			a.TviewApp.Draw()
 		})
+	uiState.Output = outputView
+
 	outputView.SetBorder(true).
-		SetTitle(" 📺 终端输出 ").
+		SetTitle(" 📺 终端输出 [gray](Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏)[-] ").
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 查找最近一次的参数
+	// 查找最近一次的参数和历史
 	initialCmd := ""
 	initialEnv := "python"
-	recentTools := a.Store.GetRecentTools()
-	for _, rt := range recentTools {
-		if rt.ToolPath == tool.ID() {
-			if cmd, ok := rt.LastParams["cmd"]; ok {
-				initialCmd = cmd
-			}
-			if env, ok := rt.LastParams["env"]; ok {
-				initialEnv = env
-			}
-			break
+	history := a.Store.GetToolHistory(tool.ID())
+	if len(history) > 0 {
+		if cmd, ok := history[0]["cmd"]; ok {
+			initialCmd = cmd
+		}
+		if env, ok := history[0]["env"]; ok {
+			initialEnv = env
 		}
 	}
+	historyIndex := -1
 
 	// Python 环境设置栏
 	envForm := tview.NewForm().
@@ -832,7 +1404,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetButtonTextColor(tcell.ColorWhite)
 
 	envForm.SetBorder(true).
-		SetTitle(" ⚙️ Python 环境配置 [gray](Tab 切换焦点)[-] ").
+		SetTitle(" ⚙️ Python 环境配置 [gray](Tab:切换, Ctrl+E:全屏)[-] ").
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -841,6 +1413,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetText(initialEnv).
 		SetFieldWidth(30)
 	envForm.AddFormItem(envInput)
+	uiState.Env = envInput
 
 	// 安装依赖的按钮
 	envForm.AddButton("📦 安装 pip 依赖", func() {
@@ -853,18 +1426,37 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			if pkgName == "" {
 				return
 			}
-			outputView.Clear()
-			outputView.Write([]byte(fmt.Sprintf("[yellow]正在使用 %s 安装依赖: %s[-]\n", envPath, pkgName)))
+
+			uiState.UndoBuffer = ""
+			uiState.UndoRecords = nil
+
+			record := &ExecRecord{Cmd: "!pip " + pkgName, Env: envPath}
+			uiState.Records = append(uiState.Records, record)
+
+			prefix := fmt.Sprintf("\n[yellow]❯ 正在使用 %s 安装依赖: %s[-]\n", envPath, pkgName)
+			outputView.Write([]byte(prefix))
+			record.Output += prefix
 
 			go func() {
+				runCtx, cancel := context.WithCancel(context.Background())
+				uiState.CancelFunc = cancel
+
+				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
 				// We pass a special args flag "!pip " to let the adapter know we want to run pip
-				err := run(envPath, "!pip "+pkgName, outputView)
+				err := run(runCtx, envPath, "!pip "+pkgName, hw)
+
 				a.TviewApp.QueueUpdateDraw(func() {
+					uiState.CancelFunc = nil
 					if err != nil {
-						outputView.Write([]byte(fmt.Sprintf("\n[red]安装出错: %v[-]\n", err)))
+						errStr := fmt.Sprintf("\n[red]安装出错: %v[-]\n", err)
+						outputView.Write([]byte(errStr))
+						record.Output += errStr
 					} else {
-						outputView.Write([]byte("\n[green]安装完成！[-]\n"))
+						succStr := "\n[green]安装完成！[-]\n"
+						outputView.Write([]byte(succStr))
+						record.Output += succStr
 					}
+					outputView.ScrollToEnd()
 				})
 			}()
 		})
@@ -876,9 +1468,10 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetText(initialCmd, true)
 	inputField.SetBackgroundColor(colorBgDark)
 	inputField.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
+	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](输入参数后按 Enter 执行，按 ESC 返回)[-] ").
+		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+H:历史, Ctrl+A:复制)[-] ").
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -886,6 +1479,46 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		AddItem(outputView, 0, 3, false).
 		AddItem(envForm, 5, 1, false).
 		AddItem(inputField, 5, 1, true)
+
+	type layoutItem struct {
+		p     tview.Primitive
+		fixed int
+		prop  int
+	}
+	layoutItems := []layoutItem{
+		{usageView, 0, 1},
+		{outputView, 0, 3},
+		{envForm, 5, 1},
+		{inputField, 5, 1},
+	}
+	isMaximized := false
+
+	toggleMaximize := func() {
+		if isMaximized {
+			for _, item := range layoutItems {
+				flex.ResizeItem(item.p, item.fixed, item.prop)
+			}
+			isMaximized = false
+		} else {
+			found := false
+			for _, item := range layoutItems {
+				if item.p.HasFocus() {
+					found = true
+					break
+				}
+			}
+			if found {
+				for _, item := range layoutItems {
+					if item.p.HasFocus() {
+						flex.ResizeItem(item.p, 0, 1)
+					} else {
+						flex.ResizeItem(item.p, 0, 0)
+					}
+				}
+				isMaximized = true
+			}
+		}
+	}
 
 	// 焦点高亮效果
 	usageView.SetFocusFunc(func() { usageView.SetBorderColor(colorPy) })
@@ -901,8 +1534,17 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	currentFocus := 0
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.CancelFunc != nil {
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyEscape {
-			a.Pages.RemovePage("py_terminal")
+			if isMaximized {
+				toggleMaximize()
+				return nil
+			}
 			a.Pages.SwitchToPage("main")
 			a.TviewApp.SetFocus(a.Tree)
 			return nil
@@ -917,10 +1559,78 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			a.TviewApp.SetFocus(focusables[currentFocus])
 			return nil
 		}
+		if event.Key() == tcell.KeyCtrlE {
+			toggleMaximize()
+			return nil
+		}
+		return event
+	})
+
+	outputView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlS {
+			a.exportLog(tool.Name(), outputView.GetText(true))
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlL {
+			uiState.UndoBuffer = outputView.GetText(false)
+			uiState.UndoRecords = append([]*ExecRecord(nil), uiState.Records...)
+			outputView.Clear()
+			uiState.Records = nil
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlU {
+			if uiState.UndoBuffer != "" {
+				outputView.SetText(uiState.UndoBuffer)
+				uiState.Records = uiState.UndoRecords
+				uiState.UndoBuffer = ""
+				uiState.UndoRecords = nil
+			}
+			return nil
+		}
 		return event
 	})
 
 	inputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlA {
+			cmdText := inputField.GetText()
+			if err := a.copyToClipboard(cmdText); err == nil {
+				a.ShowModal("复制成功", "命令已复制到剪贴板！")
+			} else {
+				a.ShowModal("复制失败", err.Error())
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlH {
+			a.showHistoryModal(uiState)
+			return nil
+		}
+		if event.Key() == tcell.KeyUp {
+			if len(history) > 0 && historyIndex < len(history)-1 {
+				historyIndex++
+				if cmd, ok := history[historyIndex]["cmd"]; ok {
+					inputField.SetText(cmd, true)
+				}
+				if env, ok := history[historyIndex]["env"]; ok {
+					envInput.SetText(env)
+				}
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyDown {
+			if historyIndex > 0 {
+				historyIndex--
+				if cmd, ok := history[historyIndex]["cmd"]; ok {
+					inputField.SetText(cmd, true)
+				}
+				if env, ok := history[historyIndex]["env"]; ok {
+					envInput.SetText(env)
+				}
+			} else if historyIndex == 0 {
+				historyIndex = -1
+				inputField.SetText("", true)
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
 			cmdText := strings.TrimSpace(inputField.GetText())
 			envPath := strings.TrimSpace(envInput.GetText())
@@ -928,31 +1638,50 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 				envPath = "python"
 			}
 
-			outputView.Clear()
-
 			// 记录使用
 			a.RecordToolUsage(tool.Name(), tool.ID(), map[string]string{
 				"cmd": cmdText,
 				"env": envPath,
 			})
+			// 更新历史记录
+			history = a.Store.GetToolHistory(tool.ID())
+			historyIndex = -1
+
+			uiState.UndoBuffer = ""
+			uiState.UndoRecords = nil
+
+			record := &ExecRecord{Cmd: cmdText, Env: envPath}
+			uiState.Records = append(uiState.Records, record)
 
 			// 开始执行
 			go func() {
+				prefix := fmt.Sprintf("\n[yellow]❯ 执行环境: %s | 执行参数: %s[-]\n", envPath, cmdText)
 				a.TviewApp.QueueUpdateDraw(func() {
 					inputField.SetDisabled(true)
-					outputView.Write([]byte(fmt.Sprintf("[yellow]执行环境: %s\n执行参数: %s[-]\n", envPath, cmdText)))
+					outputView.Write([]byte(prefix))
 				})
+				record.Output += prefix
 
-				err := run(envPath, cmdText, outputView)
+				runCtx, cancel := context.WithCancel(context.Background())
+				uiState.CancelFunc = cancel
+
+				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
+				err := run(runCtx, envPath, cmdText, hw)
 
 				a.TviewApp.QueueUpdateDraw(func() {
+					uiState.CancelFunc = nil
 					if err != nil {
-						outputView.Write([]byte(fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)))
+						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
+						outputView.Write([]byte(errStr))
+						record.Output += errStr
 					} else {
-						outputView.Write([]byte("\n[green]执行完成[-]\n"))
+						succStr := "\n[green]执行完成[-]\n"
+						outputView.Write([]byte(succStr))
+						record.Output += succStr
 					}
 					inputField.SetDisabled(false)
 					a.TviewApp.SetFocus(inputField)
+					outputView.ScrollToEnd()
 				})
 			}()
 			return nil
@@ -963,6 +1692,53 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		return event
 	})
 
-	a.Pages.AddAndSwitchToPage("py_terminal", flex, true)
+	a.Pages.AddAndSwitchToPage(pageID, flex, true)
 	a.TviewApp.SetFocus(inputField)
+}
+
+func (a *App) copyToClipboard(text string) error {
+	err := clipboard.WriteAll(text)
+	if err != nil {
+		errStr := err.Error()
+		if runtime.GOOS == "linux" && (strings.Contains(errStr, "No clipboard") || strings.Contains(errStr, "exit status")) {
+			// 尝试使用 OSC 52 终端转义序列通过 SSH 直接向本地客户端发送剪贴板内容
+			b64 := base64.StdEncoding.EncodeToString([]byte(text))
+			os.Stdout.WriteString(fmt.Sprintf("\x1b]52;c;%s\x07", b64))
+			return fmt.Errorf("服务器无剪贴板。\n已尝试使用 OSC52 终端指令发送至本地剪贴板。\n💡 注: 需确保你的终端软件(如iTerm/Windows Terminal)已开启'允许终端访问剪贴板'功能。")
+		}
+		return err
+	}
+	return nil
+}
+
+// 导出日志功能
+func (a *App) exportLog(toolName, content string) {
+	if strings.TrimSpace(content) == "" {
+		a.ShowModal("导出提示", "当前终端面板没有任何日志内容可导出。")
+		return
+	}
+
+	logDir := "my_tools_logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		a.ShowModal("导出错误", "无法创建日志目录: "+err.Error())
+		return
+	}
+
+	fileName := fmt.Sprintf("%s_%d.log",
+		strings.ReplaceAll(toolName, " ", "_"),
+		time.Now().UnixMilli())
+
+	exportPath := filepath.Join(logDir, fileName)
+
+	err := os.WriteFile(exportPath, []byte(content), 0644)
+	if err != nil {
+		a.ShowModal("导出失败", fmt.Sprintf("写入文件失败:\n%v", err))
+		return
+	}
+
+	if err := a.copyToClipboard(content); err != nil {
+		a.ShowModal("导出成功 (剪贴板不可用)", fmt.Sprintf("日志已保存至:\n%s\n\n⚠️ 注意: %v", exportPath, err))
+	} else {
+		a.ShowModal("导出成功", fmt.Sprintf("日志已保存至:\n%s\n\n✅ 已自动复制到剪贴板！", exportPath))
+	}
 }

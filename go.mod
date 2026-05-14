@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/im7mortal/UTM v1.4.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect

@@ -16,8 +16,9 @@ type HistoryItem struct {
 
 // UserData 用户数据
 type UserData struct {
-	RecentTools []HistoryItem   `json:"recent_tools"`
-	NodeStates  map[string]bool `json:"node_states"` // 记录节点展开/收起状态
+	RecentTools []HistoryItem                  `json:"recent_tools"`
+	NodeStates  map[string]bool                `json:"node_states"`  // 记录节点展开/收起状态
+	ToolHistory map[string][]map[string]string `json:"tool_history"` // 记录每个工具的历史执行参数
 }
 
 // Storage 数据存储
@@ -52,6 +53,9 @@ func (s *Storage) Load() error {
 
 	if s.data.NodeStates == nil {
 		s.data.NodeStates = make(map[string]bool)
+	}
+	if s.data.ToolHistory == nil {
+		s.data.ToolHistory = make(map[string][]map[string]string)
 	}
 	return json.Unmarshal(data, s.data)
 }
@@ -90,11 +94,45 @@ func (s *Storage) AddRecentTool(toolName, toolPath string, params map[string]str
 	if len(s.data.RecentTools) > 10 {
 		s.data.RecentTools = s.data.RecentTools[:10]
 	}
+
+	// 记录到 ToolHistory
+	if s.data.ToolHistory == nil {
+		s.data.ToolHistory = make(map[string][]map[string]string)
+	}
+	history := s.data.ToolHistory[toolPath]
+	// 避免连续重复
+	if len(history) == 0 || !isMapEqual(history[0], params) {
+		history = append([]map[string]string{params}, history...)
+		if len(history) > 50 {
+			history = history[:50]
+		}
+		s.data.ToolHistory[toolPath] = history
+	}
+}
+
+func isMapEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // GetRecentTools 获取最近使用的工具
 func (s *Storage) GetRecentTools() []HistoryItem {
 	return s.data.RecentTools
+}
+
+// GetToolHistory 获取某个工具的历史执行参数
+func (s *Storage) GetToolHistory(toolPath string) []map[string]string {
+	if s.data.ToolHistory == nil {
+		return nil
+	}
+	return s.data.ToolHistory[toolPath]
 }
 
 // GetNodeState 获取节点展开状态，如果不存在则返回 defaultVal

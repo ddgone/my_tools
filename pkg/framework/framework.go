@@ -1,13 +1,16 @@
 package framework
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 type AppContext interface {
 	ShowModal(title, message string)
 	PromptInput(title, prompt, defaultValue string, callback func(string))
 	PromptChoice(title, prompt string, options []string, callback func(string))
-	ShowTerminal(title string, usage string, run func(args string, out io.Writer) error)
-	ShowPythonTerminal(title string, usage string, run func(env string, args string, out io.Writer) error)
+	ShowTerminal(title string, usage string, run func(ctx context.Context, args string, out io.Writer) error)
+	ShowPythonTerminal(title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error)
 	GetLastParam(key string) string
 	RecordUsage(params map[string]string)
 }

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -371,7 +372,7 @@ func cleanExtractedFile(extractedFile, folderPath string, out io.Writer) {
 	}
 }
 
-func runBatchMode(inputDir string, zone int, fullExtract bool, workers int, cleanupLevel int, out io.Writer) error {
+func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bool, workers int, cleanupLevel int, out io.Writer) error {
 	if workers <= 0 {
 		workers = 1
 	}
@@ -415,7 +416,11 @@ func runBatchMode(inputDir string, zone int, fullExtract bool, workers int, clea
 		wg.Add(1)
 		go func(folder string) {
 			defer wg.Done()
-			sem <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return
+			case sem <- struct{}{}:
+			}
 			defer func() { <-sem }()
 
 			folderPath := filepath.Join(inputDir, folder)
@@ -582,7 +587,7 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
    -merge C:\Users\zhangzijiang\Desktop\my_tools\test\output
 `
 
-	ctx.ShowTerminal(t.Name(), usage, func(args string, out io.Writer) error {
+	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
 		// Parse args manually using framework parser
 		parsedArgs := framework.ParseArgs(args)
 
@@ -627,7 +632,7 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 		}
 
 		if inputDir != "" {
-			return runBatchMode(inputDir, zone, fullExtract, workers, cleanupLevel, out)
+			return runBatchMode(runCtx, inputDir, zone, fullExtract, workers, cleanupLevel, out)
 		}
 		if convertPath != "" {
 			info, err := os.Stat(convertPath)
