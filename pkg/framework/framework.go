@@ -7,6 +7,7 @@ type AppContext interface {
 	PromptInput(title, prompt, defaultValue string, callback func(string))
 	PromptChoice(title, prompt string, options []string, callback func(string))
 	ShowTerminal(title string, usage string, run func(args string, out io.Writer) error)
+	ShowPythonTerminal(title string, usage string, run func(env string, args string, out io.Writer) error)
 	GetLastParam(key string) string
 	RecordUsage(params map[string]string)
 }

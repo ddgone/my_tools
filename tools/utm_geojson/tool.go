@@ -537,32 +537,7 @@ func runBatchMode(inputDir string, zone int, fullExtract bool, workers int, clea
 	return nil
 }
 
-func parseArgs(input string) []string {
-	var args []string
-	var current strings.Builder
-	inQuote := false
-	quoteChar := rune(0)
-
-	for _, r := range input {
-		if (r == '"' || r == '\'') && (!inQuote || quoteChar == r) {
-			inQuote = !inQuote
-			if inQuote {
-				quoteChar = r
-			}
-		} else if r == ' ' && !inQuote {
-			if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-		} else {
-			current.WriteRune(r)
-		}
-	}
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-	return args
-}
+// Custom parsing logic has been moved to framework.ParseArgs
 
 // ---------------- Tool Integration ----------------
 
@@ -608,8 +583,8 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(args string, out io.Writer) error {
-		// Parse args manually using custom safe parser
-		parsedArgs := parseArgs(args)
+		// Parse args manually using framework parser
+		parsedArgs := framework.ParseArgs(args)
 
 		fs := flag.NewFlagSet("utm_tool", flag.ContinueOnError)
 		fs.SetOutput(out)

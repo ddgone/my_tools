@@ -1,10 +1,11 @@
-# 🦏 白犀牛工具箱 (White Rhino Tools)
+# 🦎 火蜥蜴工具箱 (Fire Salamander Tools)
 
 这是一个基于 Go 语言和 `tview` 开发的现代化、跨平台终端图形界面 (TUI) 工具箱。它提供了一个极简的插件化架构，允许开发者快速接入独立的命令行工具，并为它们自动生成统一、美观的带记忆功能的终端式交互界面。
 
 ## ✨ 核心特性
 
-- **纯 Go 实现，完美跨平台**：没有任何 CGO 依赖，支持单文件编译和分发（Windows/Linux/macOS）。
+- **纯 Go 实现，完美跨平台**：没有任何 CGO 依赖，所有 UI、配置甚至外部 Python 脚本均可打包进单个可执行文件中，支持单文件编译和分发（Windows/Linux/macOS）。
+- **内嵌 Python 支持**：支持无缝执行 Python 脚本，通过 `//go:embed` 技术将其打入二进制文件（目标机需安装 Python 环境）。
 - **极简插件化架构**：工具代码与 UI 代码完全解耦。只需实现一个极简的接口并注册，TUI 就会自动生成菜单和运行界面。
 - **现代化的 TUI 体验**：
   - 炫酷的黑/绿/青/黄极客配色。
@@ -19,24 +20,24 @@
 
 ## 🚀 快速开始
 
-### 编译与运行
+### 编译 (跨平台)
 
-由于本项目是纯 Go 代码，你可以直接使用 `go build` 编译出单个可执行文件，随意移动和分发：
+本项目提供了一个极其方便的全平台编译脚本。无论你在 Windows 还是 macOS/Linux 下，只要安装了 Go，即可一键编译所有平台的版本：
 
-**Windows:**
-```powershell
-go build -o my_tools.exe main.go
-.\my_tools.exe
+```bash
+# 运行构建脚本
+go run scripts/build.go
 ```
 
-**Linux / macOS (交叉编译):**
-```powershell
-# 编译 Linux 版本
-$env:GOOS="linux"; $env:GOARCH="amd64"; go build -o my_tools_linux main.go
+编译成功后，所有可执行文件都会生成在 `build/` 目录下，如 `my_tools_windows_amd64.exe` 等。
 
-# 编译 macOS 版本
-$env:GOOS="darwin"; $env:GOARCH="amd64"; go build -o my_tools_mac main.go
-```
+## 🛠️ 如何添加自己的 Python 脚本？
+
+由于工具箱内置了 `python_tools` 代理适配器，你只需将任意 `.py` 文件放入 `tools/python_tools/scripts/` 目录，重新编译即可：
+
+1. 把 `your_script.py` 放入 `tools/python_tools/scripts/`。
+2. 运行 `go run scripts/build.go` 重新编译。
+3. 启动工具箱，在侧边栏的 **Python 脚本** 分类下，就会自动出现并可以运行你的 Python 工具！
 
 ### 操作指南
 

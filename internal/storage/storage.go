@@ -8,16 +8,16 @@ import (
 
 // HistoryItem 历史记录项
 type HistoryItem struct {
-	ToolName    string            `json:"tool_name"`
-	ToolPath    string            `json:"tool_path"`
-	LastParams  map[string]string `json:"last_params"`
-	Timestamp   int64             `json:"timestamp"`
+	ToolName   string            `json:"tool_name"`
+	ToolPath   string            `json:"tool_path"`
+	LastParams map[string]string `json:"last_params"`
+	Timestamp  int64             `json:"timestamp"`
 }
 
 // UserData 用户数据
 type UserData struct {
-	RecentTools   []HistoryItem `json:"recent_tools"`
-	ExpandedPaths []string      `json:"expanded_paths"` // 展开的目录路径
+	RecentTools []HistoryItem   `json:"recent_tools"`
+	NodeStates  map[string]bool `json:"node_states"` // 记录节点展开/收起状态
 }
 
 // Storage 数据存储
@@ -31,10 +31,12 @@ func NewStorage() *Storage {
 	homeDir, _ := os.UserHomeDir()
 	dataDir := filepath.Join(homeDir, ".my_tools")
 	os.MkdirAll(dataDir, 0755)
-	
+
 	return &Storage{
 		dataFile: filepath.Join(dataDir, "user_data.json"),
-		data:     &UserData{},
+		data: &UserData{
+			NodeStates: make(map[string]bool),
+		},
 	}
 }
 
@@ -47,7 +49,10 @@ func (s *Storage) Load() error {
 		}
 		return err
 	}
-	
+
+	if s.data.NodeStates == nil {
+		s.data.NodeStates = make(map[string]bool)
+	}
 	return json.Unmarshal(data, s.data)
 }
 
@@ -57,7 +62,7 @@ func (s *Storage) Save() error {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(s.dataFile, data, 0644)
 }
 
@@ -70,7 +75,7 @@ func (s *Storage) AddRecentTool(toolName, toolPath string, params map[string]str
 			break
 		}
 	}
-	
+
 	// 添加到开头
 	item := HistoryItem{
 		ToolName:   toolName,
@@ -78,9 +83,9 @@ func (s *Storage) AddRecentTool(toolName, toolPath string, params map[string]str
 		LastParams: params,
 		Timestamp:  0, // TODO: 添加时间戳
 	}
-	
+
 	s.data.RecentTools = append([]HistoryItem{item}, s.data.RecentTools...)
-	
+
 	// 只保留最近10个
 	if len(s.data.RecentTools) > 10 {
 		s.data.RecentTools = s.data.RecentTools[:10]
@@ -92,45 +97,28 @@ func (s *Storage) GetRecentTools() []HistoryItem {
 	return s.data.RecentTools
 }
 
-// IsExpanded 检查路径是否展开
-func (s *Storage) IsExpanded(path string) bool {
-	for _, p := range s.data.ExpandedPaths {
-		if p == path {
-			return true
-		}
+// GetNodeState 获取节点展开状态，如果不存在则返回 defaultVal
+func (s *Storage) GetNodeState(nodeID string, defaultVal bool) bool {
+	if s.data.NodeStates == nil {
+		s.data.NodeStates = make(map[string]bool)
 	}
-	return false
+	if state, exists := s.data.NodeStates[nodeID]; exists {
+		return state
+	}
+	return defaultVal
 }
 
-// ToggleExpand 切换展开状态
-func (s *Storage) ToggleExpand(path string) {
-	if s.IsExpanded(path) {
-		// 收起
-		for i, p := range s.data.ExpandedPaths {
-			if p == path {
-				s.data.ExpandedPaths = append(s.data.ExpandedPaths[:i], s.data.ExpandedPaths[i+1:]...)
-				break
-			}
-		}
-	} else {
-		// 展开
-		s.data.ExpandedPaths = append(s.data.ExpandedPaths, path)
+// SetNodeState 设置节点展开状态
+func (s *Storage) SetNodeState(nodeID string, expanded bool) {
+	if s.data.NodeStates == nil {
+		s.data.NodeStates = make(map[string]bool)
 	}
+	s.data.NodeStates[nodeID] = expanded
+	s.Save()
 }
 
-// Expand 展开路径
-func (s *Storage) Expand(path string) {
-	if !s.IsExpanded(path) {
-		s.data.ExpandedPaths = append(s.data.ExpandedPaths, path)
-	}
-}
-
-// Collapse 收起路径
-func (s *Storage) Collapse(path string) {
-	for i, p := range s.data.ExpandedPaths {
-		if p == path {
-			s.data.ExpandedPaths = append(s.data.ExpandedPaths[:i], s.data.ExpandedPaths[i+1:]...)
-			break
-		}
-	}
+// ClearNodeStates 清空展开状态并恢复默认
+func (s *Storage) ClearNodeStates() {
+	s.data.NodeStates = make(map[string]bool)
+	s.Save()
 }
