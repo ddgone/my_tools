@@ -31,7 +31,7 @@ type Storage struct {
 func NewStorage() *Storage {
 	homeDir, _ := os.UserHomeDir()
 	dataDir := filepath.Join(homeDir, ".my_tools")
-	os.MkdirAll(dataDir, 0755)
+	_ = os.MkdirAll(dataDir, 0755)
 
 	return &Storage{
 		dataFile: filepath.Join(dataDir, "user_data.json"),
@@ -152,11 +152,11 @@ func (s *Storage) SetNodeState(nodeID string, expanded bool) {
 		s.data.NodeStates = make(map[string]bool)
 	}
 	s.data.NodeStates[nodeID] = expanded
-	s.Save()
+	_ = s.Save()
 }
 
 // ClearNodeStates 清空展开状态并恢复默认
 func (s *Storage) ClearNodeStates() {
 	s.data.NodeStates = make(map[string]bool)
-	s.Save()
+	_ = s.Save()
 }

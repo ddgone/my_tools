@@ -381,10 +381,14 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 	}
 	timestamp := time.Now().UnixMilli()
 	outputDir := fmt.Sprintf("output_%d", timestamp)
-	os.MkdirAll(outputDir, 0755)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("创建输出目录失败: %w", err)
+	}
 
 	utmBackupDir := filepath.Join(outputDir, "utm")
-	os.MkdirAll(utmBackupDir, 0755)
+	if err := os.MkdirAll(utmBackupDir, 0755); err != nil {
+		return fmt.Errorf("创建备份目录失败: %w", err)
+	}
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "输入目录:", inputDir)
@@ -502,8 +506,11 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 
 	if len(allFeatures) > 0 {
 		mergeFile := filepath.Join(outputDir, "merged_tracks.geojson")
-		saveGeoJSON(allFeatures, mergeFile)
-		fmt.Fprintf(out, "\n  [合并] merged_tracks.geojson (%d 点)\n", len(allFeatures))
+		if err := saveGeoJSON(allFeatures, mergeFile); err != nil {
+			fmt.Fprintf(out, "  [警告] 合并 geojson 失败: %v\n", err)
+		} else {
+			fmt.Fprintf(out, "\n  [合并] merged_tracks.geojson (%d 点)\n", len(allFeatures))
+		}
 	}
 
 	fmt.Fprintf(out, "\n处理完成！共处理 %d 个文件夹\n", len(processedFolders))

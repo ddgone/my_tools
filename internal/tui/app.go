@@ -85,9 +85,6 @@ type App struct {
 	Tree     *SalamanderTreeView // 改用自定义带背景的树
 	Store    *storage.Storage
 	TermUI   map[string]*TermUIState
-
-	// context state
-	currentTool framework.Tool
 }
 
 // 删掉之前的硬编码字符串
@@ -178,7 +175,6 @@ func (b *BannerBox) Draw(screen tcell.Screen) {
 	}
 
 	// Draw desc next to font
-	descStartX := x + logoWidth + 2 + 50 // 预留50个字符宽度给font
 	// 动态计算font的最大宽度，确保不重叠
 	fontMaxWidth := 0
 	for _, line := range b.fontLines {
@@ -187,7 +183,7 @@ func (b *BannerBox) Draw(screen tcell.Screen) {
 			fontMaxWidth = len(runes)
 		}
 	}
-	descStartX = x + logoWidth + 2 + fontMaxWidth + 2 // font后面留2个空格，往左挪一点
+	descStartX := x + logoWidth + 2 + fontMaxWidth + 2 // font后面留2个空格，往左挪一点
 
 	descStartY := y + 3 // 整体往下一行
 	for r, line := range b.descLines {
@@ -237,8 +233,8 @@ func (s *SalamanderTreeView) Draw(screen tcell.Screen) {
 				break
 			}
 			if ch != ' ' && ch != '\n' && ch != '\r' {
-				mainc, _, style, _ := screen.GetContent(screenX, screenY)
-				if mainc == ' ' {
+				mainc, style, _ := screen.Get(screenX, screenY)
+				if mainc == " " {
 					_, bg, _ := style.Decompose()
 					screen.SetContent(screenX, screenY, ch, nil, bgStyle.Background(bg))
 				}
@@ -440,7 +436,7 @@ func (a *App) setupUI() {
 			if event.Rune() == 'b' || event.Rune() == 'B' {
 				bannerExpanded = !bannerExpanded
 				a.Store.SetNodeState("BannerExpanded", bannerExpanded)
-				a.Store.Save()
+				_ = a.Store.Save()
 				updateBannerHeight()
 				return nil
 			}
@@ -539,13 +535,11 @@ func (a *App) refreshTree() {
 				}
 
 				// 判断工具类型给予不同的颜色
-				toolColor := tcell.ColorWhite
+				toolColor := colorGo
 				icon := "🔧"
 				if strings.Contains(targetTool.Category(), "Python") {
 					toolColor = colorPy
 					icon = "📄"
-				} else {
-					toolColor = colorGo
 				}
 
 				toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s%s", icon, targetTool.Name(), paramsStr)).
@@ -1005,7 +999,7 @@ func (a *App) showHistoryModal(ui *TermUIState) {
 		if index >= 0 && index < len(ui.Records) {
 			rec := ui.Records[len(ui.Records)-1-index]
 			preview.Clear()
-			tview.ANSIWriter(preview).Write([]byte(rec.Output))
+			_, _ = tview.ANSIWriter(preview).Write([]byte(rec.Output))
 		}
 	})
 
@@ -1025,7 +1019,7 @@ func (a *App) showHistoryModal(ui *TermUIState) {
 	if list.GetItemCount() > 0 {
 		list.SetCurrentItem(0)
 		rec := ui.Records[len(ui.Records)-1]
-		tview.ANSIWriter(preview).Write([]byte(rec.Output))
+		_, _ = tview.ANSIWriter(preview).Write([]byte(rec.Output))
 	}
 
 	flex.AddItem(list, 0, 1, true).AddItem(preview, 0, 2, false)
@@ -1068,7 +1062,7 @@ func (a *App) showHistoryModal(ui *TermUIState) {
 
 func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 	a.Store.AddRecentTool(name, toolID, params)
-	a.Store.Save()
+	_ = a.Store.Save()
 	a.refreshTree()
 }
 
@@ -1304,7 +1298,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 				prefix := fmt.Sprintf("\n[yellow]❯ 执行命令: %s[-]\n", cmdText)
 				a.TviewApp.QueueUpdateDraw(func() {
 					inputField.SetDisabled(true)
-					outputView.Write([]byte(prefix))
+					_, _ = outputView.Write([]byte(prefix))
 				})
 				record.Output += prefix
 
@@ -1318,11 +1312,11 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					uiState.CancelFunc = nil
 					if err != nil {
 						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
-						outputView.Write([]byte(errStr))
+						_, _ = outputView.Write([]byte(errStr))
 						record.Output += errStr
 					} else {
 						succStr := "\n[green]执行完成[-]\n"
-						outputView.Write([]byte(succStr))
+						_, _ = outputView.Write([]byte(succStr))
 						record.Output += succStr
 					}
 					inputField.SetDisabled(false)
@@ -1434,7 +1428,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			uiState.Records = append(uiState.Records, record)
 
 			prefix := fmt.Sprintf("\n[yellow]❯ 正在使用 %s 安装依赖: %s[-]\n", envPath, pkgName)
-			outputView.Write([]byte(prefix))
+			_, _ = outputView.Write([]byte(prefix))
 			record.Output += prefix
 
 			go func() {
@@ -1449,11 +1443,11 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					uiState.CancelFunc = nil
 					if err != nil {
 						errStr := fmt.Sprintf("\n[red]安装出错: %v[-]\n", err)
-						outputView.Write([]byte(errStr))
+						_, _ = outputView.Write([]byte(errStr))
 						record.Output += errStr
 					} else {
 						succStr := "\n[green]安装完成！[-]\n"
-						outputView.Write([]byte(succStr))
+						_, _ = outputView.Write([]byte(succStr))
 						record.Output += succStr
 					}
 					outputView.ScrollToEnd()
@@ -1658,7 +1652,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 				prefix := fmt.Sprintf("\n[yellow]❯ 执行环境: %s | 执行参数: %s[-]\n", envPath, cmdText)
 				a.TviewApp.QueueUpdateDraw(func() {
 					inputField.SetDisabled(true)
-					outputView.Write([]byte(prefix))
+					_, _ = outputView.Write([]byte(prefix))
 				})
 				record.Output += prefix
 
@@ -1672,11 +1666,11 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					uiState.CancelFunc = nil
 					if err != nil {
 						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
-						outputView.Write([]byte(errStr))
+						_, _ = outputView.Write([]byte(errStr))
 						record.Output += errStr
 					} else {
 						succStr := "\n[green]执行完成[-]\n"
-						outputView.Write([]byte(succStr))
+						_, _ = outputView.Write([]byte(succStr))
 						record.Output += succStr
 					}
 					inputField.SetDisabled(false)
