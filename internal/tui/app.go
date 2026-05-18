@@ -85,6 +85,7 @@ type App struct {
 	Tree     *SalamanderTreeView // 改用自定义带背景的树
 	Store    *storage.Storage
 	TermUI   map[string]*TermUIState
+	lastNode *tview.TreeNode
 }
 
 // 删掉之前的硬编码字符串
@@ -589,35 +590,44 @@ func (a *App) refreshTree() {
 			catMap = nativeCategories
 		}
 
-		catNode, exists := catMap[catName]
-		if !exists {
-			icon := "📁"
-			color := tcell.ColorLightSalmon
-			if strings.Contains(catName, "Python") {
-				icon = "🐍"
-				color = tcell.ColorPaleGoldenrod
+		// 解析多级分类 (如 "KD测试工具 > 点云处理工具")
+		parts := strings.Split(catName, " > ")
+		currentParent := parentNode
+		for i, part := range parts {
+			partKey := strings.TrimSpace(part)
+			fullPath := strings.Join(parts[:i+1], " > ")
+
+			catNode, exists := catMap[fullPath]
+			if !exists {
+				icon := "📁"
+				color := tcell.ColorLightSalmon
+				if strings.Contains(partKey, "Python") {
+					icon = "🐍"
+					color = tcell.ColorPaleGoldenrod
+				}
+				catNodeText := fmt.Sprintf(" %s %s", icon, partKey)
+				catNode = tview.NewTreeNode(catNodeText).
+					SetColor(color).
+					SetSelectable(true).
+					SetExpanded(a.Store.GetNodeState(strings.TrimSpace(catNodeText), true))
+				catMap[fullPath] = catNode
+				currentParent.AddChild(catNode)
 			}
-			catNodeText := fmt.Sprintf(" %s %s", icon, catName)
-			catNode = tview.NewTreeNode(catNodeText).
-				SetColor(color).
-				SetSelectable(true).
-				SetExpanded(a.Store.GetNodeState(strings.TrimSpace(catNodeText), true)) // 次级目录默认展开
-			catMap[catName] = catNode
-			parentNode.AddChild(catNode)
+			currentParent = catNode
 		}
 
 		icon := "🔧"
-		color := colorGo // 原生应用工具使用自定义亮蓝色
+		color := colorGo
 		if strings.Contains(catName, "Python") {
 			icon = "📄"
-			color = colorPy // Python脚本工具使用自定义亮绿色
+			color = colorPy
 		}
 		toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, t.Name())).
 			SetReference(t).
 			SetColor(color).
 			SetSelectable(true)
 
-		catNode.AddChild(toolNode)
+		currentParent.AddChild(toolNode)
 	}
 
 	root.AddChild(nativeNode)
@@ -815,20 +825,29 @@ func (a *App) showCommandPalette() {
 					hasNative = true
 				}
 
-				catNode, exists := catMap[t.Category()]
-				if !exists {
-					icon := "📁"
-					color := tcell.ColorLightSalmon
-					if strings.Contains(t.Category(), "Python") {
-						icon = "🐍"
-						color = tcell.ColorPaleGoldenrod
+				// 解析多级分类
+				parts := strings.Split(t.Category(), " > ")
+				currentParent := parentNode
+				for i, part := range parts {
+					partKey := strings.TrimSpace(part)
+					fullPath := strings.Join(parts[:i+1], " > ")
+
+					catNode, exists := catMap[fullPath]
+					if !exists {
+						icon := "📁"
+						color := tcell.ColorLightSalmon
+						if strings.Contains(partKey, "Python") {
+							icon = "🐍"
+							color = tcell.ColorPaleGoldenrod
+						}
+						catNode = tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, partKey)).
+							SetColor(color).
+							SetSelectable(true).
+							SetExpanded(true)
+						catMap[fullPath] = catNode
+						currentParent.AddChild(catNode)
 					}
-					catNode = tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, t.Category())).
-						SetColor(color).
-						SetSelectable(true).
-						SetExpanded(true)
-					catMap[t.Category()] = catNode
-					parentNode.AddChild(catNode)
+					currentParent = catNode
 				}
 
 				icon := "🔧"
@@ -841,7 +860,7 @@ func (a *App) showCommandPalette() {
 					SetReference(t).
 					SetColor(color).
 					SetSelectable(true)
-				catNode.AddChild(toolNode)
+				currentParent.AddChild(toolNode)
 			}
 		}
 
@@ -1068,6 +1087,7 @@ func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 
 func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
+	a.lastNode = a.Tree.GetCurrentNode()
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -1093,10 +1113,11 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	// 中半部分：执行输出
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetChangedFunc(func() {
-			a.TviewApp.Draw()
-		})
+		SetScrollable(true)
+	outputView.SetChangedFunc(func() {
+		outputView.ScrollToEnd()
+		a.TviewApp.Draw()
+	})
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
@@ -1178,8 +1199,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	inputField.SetFocusFunc(func() { inputField.SetBorderColor(tcell.ColorOrange) })
 	inputField.SetBlurFunc(func() { inputField.SetBorderColor(tcell.ColorDarkGray) })
 
-	focusables := []tview.Primitive{inputField, outputView, usageView}
-	currentFocus := 0
+	focusables := []tview.Primitive{usageView, outputView, inputField}
+	currentFocus := 2 // inputField 默认聚焦，位于列表最后
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
@@ -1194,6 +1215,9 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 				return nil
 			}
 			a.Pages.SwitchToPage("main")
+			if a.lastNode != nil {
+				a.Tree.SetCurrentNode(a.lastNode)
+			}
 			a.TviewApp.SetFocus(a.Tree)
 			return nil
 		}
@@ -1339,6 +1363,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 
 func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
+	a.lastNode = a.Tree.GetCurrentNode()
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -1361,13 +1386,14 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 中半部分：执行输出
+	// 中半部分：执行输出（Python）
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true).
-		SetChangedFunc(func() {
-			a.TviewApp.Draw()
-		})
+		SetScrollable(true)
+	outputView.SetChangedFunc(func() {
+		outputView.ScrollToEnd()
+		a.TviewApp.Draw()
+	})
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
@@ -1524,8 +1550,8 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	inputField.SetFocusFunc(func() { inputField.SetBorderColor(tcell.ColorOrange) })
 	inputField.SetBlurFunc(func() { inputField.SetBorderColor(tcell.ColorDarkGray) })
 
-	focusables := []tview.Primitive{inputField, envForm, outputView, usageView}
-	currentFocus := 0
+	focusables := []tview.Primitive{usageView, outputView, envForm, inputField}
+	currentFocus := 3 // inputField 默认聚焦，位于列表最后
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
@@ -1540,6 +1566,9 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 				return nil
 			}
 			a.Pages.SwitchToPage("main")
+			if a.lastNode != nil {
+				a.Tree.SetCurrentNode(a.lastNode)
+			}
 			a.TviewApp.SetFocus(a.Tree)
 			return nil
 		}

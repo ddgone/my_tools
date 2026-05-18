@@ -22,6 +22,7 @@ import (
 	"my_tools/pkg/framework"
 
 	"github.com/im7mortal/UTM"
+	"github.com/jonas-p/go-shp"
 )
 
 type GeoJSONFeature struct {
@@ -265,6 +266,111 @@ func saveGeoJSON(features []GeoJSONFeature, outputPath string) error {
 	return os.WriteFile(outputPath, data, 0644)
 }
 
+var utmPointFields = []shp.Field{
+	shp.StringField("track_id", 50),
+	shp.StringField("pointIndex", 20),
+	shp.StringField("timestamp", 30),
+	shp.StringField("altitude", 20),
+}
+
+var utmLineFields = []shp.Field{
+	shp.StringField("track_id", 50),
+	shp.StringField("pointCount", 20),
+	shp.StringField("startTime", 30),
+	shp.StringField("endTime", 30),
+}
+
+func writeWGS84Prj(prjPath string) error {
+	wgs84WKT := `GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]`
+	return os.WriteFile(prjPath, []byte(wgs84WKT), 0644)
+}
+
+func fixDbfPath(shpPath string) error {
+	dbfPath := strings.TrimSuffix(shpPath, ".shp") + "dbf"
+	correctDbfPath := strings.TrimSuffix(shpPath, ".shp") + ".dbf"
+	if _, err := os.Stat(dbfPath); err == nil {
+		if err := os.Rename(dbfPath, correctDbfPath); err != nil {
+			return fmt.Errorf("重命名 dbf 文件失败: %v", err)
+		}
+	}
+	return nil
+}
+
+func writeGeoJSONPointSHP(shpPath string, features []GeoJSONFeature) error {
+	if len(features) == 0 {
+		return nil
+	}
+	writer, err := shp.Create(shpPath, shp.POINT)
+	if err != nil {
+		return err
+	}
+	_ = writer.SetFields(utmPointFields)
+	for n, f := range features {
+		coords := f.Geometry.Coordinates
+		if len(coords) < 2 {
+			continue
+		}
+		writer.Write(&shp.Point{X: coords[0], Y: coords[1]})
+		trackID, _ := f.Properties["track_id"].(string)
+		pointIndex := fmt.Sprintf("%v", f.Properties["point_index"])
+		timestamp := fmt.Sprintf("%v", f.Properties["timestamp"])
+		altitude := ""
+		if alt, ok := f.Properties["altitude"]; ok {
+			altitude = fmt.Sprintf("%v", alt)
+		}
+		_ = writer.WriteAttribute(n, 0, trackID)
+		_ = writer.WriteAttribute(n, 1, pointIndex)
+		_ = writer.WriteAttribute(n, 2, timestamp)
+		_ = writer.WriteAttribute(n, 3, altitude)
+	}
+	writer.Close()
+	if err := writeWGS84Prj(strings.TrimSuffix(shpPath, ".shp") + ".prj"); err != nil {
+		return err
+	}
+	return fixDbfPath(shpPath)
+}
+
+func writeGeoJSONLineSHP(shpPath string, trackFeatures map[string][]GeoJSONFeature) error {
+	if len(trackFeatures) == 0 {
+		return nil
+	}
+	writer, err := shp.Create(shpPath, shp.POLYLINE)
+	if err != nil {
+		return err
+	}
+	_ = writer.SetFields(utmLineFields)
+	n := 0
+	for trackID, features := range trackFeatures {
+		if len(features) < 2 {
+			continue
+		}
+		var pts []shp.Point
+		for _, f := range features {
+			coords := f.Geometry.Coordinates
+			if len(coords) >= 2 {
+				pts = append(pts, shp.Point{X: coords[0], Y: coords[1]})
+			}
+		}
+		if len(pts) < 2 {
+			continue
+		}
+		line := shp.NewPolyLine([][]shp.Point{pts})
+		writer.Write(line)
+		startTime := fmt.Sprintf("%v", features[0].Properties["timestamp"])
+		endTime := fmt.Sprintf("%v", features[len(features)-1].Properties["timestamp"])
+		_ = writer.WriteAttribute(n, 0, trackID)
+		_ = writer.WriteAttribute(n, 1, fmt.Sprintf("%d", len(features)))
+		_ = writer.WriteAttribute(n, 2, startTime)
+		_ = writer.WriteAttribute(n, 3, endTime)
+		n++
+	}
+	writer.Close()
+	if err := writeWGS84Prj(strings.TrimSuffix(shpPath, ".shp") + ".prj"); err != nil {
+		return err
+	}
+	return fixDbfPath(shpPath)
+}
+
 func convertSingleFile(utmPath, trackID string, zone int, out io.Writer) error {
 	features, err := convertUTMToGeoJSON(utmPath, trackID, zone)
 	if err != nil {
@@ -281,11 +387,29 @@ func convertSingleFile(utmPath, trackID string, zone int, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "转换成功: %s (%d 点)\n", outFile, len(features))
+
+	pointShp := base + "_point.shp"
+	if err := writeGeoJSONPointSHP(pointShp, features); err != nil {
+		fmt.Fprintf(out, "  点 SHP 错误: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "点 SHP: %s\n", pointShp)
+	}
+
+	trackFeatures := map[string][]GeoJSONFeature{trackID: features}
+	lineShp := base + "_line.shp"
+	if err := writeGeoJSONLineSHP(lineShp, trackFeatures); err != nil {
+		fmt.Fprintf(out, "  线 SHP 错误: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "线 SHP: %s\n", lineShp)
+	}
+
 	return nil
 }
 
 func convertDirectory(dirPath string, zone int, out io.Writer) error {
 	var converted int
+	var allFeatures []GeoJSONFeature
+	trackFeatures := map[string][]GeoJSONFeature{}
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -306,6 +430,11 @@ func convertDirectory(dirPath string, zone int, out io.Writer) error {
 				fmt.Fprintf(out, "  错误: %v\n", err)
 				return nil
 			}
+			features, _ := convertUTMToGeoJSON(path, trackID, zone)
+			if len(features) > 0 {
+				allFeatures = append(allFeatures, features...)
+				trackFeatures[trackID] = features
+			}
 			converted++
 		}
 		return nil
@@ -314,11 +443,28 @@ func convertDirectory(dirPath string, zone int, out io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(out, "\n完成！共转换 %d 个文件\n", converted)
+
+	if len(allFeatures) > 0 {
+		dirBase := filepath.Join(dirPath, "merged_utm")
+		pointShp := dirBase + "_point.shp"
+		if err := writeGeoJSONPointSHP(pointShp, allFeatures); err != nil {
+			fmt.Fprintf(out, "点 SHP 错误: %v\n", err)
+		} else {
+			fmt.Fprintf(out, "合并点 SHP: %s\n", pointShp)
+		}
+		lineShp := dirBase + "_line.shp"
+		if err := writeGeoJSONLineSHP(lineShp, trackFeatures); err != nil {
+			fmt.Fprintf(out, "线 SHP 错误: %v\n", err)
+		} else {
+			fmt.Fprintf(out, "合并线 SHP: %s\n", lineShp)
+		}
+	}
 	return nil
 }
 
 func mergeGeoJSON(dirPath string, out io.Writer) error {
 	var allFeatures []GeoJSONFeature
+	trackFeatures := map[string][]GeoJSONFeature{}
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -338,6 +484,10 @@ func mergeGeoJSON(dirPath string, out io.Writer) error {
 				return nil
 			}
 			allFeatures = append(allFeatures, fc.Features...)
+			for _, f := range fc.Features {
+				trackID, _ := f.Properties["track_id"].(string)
+				trackFeatures[trackID] = append(trackFeatures[trackID], f)
+			}
 			fmt.Fprintf(out, "合并: %s (%d 个特征点)\n", path, len(fc.Features))
 		}
 		return nil
@@ -348,11 +498,26 @@ func mergeGeoJSON(dirPath string, out io.Writer) error {
 	if len(allFeatures) == 0 {
 		return fmt.Errorf("未找到任何 GeoJSON 文件")
 	}
-	outFile := fmt.Sprintf("merged_%d.geojson", time.Now().UnixMilli())
+	timestamp := time.Now().UnixMilli()
+	outFile := fmt.Sprintf("merged_%d.geojson", timestamp)
 	if err := saveGeoJSON(allFeatures, outFile); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "\n合并完成！输出: %s (总共 %d 个特征点)\n", outFile, len(allFeatures))
+
+	pointShp := fmt.Sprintf("merged_%d_point.shp", timestamp)
+	if err := writeGeoJSONPointSHP(pointShp, allFeatures); err != nil {
+		fmt.Fprintf(out, "点 SHP 错误: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "点 SHP: %s\n", pointShp)
+	}
+	lineShp := fmt.Sprintf("merged_%d_line.shp", timestamp)
+	if err := writeGeoJSONLineSHP(lineShp, trackFeatures); err != nil {
+		fmt.Fprintf(out, "线 SHP 错误: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "线 SHP: %s\n", lineShp)
+	}
+
 	return nil
 }
 
@@ -412,6 +577,7 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 		wg               sync.WaitGroup
 		mu               sync.Mutex
 		allFeatures      []GeoJSONFeature
+		trackFeatures    = map[string][]GeoJSONFeature{}
 		processedFolders []string
 		sem              = make(chan struct{}, workers)
 	)
@@ -497,6 +663,7 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 
 			mu.Lock()
 			allFeatures = append(allFeatures, features...)
+			trackFeatures[trackID] = features
 			processedFolders = append(processedFolders, folderPath)
 			mu.Unlock()
 		}(folder)
@@ -510,6 +677,18 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 			fmt.Fprintf(out, "  [警告] 合并 geojson 失败: %v\n", err)
 		} else {
 			fmt.Fprintf(out, "\n  [合并] merged_tracks.geojson (%d 点)\n", len(allFeatures))
+		}
+		pointShp := filepath.Join(outputDir, "merged_tracks_point.shp")
+		if err := writeGeoJSONPointSHP(pointShp, allFeatures); err != nil {
+			fmt.Fprintf(out, "  [警告] 点 SHP 失败: %v\n", err)
+		} else {
+			fmt.Fprintf(out, "  [SHP] merged_tracks_point.shp (%d 点)\n", len(allFeatures))
+		}
+		lineShp := filepath.Join(outputDir, "merged_tracks_line.shp")
+		if err := writeGeoJSONLineSHP(lineShp, trackFeatures); err != nil {
+			fmt.Fprintf(out, "  [警告] 线 SHP 失败: %v\n", err)
+		} else {
+			fmt.Fprintf(out, "  [SHP] merged_tracks_line.shp (%d 条线)\n", len(trackFeatures))
 		}
 	}
 
@@ -556,14 +735,14 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 type UTMTool struct{}
 
 func (t *UTMTool) ID() string       { return "utm_geojson_converter" }
-func (t *UTMTool) Name() string     { return "点云UTM转GeoJSON工具" }
-func (t *UTMTool) Category() string { return "数据处理" }
+func (t *UTMTool) Name() string     { return "点云UTM提取&UTM转换GeoJSON+Shapefile" }
+func (t *UTMTool) Category() string { return "KD测试工具 > 点云处理工具" }
 
 func (t *UTMTool) Execute(ctx framework.AppContext) {
-	usage := `[yellow]线下点云资料编译输出压缩文件解包与 UTM-GeoJSON 转换工具[-]
+	usage := `[yellow]线下点云资料编译输出压缩文件解包与 UTM-GeoJSON-Shapefile 转换工具[-]
 
 [cyan]说明:[-]
-本工具用于将无人车/点云编译系统输出的 UTM 坐标文本转换为标准的 GeoJSON 格式，便于在 GIS 软件中查看。
+本工具用于将无人车/点云编译系统输出的 UTM 坐标文本转换为标准的 GeoJSON 格式和 Shapefile（点+线），便于在 GIS 软件中查看。
 
 [cyan]使用方法 (注意：不需要输入 .exe，直接输入参数即可):[-]
 在下方输入框中直接输入你想要的参数组合，然后按下 Enter 键执行。

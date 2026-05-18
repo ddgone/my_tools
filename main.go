@@ -8,9 +8,9 @@ import (
 	"my_tools/internal/tui"
 
 	// 注册所有的工具
+	_ "my_tools/tools/geojson2shp"
 	_ "my_tools/tools/pos2gis"
 	_ "my_tools/tools/python_tools"
-	_ "my_tools/tools/text"
 	_ "my_tools/tools/utm_geojson"
 )
 

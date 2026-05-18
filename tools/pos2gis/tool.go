@@ -299,7 +299,7 @@ type POSTool struct{}
 
 func (t *POSTool) ID() string       { return "pos2gis_converter" }
 func (t *POSTool) Name() string     { return "点云pos轨迹转换GeoJSON+Shapefile" }
-func (t *POSTool) Category() string { return "数据处理" }
+func (t *POSTool) Category() string { return "KD测试工具 > 点云处理工具" }
 
 func (t *POSTool) Execute(ctx framework.AppContext) {
 	usage := `[yellow]点云 POS 轨迹转换 GeoJSON + Shapefile 工具[-]
