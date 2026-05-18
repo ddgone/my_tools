@@ -75,7 +75,7 @@ var lineFields = []shp.Field{
 	shp.StringField("endVideo", 100),
 }
 
-func parseJSONFile(path string) ([]ExtractedPoint, error) {
+func parseJSONFile(ctx context.Context, path string) ([]ExtractedPoint, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,14 @@ func parseJSONFile(path string) ([]ExtractedPoint, error) {
 
 	fileName := filepath.Base(path)
 	var points []ExtractedPoint
-	for _, p := range input.PointList {
+	for i, p := range input.PointList {
+		if i%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		ep := ExtractedPoint{
 			PointData:  p,
 			SourceFile: fileName,
@@ -99,9 +106,16 @@ func parseJSONFile(path string) ([]ExtractedPoint, error) {
 	return points, nil
 }
 
-func writeGeoJSON(path string, points []ExtractedPoint) error {
+func writeGeoJSON(ctx context.Context, path string, points []ExtractedPoint) error {
 	features := make([]GeoJSONFeature, 0, len(points))
-	for _, p := range points {
+	for i, p := range points {
+		if i%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		feature := GeoJSONFeature{
 			Type: "Feature",
 			Properties: map[string]interface{}{
@@ -138,7 +152,7 @@ func writeGeoJSON(path string, points []ExtractedPoint) error {
 	return encoder.Encode(fc)
 }
 
-func writePointSHP(path string, points []ExtractedPoint) error {
+func writePointSHP(ctx context.Context, path string, points []ExtractedPoint) error {
 	writer, err := shp.Create(path, shp.POINT)
 	if err != nil {
 		return err
@@ -147,6 +161,14 @@ func writePointSHP(path string, points []ExtractedPoint) error {
 	_ = writer.SetFields(pointFields)
 
 	for n, p := range points {
+		if n%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				writer.Close()
+				return fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		pt := shp.Point{X: p.X, Y: p.Y}
 		writer.Write(&pt)
 		_ = writer.WriteAttribute(n, 0, p.TrackID)
@@ -176,7 +198,7 @@ func writePointSHP(path string, points []ExtractedPoint) error {
 	return nil
 }
 
-func writeLineSHP(path string, fileLines map[string][]ExtractedPoint) error {
+func writeLineSHP(ctx context.Context, path string, fileLines map[string][]ExtractedPoint) error {
 	writer, err := shp.Create(path, shp.POLYLINE)
 	if err != nil {
 		return err
@@ -186,6 +208,14 @@ func writeLineSHP(path string, fileLines map[string][]ExtractedPoint) error {
 
 	n := 0
 	for fileName, points := range fileLines {
+		if n%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				writer.Close()
+				return fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		if len(points) < 2 {
 			continue
 		}
@@ -228,7 +258,7 @@ func writeWGS84Prj(prjPath string) error {
 	return os.WriteFile(prjPath, []byte(wgs84WKT), 0644)
 }
 
-func runConvert(inputDir, outputDir string, out io.Writer) error {
+func runConvert(ctx context.Context, inputDir, outputDir string, out io.Writer) error {
 	info, err := os.Stat(inputDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -260,8 +290,17 @@ func runConvert(inputDir, outputDir string, out io.Writer) error {
 	linesFromFiles := make(map[string][]ExtractedPoint)
 
 	for _, jsonPath := range jsonFiles {
-		points, err := parseJSONFile(jsonPath)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("任务已被取消")
+		default:
+		}
+
+		points, err := parseJSONFile(ctx, jsonPath)
 		if err != nil {
+			if err.Error() == "任务已被取消" {
+				return err
+			}
 			fmt.Fprintf(out, "处理 %s 出错: %v\n", jsonPath, err)
 			continue
 		}
@@ -273,20 +312,38 @@ func runConvert(inputDir, outputDir string, out io.Writer) error {
 		linesFromFiles[fileName] = points
 	}
 
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
 	geojsonPath := filepath.Join(outputDir, "merged_pos_point.geojson")
-	if err := writeGeoJSON(geojsonPath, allPoints); err != nil {
+	if err := writeGeoJSON(ctx, geojsonPath, allPoints); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "GeoJSON 输出: %s (%d 点)\n", geojsonPath, len(allPoints))
 
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
 	pointShpPath := filepath.Join(outputDir, "merged_pos_point.shp")
-	if err := writePointSHP(pointShpPath, allPoints); err != nil {
+	if err := writePointSHP(ctx, pointShpPath, allPoints); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "点 Shapefile 输出: %s\n", pointShpPath)
 
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
 	lineShpPath := filepath.Join(outputDir, "merged_pos_line.shp")
-	if err := writeLineSHP(lineShpPath, linesFromFiles); err != nil {
+	if err := writeLineSHP(ctx, lineShpPath, linesFromFiles); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "线 Shapefile 输出: %s\n", lineShpPath)
@@ -345,7 +402,7 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 			outputDir = filepath.Join(inputDir, "output")
 		}
 
-		return runConvert(inputDir, outputDir, out)
+		return runConvert(runCtx, inputDir, outputDir, out)
 	})
 }
 

@@ -60,6 +60,7 @@ type ExecRecord struct {
 
 type TermUIState struct {
 	Flex        *tview.Flex
+	OutputRow   *tview.Flex
 	Input       *tview.TextArea
 	Env         *tview.InputField
 	Output      *tview.TextView
@@ -67,6 +68,11 @@ type TermUIState struct {
 	Records     []*ExecRecord
 	UndoRecords []*ExecRecord
 	CancelFunc  context.CancelFunc
+	TaskBar     *tview.Flex
+	TaskList    *tview.List
+	TaskStatus  *tview.TextView
+	ShownTask   *Task
+	Executing   bool
 }
 
 type historyWriter struct {
@@ -82,9 +88,10 @@ func (hw *historyWriter) Write(p []byte) (n int, err error) {
 type App struct {
 	TviewApp *tview.Application
 	Pages    *tview.Pages
-	Tree     *SalamanderTreeView // 改用自定义带背景的树
+	Tree     *SalamanderTreeView
 	Store    *storage.Storage
 	TermUI   map[string]*TermUIState
+	TaskBars map[string]*TaskBarState
 	lastNode *tview.TreeNode
 }
 
@@ -290,16 +297,19 @@ func NewApp(store *storage.Storage) *App {
 		Pages:    tview.NewPages(),
 		Store:    store,
 		TermUI:   make(map[string]*TermUIState),
+		TaskBars: make(map[string]*TaskBarState),
 	}
 
 	a.setupUI()
 
 	// 全局按键
 	a.TviewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// 拦截 Ctrl+C 防止程序意外退出，交由具体的页面组件处理
+		// 拦截全局 Ctrl+C 并克隆事件，防止 tview 内部默认调用 app.Stop()
+		// 从而将其传递给具有焦点的 Primitive，使得各面板能自行处理中断逻辑 (如取消任务)
 		if event.Key() == tcell.KeyCtrlC {
-			return nil
+			return tcell.NewEventKey(event.Key(), event.Rune(), event.Modifiers())
 		}
+
 		// q 退出 (仅在没有输入框获得焦点时生效，避免输入内容时误退)
 		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
 			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
@@ -486,13 +496,33 @@ func (s *sysTerminalTool) Execute(ctx framework.AppContext) {
 	ctx.ShowTerminal("系统终端", usage, func(runCtx context.Context, args string, out io.Writer) error {
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.CommandContext(runCtx, "cmd", "/c", args)
+			cmd = exec.Command("cmd", "/c", args)
 		} else {
 			cmd = exec.CommandContext(runCtx, "sh", "-c", args)
 		}
 		cmd.Stdout = out
 		cmd.Stderr = out
-		return cmd.Run()
+
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+
+		done := make(chan struct{})
+		defer close(done)
+
+		if runtime.GOOS == "windows" {
+			go func() {
+				select {
+				case <-runCtx.Done():
+					if cmd.Process != nil {
+						_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+					}
+				case <-done:
+				}
+			}()
+		}
+
+		return cmd.Wait()
 	})
 }
 
@@ -660,8 +690,6 @@ func (a *App) executeTool(t framework.Tool) {
 	}
 	t.Execute(ctx)
 }
-
-// --- UI 辅助组件 ---
 
 func (a *App) ShowModal(title, message string) {
 	frontPage, _ := a.Pages.GetFrontPage()
@@ -985,100 +1013,6 @@ func (a *App) showCommandPalette() {
 	a.TviewApp.SetFocus(input)
 }
 
-func (a *App) showHistoryModal(ui *TermUIState) {
-	if len(ui.Records) == 0 {
-		a.ShowModal("提示", "当前会话暂无执行历史。")
-		return
-	}
-
-	flex := tview.NewFlex().SetDirection(tview.FlexRow)
-
-	list := tview.NewList().
-		SetMainTextColor(tcell.ColorWhite).
-		SetSecondaryTextColor(tcell.ColorGray).
-		SetSelectedBackgroundColor(colorBgLight).
-		SetSelectedTextColor(tcell.ColorYellow).
-		ShowSecondaryText(true)
-	list.SetBorder(true).SetTitle(" 📜 历史记录 (↑/↓:选择, Enter:载入) ").SetBorderColor(tcell.ColorDarkGray)
-
-	preview := tview.NewTextView().SetDynamicColors(true).SetScrollable(true)
-	preview.SetBorder(true).SetTitle(" 📺 输出预览 ").SetBorderColor(tcell.ColorDarkGray)
-
-	for i := len(ui.Records) - 1; i >= 0; i-- { // 倒序，最新的在前面
-		rec := ui.Records[i]
-		title := rec.Cmd
-		if rec.Env != "" {
-			title = fmt.Sprintf("[%s] %s", rec.Env, rec.Cmd)
-		}
-		sec := fmt.Sprintf("输出长度: %d 字节", len(rec.Output))
-		list.AddItem(title, sec, 0, nil)
-	}
-
-	list.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-		if index >= 0 && index < len(ui.Records) {
-			rec := ui.Records[len(ui.Records)-1-index]
-			preview.Clear()
-			_, _ = tview.ANSIWriter(preview).Write([]byte(rec.Output))
-		}
-	})
-
-	list.SetSelectedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
-		if index >= 0 && index < len(ui.Records) {
-			rec := ui.Records[len(ui.Records)-1-index]
-			ui.Input.SetText(rec.Cmd, true)
-			if ui.Env != nil && rec.Env != "" {
-				ui.Env.SetText(rec.Env)
-			}
-			a.Pages.RemovePage("history_modal")
-			a.TviewApp.SetFocus(ui.Input)
-		}
-	})
-
-	// 初始触发预览
-	if list.GetItemCount() > 0 {
-		list.SetCurrentItem(0)
-		rec := ui.Records[len(ui.Records)-1]
-		_, _ = tview.ANSIWriter(preview).Write([]byte(rec.Output))
-	}
-
-	flex.AddItem(list, 0, 1, true).AddItem(preview, 0, 2, false)
-
-	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyCtrlC {
-			if ui.CancelFunc != nil {
-				ui.CancelFunc()
-			}
-			return nil
-		}
-		if event.Key() == tcell.KeyEscape {
-			a.Pages.RemovePage("history_modal")
-			a.TviewApp.SetFocus(ui.Input)
-			return nil
-		}
-		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyRight || event.Key() == tcell.KeyLeft {
-			if list.HasFocus() {
-				a.TviewApp.SetFocus(preview)
-			} else {
-				a.TviewApp.SetFocus(list)
-			}
-			return nil
-		}
-		return event
-	})
-
-	// 弹窗居中
-	modalLayout := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(flex, 0, 8, true).              // 高度占比 80%
-			AddItem(nil, 0, 1, false), 0, 8, true). // 宽度占比 80%
-		AddItem(nil, 0, 1, false)
-
-	a.Pages.AddAndSwitchToPage("history_modal", modalLayout, true)
-	a.TviewApp.SetFocus(list)
-}
-
 func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 	a.Store.AddRecentTool(name, toolID, params)
 	_ = a.Store.Save()
@@ -1100,7 +1034,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
 	uiState.Flex = flex
 
-	// 上半部分：使用说明
+	barState, _ := a.ensureTaskBar(uiState, tool.ID())
+
 	usageView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetText(usage).
@@ -1110,7 +1045,6 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetTitleColor(colorGo).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 中半部分：执行输出
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
@@ -1125,7 +1059,10 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 查找最近一次的参数和历史
+	outputRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+	outputRow.AddItem(outputView, 0, 1, false)
+	uiState.OutputRow = outputRow
+
 	initialCmd := ""
 	history := a.Store.GetToolHistory(tool.ID())
 	if len(history) > 0 {
@@ -1133,9 +1070,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			initialCmd = cmd
 		}
 	}
-	historyIndex := -1 // -1 表示当前新输入，0 表示历史的第一条
+	historyIndex := -1
 
-	// 下半部分：输入区域 (多行文本框更适合较长的命令参数)
 	inputField := tview.NewTextArea().
 		SetLabel(" ❯ ").
 		SetText(initialCmd, true)
@@ -1144,13 +1080,13 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+H:历史, Ctrl+A:复制)[-] ").
+		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制)[-] ").
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
 	flex.AddItem(usageView, 0, 1, false).
-		AddItem(outputView, 0, 3, false).
-		AddItem(inputField, 5, 1, true) // 给输入框多一点高度 (5行)
+		AddItem(outputRow, 0, 3, false).
+		AddItem(inputField, 5, 1, true)
 
 	type layoutItem struct {
 		p     tview.Primitive
@@ -1159,10 +1095,14 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	}
 	layoutItems := []layoutItem{
 		{usageView, 0, 1},
-		{outputView, 0, 3},
+		{outputRow, 0, 3},
 		{inputField, 5, 1},
 	}
 	isMaximized := false
+
+	outputRowFocused := func() bool {
+		return outputView.HasFocus() || (uiState.TaskList != nil && uiState.TaskList.HasFocus())
+	}
 
 	toggleMaximize := func() {
 		if isMaximized {
@@ -1171,16 +1111,20 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			}
 			isMaximized = false
 		} else {
-			found := false
+			var target tview.Primitive
 			for _, item := range layoutItems {
+				if item.p == outputRow && outputRowFocused() {
+					target = outputRow
+					break
+				}
 				if item.p.HasFocus() {
-					found = true
+					target = item.p
 					break
 				}
 			}
-			if found {
+			if target != nil {
 				for _, item := range layoutItems {
-					if item.p.HasFocus() {
+					if item.p == target {
 						flex.ResizeItem(item.p, 0, 1)
 					} else {
 						flex.ResizeItem(item.p, 0, 0)
@@ -1191,7 +1135,6 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		}
 	}
 
-	// 焦点高亮效果
 	usageView.SetFocusFunc(func() { usageView.SetBorderColor(colorGo) })
 	usageView.SetBlurFunc(func() { usageView.SetBorderColor(tcell.ColorDarkGray) })
 	outputView.SetFocusFunc(func() { outputView.SetBorderColor(tcell.ColorYellow) })
@@ -1200,11 +1143,24 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	inputField.SetBlurFunc(func() { inputField.SetBorderColor(tcell.ColorDarkGray) })
 
 	focusables := []tview.Primitive{usageView, outputView, inputField}
-	currentFocus := 2 // inputField 默认聚焦，位于列表最后
+	currentFocus := 2
+
+	rebuildFocusables := func() {
+		focusables = focusables[:0]
+		focusables = append(focusables, usageView, outputView)
+		if uiState.TaskList != nil && barState.Visible {
+			focusables = append(focusables, uiState.TaskList)
+		}
+		focusables = append(focusables, inputField)
+	}
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
-			if uiState.CancelFunc != nil {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
 				uiState.CancelFunc()
 			}
 			return nil
@@ -1235,10 +1191,51 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			toggleMaximize()
 			return nil
 		}
+		if event.Key() == tcell.KeyCtrlB {
+			if uiState.TaskList == nil {
+				return nil
+			}
+			if !barState.Visible {
+				a.showTaskBar(uiState, barState)
+				rebuildFocusables()
+				a.TviewApp.SetFocus(uiState.TaskList)
+				return nil
+			}
+			if uiState.TaskList.HasFocus() {
+				a.TviewApp.SetFocus(inputField)
+				if uiState.ShownTask != nil && uiState.ShownTask.Status != StatusRunning {
+					uiState.Executing = false
+				} else if uiState.ShownTask == nil {
+					uiState.Executing = false
+				}
+				inputField.SetDisabled(uiState.Executing)
+			} else {
+				a.TviewApp.SetFocus(uiState.TaskList)
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlN {
+			outputView.Clear()
+			uiState.Executing = false
+			inputField.SetDisabled(false)
+			uiState.ShownTask = nil
+			a.TviewApp.SetFocus(inputField)
+			return nil
+		}
 		return event
 	})
 
 	outputView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyCtrlS {
 			a.exportLog(tool.Name(), outputView.GetText(true))
 			return nil
@@ -1263,6 +1260,16 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	})
 
 	inputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyCtrlA {
 			cmdText := inputField.GetText()
 			if err := a.copyToClipboard(cmdText); err == nil {
@@ -1270,10 +1277,6 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			} else {
 				a.ShowModal("复制失败", err.Error())
 			}
-			return nil
-		}
-		if event.Key() == tcell.KeyCtrlH {
-			a.showHistoryModal(uiState)
 			return nil
 		}
 		if event.Key() == tcell.KeyUp {
@@ -1298,16 +1301,16 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			return nil
 		}
 		if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
+			if uiState.Executing {
+				return nil
+			}
 			cmdText := strings.TrimSpace(inputField.GetText())
 
-			// 对于系统终端，执行后清空输入框
 			if tool.ID() == "sys_terminal" {
 				inputField.SetText("", true)
 			}
 
-			// 记录使用
 			a.RecordToolUsage(tool.Name(), tool.ID(), map[string]string{"cmd": cmdText})
-			// 更新当前的历史记录列表，以便在不刷新的情况下能立即使用新的历史
 			history = a.Store.GetToolHistory(tool.ID())
 			historyIndex = -1
 
@@ -1317,40 +1320,117 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			record := &ExecRecord{Cmd: cmdText}
 			uiState.Records = append(uiState.Records, record)
 
-			// 开始执行
+			runCtx, cancel := context.WithCancel(context.Background())
+			task := &Task{
+				ID:        fmt.Sprintf("task_%s_%d", tool.ID(), time.Now().UnixMilli()),
+				ToolID:    tool.ID(),
+				ToolName:  tool.Name(),
+				Cmd:       cmdText,
+				Status:    StatusRunning,
+				CreatedAt: time.Now(),
+				Cancel:    cancel,
+			}
+
+			barState.mu.Lock()
+			barState.Tasks = append(barState.Tasks, task)
+			barState.ActiveIdx = len(barState.Tasks) - 1
+			a.refreshTaskList(uiState, barState)
+			visible := barState.Visible
+			barState.mu.Unlock()
+
+			if !visible {
+				a.showTaskBar(uiState, barState)
+				rebuildFocusables()
+			}
+
+			uiState.ShownTask = task
+
+			outputView.Clear()
+			prefix := fmt.Sprintf("[yellow]❯ 执行命令: %s[-]\n", cmdText)
+			task.Output += prefix
+			record.Output += prefix
+
+			a.taskStarted(uiState)
+			_, _ = outputView.Write([]byte(prefix))
+
 			go func() {
-				prefix := fmt.Sprintf("\n[yellow]❯ 执行命令: %s[-]\n", cmdText)
+				defer func() {
+					if r := recover(); r != nil {
+						a.TviewApp.QueueUpdateDraw(func() {
+							task.Status = StatusFailed
+							task.EndedAt = time.Now()
+							barState.mu.Lock()
+							a.refreshTaskList(uiState, barState)
+							barState.mu.Unlock()
+							a.taskFinished(uiState)
+							_, _ = outputView.Write([]byte(fmt.Sprintf("\n[red]任务异常崩溃: %v[-]\n", r)))
+							outputView.ScrollToEnd()
+						})
+					}
+				}()
+				ot := &outputTracker{
+					Writer:    tview.ANSIWriter(outputView),
+					Task:      task,
+					ShownTask: &uiState.ShownTask,
+				}
+
+				err := run(runCtx, cmdText, ot)
+
 				a.TviewApp.QueueUpdateDraw(func() {
-					inputField.SetDisabled(true)
-					_, _ = outputView.Write([]byte(prefix))
-				})
-				record.Output += prefix
+					if err != nil && !ot.wroteBytes {
+						barState.mu.Lock()
+						a.removeTask(barState, task)
+						taskCount := len(barState.Tasks)
+						if taskCount > 0 {
+							a.refreshTaskList(uiState, barState)
+						}
+						barState.mu.Unlock()
 
-				runCtx, cancel := context.WithCancel(context.Background())
-				uiState.CancelFunc = cancel
+						if taskCount == 0 {
+							a.hideTaskBar(uiState, barState)
+							rebuildFocusables()
+						}
 
-				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
-				err := run(runCtx, cmdText, hw)
-
-				a.TviewApp.QueueUpdateDraw(func() {
-					uiState.CancelFunc = nil
-					if err != nil {
 						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
 						_, _ = outputView.Write([]byte(errStr))
+						record.Output += errStr
+						uiState.ShownTask = nil
+						a.taskFinished(uiState)
+						a.TviewApp.SetFocus(inputField)
+						outputView.ScrollToEnd()
+						return
+					}
+
+					finalStatus := parseTaskResult(task, err)
+					task.Status = finalStatus
+					task.EndedAt = time.Now()
+
+					if finalStatus == StatusFailed {
+						errStr := fmt.Sprintf("\n[red]执行异常: %v[-]\n", err)
+						if err == nil {
+							errStr = "\n[red]执行失败（无有效结果）[-]\n"
+						}
+						_, _ = outputView.Write([]byte(errStr))
+						task.Output += errStr
 						record.Output += errStr
 					} else {
 						succStr := "\n[green]执行完成[-]\n"
 						_, _ = outputView.Write([]byte(succStr))
+						task.Output += succStr
 						record.Output += succStr
 					}
-					inputField.SetDisabled(false)
+
+					barState.mu.Lock()
+					a.refreshTaskList(uiState, barState)
+					barState.mu.Unlock()
+
+					a.taskFinished(uiState)
 					a.TviewApp.SetFocus(inputField)
 					outputView.ScrollToEnd()
 				})
 			}()
-			return nil // 拦截按键，防止输入换行
+			return nil
 		}
-		// 允许 Shift+Enter 换行 (如果需要的话)
 		if event.Key() == tcell.KeyEnter && event.Modifiers()&tcell.ModShift != 0 {
 			return event
 		}
@@ -1376,7 +1456,8 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	flex := tview.NewFlex().SetDirection(tview.FlexRow)
 	uiState.Flex = flex
 
-	// 上半部分：使用说明
+	barState, _ := a.ensureTaskBar(uiState, tool.ID())
+
 	usageView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetText(usage).
@@ -1386,7 +1467,6 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 中半部分：执行输出（Python）
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
@@ -1401,7 +1481,10 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	// 查找最近一次的参数和历史
+	outputRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+	outputRow.AddItem(outputView, 0, 1, false)
+	uiState.OutputRow = outputRow
+
 	initialCmd := ""
 	initialEnv := "python"
 	history := a.Store.GetToolHistory(tool.ID())
@@ -1415,7 +1498,6 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	}
 	historyIndex := -1
 
-	// Python 环境设置栏
 	envForm := tview.NewForm().
 		SetFieldBackgroundColor(colorBgDark).
 		SetFieldTextColor(tcell.ColorWhite).
@@ -1435,7 +1517,20 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	envForm.AddFormItem(envInput)
 	uiState.Env = envInput
 
-	// 安装依赖的按钮
+	envInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
+				uiState.CancelFunc()
+			}
+			return nil
+		}
+		return event
+	})
+
 	envForm.AddButton("📦 安装 pip 依赖", func() {
 		envPath := strings.TrimSpace(envInput.GetText())
 		if envPath == "" {
@@ -1458,12 +1553,48 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			record.Output += prefix
 
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						a.TviewApp.QueueUpdateDraw(func() {
+							_, _ = outputView.Write([]byte(fmt.Sprintf("\n[red]安装崩溃: %v[-]\n", r)))
+							outputView.ScrollToEnd()
+						})
+					}
+				}()
 				runCtx, cancel := context.WithCancel(context.Background())
 				uiState.CancelFunc = cancel
 
 				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
-				// We pass a special args flag "!pip " to let the adapter know we want to run pip
-				err := run(runCtx, envPath, "!pip "+pkgName, hw)
+
+				var cmd *exec.Cmd
+				if runtime.GOOS == "windows" {
+					cmd = exec.Command("cmd", "/c", envPath, "-m", "pip", "install", pkgName)
+				} else {
+					cmd = exec.CommandContext(runCtx, envPath, "-m", "pip", "install", pkgName)
+				}
+				cmd.Stdout = hw
+				cmd.Stderr = hw
+
+				var err error
+				if startErr := cmd.Start(); startErr != nil {
+					err = startErr
+				} else {
+					done := make(chan struct{})
+
+					if runtime.GOOS == "windows" {
+						go func() {
+							select {
+							case <-runCtx.Done():
+								if cmd.Process != nil {
+									_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+								}
+							case <-done:
+							}
+						}()
+					}
+					err = cmd.Wait()
+					close(done)
+				}
 
 				a.TviewApp.QueueUpdateDraw(func() {
 					uiState.CancelFunc = nil
@@ -1482,7 +1613,6 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		})
 	})
 
-	// 下半部分：输入区域
 	inputField := tview.NewTextArea().
 		SetLabel(" ❯ ").
 		SetText(initialCmd, true)
@@ -1491,12 +1621,12 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+H:历史, Ctrl+A:复制)[-] ").
+		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制)[-] ").
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
 	flex.AddItem(usageView, 0, 1, false).
-		AddItem(outputView, 0, 3, false).
+		AddItem(outputRow, 0, 3, false).
 		AddItem(envForm, 5, 1, false).
 		AddItem(inputField, 5, 1, true)
 
@@ -1507,11 +1637,15 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	}
 	layoutItems := []layoutItem{
 		{usageView, 0, 1},
-		{outputView, 0, 3},
+		{outputRow, 0, 3},
 		{envForm, 5, 1},
 		{inputField, 5, 1},
 	}
 	isMaximized := false
+
+	outputRowFocused := func() bool {
+		return outputView.HasFocus() || (uiState.TaskList != nil && uiState.TaskList.HasFocus())
+	}
 
 	toggleMaximize := func() {
 		if isMaximized {
@@ -1520,16 +1654,20 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			}
 			isMaximized = false
 		} else {
-			found := false
+			var target tview.Primitive
 			for _, item := range layoutItems {
+				if item.p == outputRow && outputRowFocused() {
+					target = outputRow
+					break
+				}
 				if item.p.HasFocus() {
-					found = true
+					target = item.p
 					break
 				}
 			}
-			if found {
+			if target != nil {
 				for _, item := range layoutItems {
-					if item.p.HasFocus() {
+					if item.p == target {
 						flex.ResizeItem(item.p, 0, 1)
 					} else {
 						flex.ResizeItem(item.p, 0, 0)
@@ -1540,7 +1678,6 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		}
 	}
 
-	// 焦点高亮效果
 	usageView.SetFocusFunc(func() { usageView.SetBorderColor(colorPy) })
 	usageView.SetBlurFunc(func() { usageView.SetBorderColor(tcell.ColorDarkGray) })
 	outputView.SetFocusFunc(func() { outputView.SetBorderColor(tcell.ColorYellow) })
@@ -1551,11 +1688,24 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	inputField.SetBlurFunc(func() { inputField.SetBorderColor(tcell.ColorDarkGray) })
 
 	focusables := []tview.Primitive{usageView, outputView, envForm, inputField}
-	currentFocus := 3 // inputField 默认聚焦，位于列表最后
+	currentFocus := 3
+
+	rebuildFocusables := func() {
+		focusables = focusables[:0]
+		focusables = append(focusables, usageView, outputView)
+		if uiState.TaskList != nil && barState.Visible {
+			focusables = append(focusables, uiState.TaskList)
+		}
+		focusables = append(focusables, envForm, inputField)
+	}
 
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
-			if uiState.CancelFunc != nil {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
 				uiState.CancelFunc()
 			}
 			return nil
@@ -1586,10 +1736,51 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			toggleMaximize()
 			return nil
 		}
+		if event.Key() == tcell.KeyCtrlB {
+			if uiState.TaskList == nil {
+				return nil
+			}
+			if !barState.Visible {
+				a.showTaskBar(uiState, barState)
+				rebuildFocusables()
+				a.TviewApp.SetFocus(uiState.TaskList)
+				return nil
+			}
+			if uiState.TaskList.HasFocus() {
+				a.TviewApp.SetFocus(inputField)
+				if uiState.ShownTask != nil && uiState.ShownTask.Status != StatusRunning {
+					uiState.Executing = false
+				} else if uiState.ShownTask == nil {
+					uiState.Executing = false
+				}
+				inputField.SetDisabled(uiState.Executing)
+			} else {
+				a.TviewApp.SetFocus(uiState.TaskList)
+			}
+			return nil
+		}
+		if event.Key() == tcell.KeyCtrlN {
+			outputView.Clear()
+			uiState.Executing = false
+			inputField.SetDisabled(false)
+			uiState.ShownTask = nil
+			a.TviewApp.SetFocus(inputField)
+			return nil
+		}
 		return event
 	})
 
 	outputView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyCtrlS {
 			a.exportLog(tool.Name(), outputView.GetText(true))
 			return nil
@@ -1614,6 +1805,16 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	})
 
 	inputField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			if uiState.ShownTask != nil && uiState.ShownTask.Cancel != nil && uiState.ShownTask.Status == StatusRunning {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务...[-]\n"))
+				uiState.ShownTask.Cancel()
+			} else if uiState.CancelFunc != nil {
+				_, _ = outputView.Write([]byte("\n[red]正在取消任务 (旧版)...[-]\n"))
+				uiState.CancelFunc()
+			}
+			return nil
+		}
 		if event.Key() == tcell.KeyCtrlA {
 			cmdText := inputField.GetText()
 			if err := a.copyToClipboard(cmdText); err == nil {
@@ -1621,10 +1822,6 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			} else {
 				a.ShowModal("复制失败", err.Error())
 			}
-			return nil
-		}
-		if event.Key() == tcell.KeyCtrlH {
-			a.showHistoryModal(uiState)
 			return nil
 		}
 		if event.Key() == tcell.KeyUp {
@@ -1655,18 +1852,19 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			return nil
 		}
 		if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
+			if uiState.Executing {
+				return nil
+			}
 			cmdText := strings.TrimSpace(inputField.GetText())
 			envPath := strings.TrimSpace(envInput.GetText())
 			if envPath == "" {
 				envPath = "python"
 			}
 
-			// 记录使用
 			a.RecordToolUsage(tool.Name(), tool.ID(), map[string]string{
 				"cmd": cmdText,
 				"env": envPath,
 			})
-			// 更新历史记录
 			history = a.Store.GetToolHistory(tool.ID())
 			historyIndex = -1
 
@@ -1676,33 +1874,112 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			record := &ExecRecord{Cmd: cmdText, Env: envPath}
 			uiState.Records = append(uiState.Records, record)
 
-			// 开始执行
+			runCtx, cancel := context.WithCancel(context.Background())
+			task := &Task{
+				ID:        fmt.Sprintf("task_%s_%d", tool.ID(), time.Now().UnixMilli()),
+				ToolID:    tool.ID(),
+				ToolName:  tool.Name(),
+				Cmd:       cmdText,
+				Env:       envPath,
+				Status:    StatusRunning,
+				CreatedAt: time.Now(),
+				Cancel:    cancel,
+			}
+
+			barState.mu.Lock()
+			barState.Tasks = append(barState.Tasks, task)
+			barState.ActiveIdx = len(barState.Tasks) - 1
+			a.refreshTaskList(uiState, barState)
+			visible := barState.Visible
+			barState.mu.Unlock()
+
+			if !visible {
+				a.showTaskBar(uiState, barState)
+				rebuildFocusables()
+			}
+
+			uiState.ShownTask = task
+
+			outputView.Clear()
+			prefix := fmt.Sprintf("[yellow]❯ 执行环境: %s | 执行参数: %s[-]\n", envPath, cmdText)
+			task.Output += prefix
+			record.Output += prefix
+
+			a.taskStarted(uiState)
+			_, _ = outputView.Write([]byte(prefix))
+
 			go func() {
-				prefix := fmt.Sprintf("\n[yellow]❯ 执行环境: %s | 执行参数: %s[-]\n", envPath, cmdText)
+				defer func() {
+					if r := recover(); r != nil {
+						a.TviewApp.QueueUpdateDraw(func() {
+							task.Status = StatusFailed
+							task.EndedAt = time.Now()
+							barState.mu.Lock()
+							a.refreshTaskList(uiState, barState)
+							barState.mu.Unlock()
+							a.taskFinished(uiState)
+							_, _ = outputView.Write([]byte(fmt.Sprintf("\n[red]任务异常崩溃: %v[-]\n", r)))
+							outputView.ScrollToEnd()
+						})
+					}
+				}()
+				ot := &outputTracker{
+					Writer:    tview.ANSIWriter(outputView),
+					Task:      task,
+					ShownTask: &uiState.ShownTask,
+				}
+
+				err := run(runCtx, envPath, cmdText, ot)
+
 				a.TviewApp.QueueUpdateDraw(func() {
-					inputField.SetDisabled(true)
-					_, _ = outputView.Write([]byte(prefix))
-				})
-				record.Output += prefix
+					if err != nil && !ot.wroteBytes {
+						barState.mu.Lock()
+						a.removeTask(barState, task)
+						taskCount := len(barState.Tasks)
+						if taskCount > 0 {
+							a.refreshTaskList(uiState, barState)
+						}
+						barState.mu.Unlock()
 
-				runCtx, cancel := context.WithCancel(context.Background())
-				uiState.CancelFunc = cancel
+						if taskCount == 0 {
+							a.hideTaskBar(uiState, barState)
+							rebuildFocusables()
+						}
 
-				hw := &historyWriter{target: tview.ANSIWriter(outputView), record: record}
-				err := run(runCtx, envPath, cmdText, hw)
-
-				a.TviewApp.QueueUpdateDraw(func() {
-					uiState.CancelFunc = nil
-					if err != nil {
 						errStr := fmt.Sprintf("\n[red]执行出错: %v[-]\n", err)
 						_, _ = outputView.Write([]byte(errStr))
+						record.Output += errStr
+						uiState.ShownTask = nil
+						a.taskFinished(uiState)
+						a.TviewApp.SetFocus(inputField)
+						outputView.ScrollToEnd()
+						return
+					}
+
+					finalStatus := parseTaskResult(task, err)
+					task.Status = finalStatus
+					task.EndedAt = time.Now()
+
+					if finalStatus == StatusFailed {
+						errStr := fmt.Sprintf("\n[red]执行异常: %v[-]\n", err)
+						if err == nil {
+							errStr = "\n[red]执行失败（无有效结果）[-]\n"
+						}
+						_, _ = outputView.Write([]byte(errStr))
+						task.Output += errStr
 						record.Output += errStr
 					} else {
 						succStr := "\n[green]执行完成[-]\n"
 						_, _ = outputView.Write([]byte(succStr))
+						task.Output += succStr
 						record.Output += succStr
 					}
-					inputField.SetDisabled(false)
+
+					barState.mu.Lock()
+					a.refreshTaskList(uiState, barState)
+					barState.mu.Unlock()
+
+					a.taskFinished(uiState)
 					a.TviewApp.SetFocus(inputField)
 					outputView.ScrollToEnd()
 				})

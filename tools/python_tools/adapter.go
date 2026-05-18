@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"my_tools/pkg/framework"
@@ -70,10 +71,36 @@ arg1 "arg 2 with space" --flag value
 			cmdArgs := []string{"-m", "pip", "install"}
 			cmdArgs = append(cmdArgs, strings.Fields(pkgName)...)
 
-			cmd := exec.CommandContext(runCtx, env, cmdArgs...)
+			var cmd *exec.Cmd
+			if runtime.GOOS == "windows" {
+				cmd = exec.Command(env, cmdArgs...)
+			} else {
+				cmd = exec.CommandContext(runCtx, env, cmdArgs...)
+			}
+
 			cmd.Stdout = out
 			cmd.Stderr = out
-			return cmd.Run()
+
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+
+			done := make(chan struct{})
+			defer close(done)
+
+			if runtime.GOOS == "windows" {
+				go func() {
+					select {
+					case <-runCtx.Done():
+						if cmd.Process != nil {
+							_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+						}
+					case <-done:
+					}
+				}()
+			}
+
+			return cmd.Wait()
 		}
 
 		// Read script from embed FS
@@ -99,7 +126,12 @@ arg1 "arg 2 with space" --flag value
 
 		// Prepare command
 		cmdArgs := append([]string{tempPath}, parsedArgs...)
-		cmd := exec.CommandContext(runCtx, env, cmdArgs...)
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command(env, cmdArgs...)
+		} else {
+			cmd = exec.CommandContext(runCtx, env, cmdArgs...)
+		}
 
 		// Fallback logic is removed because user explicitly specified the env
 		// The TUI enforces "python" as the default if empty
@@ -107,6 +139,25 @@ arg1 "arg 2 with space" --flag value
 		cmd.Stdout = out
 		cmd.Stderr = out
 
-		return cmd.Run()
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+
+		done := make(chan struct{})
+		defer close(done)
+
+		if runtime.GOOS == "windows" {
+			go func() {
+				select {
+				case <-runCtx.Done():
+					if cmd.Process != nil {
+						_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+					}
+				case <-done:
+				}
+			}()
+		}
+
+		return cmd.Wait()
 	})
 }

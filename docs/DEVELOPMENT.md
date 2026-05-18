@@ -39,8 +39,16 @@
    - `Ctrl+U`: 撤销刚刚的清空操作，恢复日志。
    - `Ctrl+H`: 在输入框呼出该工具的历史执行记录与输出预览。
    - `Ctrl+A`: 在输入框一键提取完整命令至剪贴板（Linux 无头环境下将自动调用 OSC 52 穿透 SSH 写入本地客户端剪贴板）。
-4. **状态持久化与防丢失现场**：
-   - 所有的 UI 状态（输入文本、输出日志、历史记录等）必须绑定在缓存池中（如 `TermUIState`），当通过 `ESC` 退回主页时仅做页面隐藏，绝不销毁对象，确保再次进入时 100% 还原现场。
+
+### tview 框架全局事件与 Ctrl+C 劫持
+由于 `tview` 底层源码中硬编码了对 `Ctrl+C` 的默认处理（若 `SetInputCapture` 返回的事件指针等于原始事件指针，则直接调用 `app.Stop()` 退出整个程序），如果想要拦截 `Ctrl+C` 用作中断底层进程而不退出 TUI，必须在全局拦截处返回一个**克隆的新事件**：
+```go
+if event.Key() == tcell.KeyCtrlC {
+    // 强制克隆事件指针，欺骗 tview 绕过 app.Stop() 检查
+    return tcell.NewEventKey(event.Key(), event.Rune(), event.Modifiers())
+}
+```
+这使得 `Ctrl+C` 事件得以顺利向下传递至当前获得焦点的具体面板中进行消费（如停止某个后台 Task）。
 
 ## 🛠️ 如何开发和接入新工具？
 
@@ -54,6 +62,8 @@
    package my_awesome_tool
 
    import (
+       "context"
+       "fmt"
        "io"
        "my_tools/pkg/framework"
    )
@@ -67,11 +77,24 @@
    func (t *AwesomeTool) Execute(ctx framework.AppContext) {
        usage := "这是我的工具说明...\n支持参数: -name <名称>"
        
-       // 调用 ShowTerminal 唤起终端执行面板
-       ctx.ShowTerminal(t.Name(), usage, func(args string, out io.Writer) error {
+       // 调用 ShowTerminal 唤起终端执行面板。注意 run 函数签名包含了 context.Context
+       ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
            // args 是用户在输入框敲的参数
            // 使用 out.Write() 来向界面输出日志
            fmt.Fprintf(out, "你输入了参数: %s\n", args)
+           
+           // 【关键规范】: 如果你的工具包含耗时循环，必须定期检查 runCtx.Done() 以响应 Ctrl+C 中断
+           for i := 0; i < 100000; i++ {
+               if i%1000 == 0 {
+                   select {
+                   case <-runCtx.Done():
+                       return fmt.Errorf("任务已被取消")
+                   default:
+                   }
+               }
+               // ... 耗时操作 ...
+           }
+           
            return nil // 返回 err 会自动在界面显示红色的错误提示
        })
    }

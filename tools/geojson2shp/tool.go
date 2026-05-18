@@ -68,7 +68,7 @@ func collectKeys(features []SHPFeature) []string {
 	return keys
 }
 
-func writePointSHP(path string, features []SHPFeature) error {
+func writePointSHP(ctx context.Context, path string, features []SHPFeature) error {
 	if len(features) == 0 {
 		return nil
 	}
@@ -86,6 +86,14 @@ func writePointSHP(path string, features []SHPFeature) error {
 	_ = writer.SetFields(fields)
 
 	for n, f := range features {
+		if n%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				writer.Close()
+				return fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		writer.Write(&shp.Point{X: f.X, Y: f.Y})
 		for i, k := range keys {
 			_ = writer.WriteAttribute(n, i, f.Properties[k])
@@ -99,7 +107,7 @@ func writePointSHP(path string, features []SHPFeature) error {
 	return fixDbfPath(path)
 }
 
-func writeLineSHP(path string, features []SHPFeature) error {
+func writeLineSHP(ctx context.Context, path string, features []SHPFeature) error {
 	if len(features) == 0 {
 		return nil
 	}
@@ -118,6 +126,14 @@ func writeLineSHP(path string, features []SHPFeature) error {
 
 	n := 0
 	for _, f := range features {
+		if n%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				writer.Close()
+				return fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		if len(f.LineParts) == 0 || len(f.LineParts[0]) < 2 {
 			continue
 		}
@@ -136,7 +152,7 @@ func writeLineSHP(path string, features []SHPFeature) error {
 	return fixDbfPath(path)
 }
 
-func parseGeoJSONFile(path string) ([]SHPFeature, error) {
+func parseGeoJSONFile(ctx context.Context, path string) ([]SHPFeature, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -150,7 +166,14 @@ func parseGeoJSONFile(path string) ([]SHPFeature, error) {
 	var features []SHPFeature
 	sourceFile := filepath.Base(path)
 
-	for _, f := range fc.Features {
+	for i, f := range fc.Features {
+		if i%1000 == 0 {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("任务已被取消")
+			default:
+			}
+		}
 		props := map[string]string{
 			"sourceFile": sourceFile,
 		}
@@ -219,7 +242,7 @@ func parseGeoJSONFile(path string) ([]SHPFeature, error) {
 	return features, nil
 }
 
-func runConvert(inputPath, outputDir string, out io.Writer) error {
+func runConvert(ctx context.Context, inputPath, outputDir string, out io.Writer) error {
 	info, err := os.Stat(inputPath)
 	if err != nil {
 		return fmt.Errorf("路径不存在: %s", inputPath)
@@ -252,9 +275,19 @@ func runConvert(inputPath, outputDir string, out io.Writer) error {
 	var lineFeatures []SHPFeature
 
 	for _, path := range geojsonFiles {
+		// 检查是否收到取消信号
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("任务已被取消")
+		default:
+		}
+
 		fmt.Fprintf(out, "解析: %s\n", path)
-		features, err := parseGeoJSONFile(path)
+		features, err := parseGeoJSONFile(ctx, path)
 		if err != nil {
+			if err.Error() == "任务已被取消" {
+				return err
+			}
 			fmt.Fprintf(out, "  错误: %v\n", err)
 			continue
 		}
@@ -274,16 +307,28 @@ func runConvert(inputPath, outputDir string, out io.Writer) error {
 	fmt.Fprintf(out, "\n总计: %d 个点, %d 条线\n", len(pointFeatures), len(lineFeatures))
 
 	if len(pointFeatures) > 0 {
+		// 检查是否收到取消信号
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("任务已被取消")
+		default:
+		}
 		pointPath := filepath.Join(outputDir, "merged_points.shp")
-		if err := writePointSHP(pointPath, pointFeatures); err != nil {
+		if err := writePointSHP(ctx, pointPath, pointFeatures); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "点 Shapefile 输出: %s\n", pointPath)
 	}
 
 	if len(lineFeatures) > 0 {
+		// 检查是否收到取消信号
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("任务已被取消")
+		default:
+		}
 		linePath := filepath.Join(outputDir, "merged_lines.shp")
-		if err := writeLineSHP(linePath, lineFeatures); err != nil {
+		if err := writeLineSHP(ctx, linePath, lineFeatures); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "线 Shapefile 输出: %s\n", linePath)
@@ -354,7 +399,7 @@ func (t *G2STool) Execute(ctx framework.AppContext) {
 			}
 		}
 
-		return runConvert(inputPath, outputDir, out)
+		return runConvert(runCtx, inputPath, outputDir, out)
 	})
 }
 
