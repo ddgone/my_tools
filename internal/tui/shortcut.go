@@ -14,6 +14,7 @@ func (a *App) showShortcutHelp() {
 	helpText := `[orange::b]🌍 全局 (Global)[-:-:-]
  [gray]Ctrl+P 或 /[-]   呼出全局命令搜索面板
  [gray]Ctrl+C[-]        强制中断当前正在执行的任务/进程
+ [gray]Ctrl+F[-]        收藏/取消收藏当前选中的工具
  [gray]F1[-]            显示此快捷键帮助
  [gray]q[-]            退出整个应用程序
 
@@ -35,16 +36,15 @@ func (a *App) showShortcutHelp() {
  [gray]Ctrl+H[-]       打开历史记录与输出预览浮窗
 
 [cyan::b]📺 终端输出面板 (Output)[-:-:-]
- [gray]Ctrl+L[-]       清空当前终端的输出日志
- [gray]Ctrl+U[-]       撤销上一次的清空操作，恢复日志
+ [gray]Ctrl+L[-]       清空当前终端的输出日志和已完成的任务
+ [gray]Ctrl+U[-]       撤销上一次的清空操作，恢复日志和任务
  [gray]Ctrl+S[-]       将当前所有输出日志导出为本地文本文件
  [gray]Ctrl+E[-]       全屏最大化输出日志面板 (适合阅读长日志)
+ [gray]Ctrl+C[-]       强制取消当前正在执行的任务
 
 [purple::b]📋 任务侧边栏 (Task Panel)[-:-:-]
  [gray]Ctrl+B[-]       显示/隐藏多任务栏 (仅当有多个任务时有效)
- [gray]Ctrl+D[-]       清除已完成/已失败的任务 (清理列表)
- [gray]Enter[-]        切换到选中的任务，查看其日志
- [gray]Ctrl+C[-]       强制取消侧边栏中选中的任务`
+ [gray]Enter[-]        切换到选中的任务，查看其日志`
 
 	textView := tview.NewTextView().
 		SetDynamicColors(true).

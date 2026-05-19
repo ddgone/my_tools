@@ -113,11 +113,13 @@ func (ot *outputTracker) Write(p []byte) (int, error) {
 }
 
 type TaskBarState struct {
-	mu        sync.Mutex
-	ToolID    string
-	Tasks     []*Task
-	ActiveIdx int
-	Visible   bool
+	mu            sync.Mutex
+	ToolID        string
+	Tasks         []*Task
+	ActiveIdx     int
+	Visible       bool
+	UndoTasks     []*Task
+	UndoActiveIdx int
 }
 
 func (a *App) ensureTaskBar(ui *TermUIState, toolID string) (*TaskBarState, *tview.Flex) {
@@ -158,7 +160,7 @@ func (a *App) createTaskBarUI(ui *TermUIState, toolID string) {
 
 	taskBarFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 	taskBarFlex.SetBorder(true).
-		SetTitle(a.getTitleWithShortcut("📋 任务", "Ctrl+B:隐藏, Ctrl+D:清理, Ctrl+C:取消", false)).
+		SetTitle(a.getTitleWithShortcut("📋 任务", "Ctrl+B:隐藏", false)).
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 	taskBarFlex.AddItem(taskList, 0, 1, true)
@@ -207,20 +209,6 @@ func (a *App) createTaskBarUI(ui *TermUIState, toolID string) {
 				task := bar.Tasks[bar.ActiveIdx]
 				if task.Cancel != nil {
 					task.Cancel()
-				}
-			}
-			return nil
-		}
-		if event.Key() == tcell.KeyCtrlD {
-			bar := a.TaskBars[toolID]
-			if bar == nil {
-				return nil
-			}
-			removed := a.cleanupTasks(ui, bar)
-			if removed > 0 {
-				a.refreshTaskList(ui, bar)
-				if len(bar.Tasks) == 0 {
-					a.hideTaskBar(ui, bar)
 				}
 			}
 			return nil
@@ -326,52 +314,6 @@ func parseTaskResult(task *Task, err error) TaskStatus {
 		}
 	}
 	return StatusSuccess
-}
-
-func (a *App) cleanupTasks(ui *TermUIState, bar *TaskBarState) int {
-	bar.mu.Lock()
-
-	var kept []*Task
-	for _, t := range bar.Tasks {
-		if t.Status == StatusRunning {
-			kept = append(kept, t)
-		}
-	}
-	removed := len(bar.Tasks) - len(kept)
-	bar.Tasks = kept
-
-	if len(bar.Tasks) == 0 {
-		bar.ActiveIdx = -1
-		bar.mu.Unlock()
-		a.hideTaskBar(ui, bar)
-		return removed
-	}
-
-	if bar.ActiveIdx >= len(bar.Tasks) {
-		bar.ActiveIdx = len(bar.Tasks) - 1
-	}
-
-	task := bar.Tasks[bar.ActiveIdx]
-	ui.Output.Clear()
-	_, _ = tview.ANSIWriter(ui.Output).Write([]byte(task.Output))
-	ui.Output.ScrollToEnd()
-
-	ui.ShownTask = task
-
-	if task.Status == StatusRunning {
-		ui.Executing = true
-	} else if bar.ActiveIdx == len(bar.Tasks)-1 {
-		ui.Executing = false
-	} else {
-		ui.Executing = true
-	}
-	if ui.Input != nil {
-		ui.Input.SetDisabled(ui.Executing)
-	}
-
-	a.refreshTaskList(ui, bar)
-	bar.mu.Unlock()
-	return removed
 }
 
 func (a *App) taskStarted(ui *TermUIState) {

@@ -297,40 +297,11 @@ if barState.activeIdx == len(barState.tasks)-1 {
 - 终端输出展示新任务的输出
 - 输入框保持可编辑（如果上一个任务已完成）
 
-**d. Ctrl+D 清理**
+**d. Ctrl+L 融合任务清理**
 
-在任务栏 `SetInputCapture` 中：
-
-```go
-if event.Key() == tcell.KeyCtrlD {
-    barState.mu.Lock()
-    var kept []*Task
-    for _, t := range barState.tasks {
-        if t.Status == StatusWaiting || t.Status == StatusRunning {
-            kept = append(kept, t)
-        }
-    }
-    removed := len(barState.tasks) - len(kept)
-    barState.tasks = kept
-    
-    // 调整 activeIdx
-    if barState.activeIdx >= len(barState.tasks) {
-        barState.activeIdx = len(barState.tasks) - 1
-    }
-    barState.mu.Unlock()
-    
-    // 更新任务栏 UI
-    // 如果全部清空 → visible = false → 隐藏任务栏
-    // 否则刷新列表
-    
-    if len(kept) == 0 {
-        barState.visible = false
-        // 重新布局，隐藏任务栏
-        outputRow.ResizeItem(taskBar, 0, 0)
-    }
-    return nil
-}
-```
+- 移除了原有的 `Ctrl+D` 清理任务功能。
+- 将清理任务与 `Ctrl+L`（清空输出）合并。当用户按下 `Ctrl+L` 且没有任务在运行时，将清空输出，并同时清理任务栏中所有已完成/失败的任务，隐藏任务栏。
+- 按下 `Ctrl+U` 时，不仅恢复终端输出，也会恢复被清理的任务栏。
 
 **e. 移除 Ctrl+H 历史弹窗**
 

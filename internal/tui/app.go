@@ -322,7 +322,20 @@ func NewApp(store *storage.Storage) *App {
 		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
 			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
 				if _, isTextArea := a.TviewApp.GetFocus().(*tview.TextArea); !isTextArea {
-					a.TviewApp.Stop()
+					if a.Store.GetConfirmExit() {
+						a.showConfirmExitModal()
+					} else {
+						a.TviewApp.Stop()
+					}
+					return nil
+				}
+			}
+		}
+		// Ctrl+F 收藏/取消收藏当前工具
+		if event.Key() == tcell.KeyCtrlF {
+			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
+				if _, isTextArea := a.TviewApp.GetFocus().(*tview.TextArea); !isTextArea {
+					a.toggleFavorite()
 					return nil
 				}
 			}
@@ -358,9 +371,10 @@ func (a *App) getTitleWithShortcut(baseTitle string, verboseShortcuts string, is
 }
 
 func (a *App) UpdateAllPanelTitles() {
-	// We can't easily update banner here without re-creating it, but setupUI() already recreates it.
-	// We just need to update the cached TermUI states.
 	for _, ui := range a.TermUI {
+		if ui.Output != nil {
+			ui.Output.SetWordWrap(a.Store.GetAutoWordWrap())
+		}
 		if ui.Usage != nil {
 			isPy := strings.Contains(ui.Usage.GetTitle(), "Python专属")
 			if isPy {
@@ -370,7 +384,7 @@ func (a *App) UpdateAllPanelTitles() {
 			}
 		}
 		if ui.Output != nil {
-			ui.Output.SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false))
+			ui.Output.SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+C:取消, Ctrl+E:全屏", false))
 		}
 		if ui.Input != nil {
 			ui.Input.SetTitle(a.getTitleWithShortcut("⌨️ 命令行输入", "Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制", false))
@@ -431,7 +445,7 @@ func (a *App) setupUI() {
 
 	banner := NewBannerBox(logoArt, fontArt, descText)
 	banner.SetBorder(true).
-		SetTitle(a.getTitleWithShortcut("🦎 火蜥蜴工具箱", "←/→/↑/↓:导航, Enter:执行, Ctrl+P:搜索, r:重置, b:折叠, q:退出", true)).
+		SetTitle(a.getTitleWithShortcut("🦎 火蜥蜴工具箱", "←/→/↑/↓:导航, Enter:执行, Ctrl+P:搜索, Ctrl+F:收藏, r:重置, b:折叠, q:退出", true)).
 		SetTitleColor(tcell.ColorRed).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -604,6 +618,43 @@ func (s *sysTerminalTool) Execute(ctx framework.AppContext) {
 func (a *App) refreshTree() {
 	root := tview.NewTreeNode("🦎 火蜥蜴工具箱").SetColor(tcell.ColorWhite).SetSelectable(false)
 
+	// --- 0. 收藏夹 ---
+	favorites := a.Store.GetFavorites()
+	favNode := tview.NewTreeNode(" ❤️ 收藏夹 ").
+		SetColor(tcell.ColorPink).
+		SetSelectable(true).
+		SetExpanded(a.Store.GetNodeState("❤️ 收藏夹", true))
+
+	if len(favorites) > 0 {
+		for _, favID := range favorites {
+			var favTool framework.Tool
+			for _, t := range framework.Registry {
+				if t.ID() == favID {
+					favTool = t
+					break
+				}
+			}
+			if favTool != nil {
+				toolColor := colorGo
+				icon := "🔧"
+				if strings.Contains(favTool.Category(), "Python") {
+					toolColor = colorPy
+					icon = "📄"
+				}
+				toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, favTool.Name())).
+					SetReference(favTool).
+					SetColor(toolColor).
+					SetSelectable(true)
+				favNode.AddChild(toolNode)
+			}
+		}
+	} else {
+		emptyNode := tview.NewTreeNode(" (暂无收藏，Ctrl+F 收藏工具) ").SetColor(tcell.ColorGray).SetSelectable(false)
+		favNode.AddChild(emptyNode)
+	}
+	root.AddChild(favNode)
+	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
+
 	// --- 1. 最近使用 ---
 	recentTools := a.Store.GetRecentTools()
 	recentNode := tview.NewTreeNode(" ⭐ 最近使用 ").
@@ -611,10 +662,11 @@ func (a *App) refreshTree() {
 		SetSelectable(true).
 		SetExpanded(a.Store.GetNodeState("⭐ 最近使用", true))
 
+	recentMaxCount := a.Store.GetRecentToolsCount()
 	if len(recentTools) > 0 {
 		count := 0
 		for _, rt := range recentTools {
-			if count >= 3 {
+			if count >= recentMaxCount {
 				break
 			}
 			var targetTool framework.Tool
@@ -766,6 +818,15 @@ func (a *App) refreshTree() {
 
 	a.Tree.SetRoot(root)
 	a.Tree.SetCurrentNode(root)
+
+	if a.Store.GetAutoExpandAll() {
+		root.Walk(func(node, parent *tview.TreeNode) bool {
+			if len(node.GetChildren()) > 0 {
+				node.SetExpanded(true)
+			}
+			return true
+		})
+	}
 }
 
 func (a *App) executeTool(t framework.Tool) {
@@ -777,17 +838,18 @@ func (a *App) executeTool(t framework.Tool) {
 }
 
 func (a *App) ShowModal(title, message string) {
-	frontPage, _ := a.Pages.GetFrontPage()
 	focus := a.TviewApp.GetFocus()
+
+	// 生成一个唯一的 modal ID，防止多个弹窗覆盖同一个 page
+	modalID := fmt.Sprintf("modal_%d", time.Now().UnixNano())
 
 	modal := tview.NewModal().
 		SetText(message).
 		AddButtons([]string{"确定"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			a.Pages.RemovePage("modal")
-			if frontPage != "" {
-				a.Pages.SwitchToPage(frontPage)
-			}
+			a.Pages.RemovePage(modalID)
+
+			// 简单的焦点恢复逻辑
 			if focus != nil {
 				a.TviewApp.SetFocus(focus)
 			}
@@ -796,7 +858,8 @@ func (a *App) ShowModal(title, message string) {
 		SetTitle(" " + title + " ").
 		SetTitleColor(tcell.ColorWhite).
 		SetBackgroundColor(colorBgLight)
-	a.Pages.AddAndSwitchToPage("modal", modal, true)
+
+	a.Pages.AddPage(modalID, modal, true, true)
 	a.TviewApp.SetFocus(modal)
 }
 
@@ -843,7 +906,7 @@ func (a *App) PromptInput(title, prompt, defaultValue string, callback func(stri
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	a.Pages.AddAndSwitchToPage("input", form, true)
+	a.Pages.AddPage("input", form, true, true)
 	a.TviewApp.SetFocus(form)
 }
 
@@ -878,7 +941,7 @@ func (a *App) PromptChoice(title, prompt string, options []string, callback func
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	a.Pages.AddAndSwitchToPage("choice", form, true)
+	a.Pages.AddPage("choice", form, true, true)
 	a.TviewApp.SetFocus(form)
 }
 
@@ -1094,7 +1157,7 @@ func (a *App) showCommandPalette() {
 		return event
 	})
 
-	a.Pages.AddAndSwitchToPage("palette", modalLayout, true)
+	a.Pages.AddPage("palette", modalLayout, true, true)
 	a.TviewApp.SetFocus(input)
 }
 
@@ -1133,7 +1196,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true)
+		SetScrollable(true).
+		SetWordWrap(a.Store.GetAutoWordWrap())
 	outputView.SetChangedFunc(func() {
 		outputView.ScrollToEnd()
 		a.TviewApp.Draw()
@@ -1141,7 +1205,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
-		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false)).
+		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+C:取消, Ctrl+E:全屏", false)).
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1296,24 +1360,18 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlB {
-			if uiState.TaskList == nil {
+			if uiState.TaskList == nil || len(barState.Tasks) == 0 {
 				return nil
 			}
-			if !barState.Visible {
+			if barState.Visible {
+				a.hideTaskBar(uiState, barState)
+				rebuildFocusables()
+				if uiState.TaskList.HasFocus() {
+					a.TviewApp.SetFocus(inputField)
+				}
+			} else {
 				a.showTaskBar(uiState, barState)
 				rebuildFocusables()
-				a.TviewApp.SetFocus(uiState.TaskList)
-				return nil
-			}
-			if uiState.TaskList.HasFocus() {
-				a.TviewApp.SetFocus(inputField)
-				if uiState.ShownTask != nil && uiState.ShownTask.Status != StatusRunning {
-					uiState.Executing = false
-				} else if uiState.ShownTask == nil {
-					uiState.Executing = false
-				}
-				inputField.SetDisabled(uiState.Executing)
-			} else {
 				a.TviewApp.SetFocus(uiState.TaskList)
 			}
 			return nil
@@ -1345,6 +1403,37 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlL {
+			if barState != nil {
+				barState.mu.Lock()
+				hasRunning := false
+				for _, t := range barState.Tasks {
+					if t.Status == StatusRunning {
+						hasRunning = true
+						break
+					}
+				}
+				if hasRunning {
+					barState.mu.Unlock()
+					return nil // 如果有运行中的任务，则不清理
+				}
+
+				if len(barState.Tasks) > 0 {
+					barState.UndoTasks = append([]*Task(nil), barState.Tasks...)
+					barState.UndoActiveIdx = barState.ActiveIdx
+					barState.Tasks = nil
+					barState.ActiveIdx = -1
+				}
+				barState.mu.Unlock()
+
+				if len(barState.UndoTasks) > 0 {
+					a.hideTaskBar(uiState, barState)
+					rebuildFocusables()
+					uiState.ShownTask = nil
+				}
+			} else if uiState.Executing {
+				return nil
+			}
+
 			uiState.UndoBuffer = outputView.GetText(false)
 			uiState.UndoRecords = append([]*ExecRecord(nil), uiState.Records...)
 			outputView.Clear()
@@ -1352,6 +1441,26 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlU {
+			if barState != nil {
+				barState.mu.Lock()
+				if len(barState.UndoTasks) > 0 {
+					barState.Tasks = append([]*Task(nil), barState.UndoTasks...)
+					barState.ActiveIdx = barState.UndoActiveIdx
+					barState.UndoTasks = nil
+					barState.mu.Unlock()
+
+					a.showTaskBar(uiState, barState)
+					a.refreshTaskList(uiState, barState)
+					rebuildFocusables()
+
+					if barState.ActiveIdx >= 0 && barState.ActiveIdx < len(barState.Tasks) {
+						uiState.ShownTask = barState.Tasks[barState.ActiveIdx]
+					}
+				} else {
+					barState.mu.Unlock()
+				}
+			}
+
 			if uiState.UndoBuffer != "" {
 				outputView.SetText(uiState.UndoBuffer)
 				uiState.Records = uiState.UndoRecords
@@ -1500,8 +1609,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 						record.Output += errStr
 						uiState.ShownTask = nil
 						a.taskFinished(uiState)
-						a.TviewApp.SetFocus(inputField)
 						outputView.ScrollToEnd()
+						a.maybeNotifyTaskComplete(tool.ID(), cmdText, StatusFailed, task)
 						return
 					}
 
@@ -1509,16 +1618,19 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					task.Status = finalStatus
 					task.EndedAt = time.Now()
 
+					elapsedStr := fmt.Sprintf("[gray]⏱ 耗时: %s[-]\n", task.EndedAt.Sub(task.CreatedAt).Truncate(time.Millisecond).String())
+
 					if finalStatus == StatusFailed {
 						errStr := fmt.Sprintf("\n[red]执行异常: %v[-]\n", err)
 						if err == nil {
 							errStr = "\n[red]执行失败（无有效结果）[-]\n"
 						}
+						errStr += elapsedStr
 						_, _ = outputView.Write([]byte(errStr))
 						task.Output += errStr
 						record.Output += errStr
 					} else {
-						succStr := "\n[green]执行完成[-]\n"
+						succStr := "\n[green]执行完成[-]\n" + elapsedStr
 						_, _ = outputView.Write([]byte(succStr))
 						task.Output += succStr
 						record.Output += succStr
@@ -1529,8 +1641,8 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					barState.mu.Unlock()
 
 					a.taskFinished(uiState)
-					a.TviewApp.SetFocus(inputField)
 					outputView.ScrollToEnd()
+					a.maybeNotifyTaskComplete(tool.ID(), cmdText, finalStatus, task)
 				})
 			}()
 			return nil
@@ -1574,7 +1686,8 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true)
+		SetScrollable(true).
+		SetWordWrap(a.Store.GetAutoWordWrap())
 	outputView.SetChangedFunc(func() {
 		outputView.ScrollToEnd()
 		a.TviewApp.Draw()
@@ -1582,7 +1695,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
-		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false)).
+		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+C:取消, Ctrl+E:全屏", false)).
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1591,7 +1704,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	uiState.OutputRow = outputRow
 
 	initialCmd := ""
-	initialEnv := "python"
+	initialEnv := a.Store.GetDefaultPythonPath()
 	history := a.Store.GetToolHistory(tool.ID())
 	if len(history) > 0 {
 		if cmd, ok := history[0]["cmd"]; ok {
@@ -1860,24 +1973,18 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlB {
-			if uiState.TaskList == nil {
+			if uiState.TaskList == nil || len(barState.Tasks) == 0 {
 				return nil
 			}
-			if !barState.Visible {
+			if barState.Visible {
+				a.hideTaskBar(uiState, barState)
+				rebuildFocusables()
+				if uiState.TaskList.HasFocus() {
+					a.TviewApp.SetFocus(inputField)
+				}
+			} else {
 				a.showTaskBar(uiState, barState)
 				rebuildFocusables()
-				a.TviewApp.SetFocus(uiState.TaskList)
-				return nil
-			}
-			if uiState.TaskList.HasFocus() {
-				a.TviewApp.SetFocus(inputField)
-				if uiState.ShownTask != nil && uiState.ShownTask.Status != StatusRunning {
-					uiState.Executing = false
-				} else if uiState.ShownTask == nil {
-					uiState.Executing = false
-				}
-				inputField.SetDisabled(uiState.Executing)
-			} else {
 				a.TviewApp.SetFocus(uiState.TaskList)
 			}
 			return nil
@@ -1909,6 +2016,37 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlL {
+			if barState != nil {
+				barState.mu.Lock()
+				hasRunning := false
+				for _, t := range barState.Tasks {
+					if t.Status == StatusRunning {
+						hasRunning = true
+						break
+					}
+				}
+				if hasRunning {
+					barState.mu.Unlock()
+					return nil // 如果有运行中的任务，则不清理
+				}
+
+				if len(barState.Tasks) > 0 {
+					barState.UndoTasks = append([]*Task(nil), barState.Tasks...)
+					barState.UndoActiveIdx = barState.ActiveIdx
+					barState.Tasks = nil
+					barState.ActiveIdx = -1
+				}
+				barState.mu.Unlock()
+
+				if len(barState.UndoTasks) > 0 {
+					a.hideTaskBar(uiState, barState)
+					rebuildFocusables()
+					uiState.ShownTask = nil
+				}
+			} else if uiState.Executing {
+				return nil
+			}
+
 			uiState.UndoBuffer = outputView.GetText(false)
 			uiState.UndoRecords = append([]*ExecRecord(nil), uiState.Records...)
 			outputView.Clear()
@@ -1916,6 +2054,26 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			return nil
 		}
 		if event.Key() == tcell.KeyCtrlU {
+			if barState != nil {
+				barState.mu.Lock()
+				if len(barState.UndoTasks) > 0 {
+					barState.Tasks = append([]*Task(nil), barState.UndoTasks...)
+					barState.ActiveIdx = barState.UndoActiveIdx
+					barState.UndoTasks = nil
+					barState.mu.Unlock()
+
+					a.showTaskBar(uiState, barState)
+					a.refreshTaskList(uiState, barState)
+					rebuildFocusables()
+
+					if barState.ActiveIdx >= 0 && barState.ActiveIdx < len(barState.Tasks) {
+						uiState.ShownTask = barState.Tasks[barState.ActiveIdx]
+					}
+				} else {
+					barState.mu.Unlock()
+				}
+			}
+
 			if uiState.UndoBuffer != "" {
 				outputView.SetText(uiState.UndoBuffer)
 				uiState.Records = uiState.UndoRecords
@@ -2076,6 +2234,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 						a.taskFinished(uiState)
 						a.TviewApp.SetFocus(inputField)
 						outputView.ScrollToEnd()
+						a.maybeNotifyTaskComplete(tool.ID(), cmdText, StatusFailed, task)
 						return
 					}
 
@@ -2083,16 +2242,19 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					task.Status = finalStatus
 					task.EndedAt = time.Now()
 
+					elapsedStr := fmt.Sprintf("[gray]⏱ 耗时: %s[-]\n", task.EndedAt.Sub(task.CreatedAt).Truncate(time.Millisecond).String())
+
 					if finalStatus == StatusFailed {
 						errStr := fmt.Sprintf("\n[red]执行异常: %v[-]\n", err)
 						if err == nil {
 							errStr = "\n[red]执行失败（无有效结果）[-]\n"
 						}
+						errStr += elapsedStr
 						_, _ = outputView.Write([]byte(errStr))
 						task.Output += errStr
 						record.Output += errStr
 					} else {
-						succStr := "\n[green]执行完成[-]\n"
+						succStr := "\n[green]执行完成[-]\n" + elapsedStr
 						_, _ = outputView.Write([]byte(succStr))
 						task.Output += succStr
 						record.Output += succStr
@@ -2103,8 +2265,8 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					barState.mu.Unlock()
 
 					a.taskFinished(uiState)
-					a.TviewApp.SetFocus(inputField)
 					outputView.ScrollToEnd()
+					a.maybeNotifyTaskComplete(tool.ID(), cmdText, finalStatus, task)
 				})
 			}()
 			return nil
@@ -2117,6 +2279,92 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 
 	a.Pages.AddAndSwitchToPage(pageID, flex, true)
 	a.TviewApp.SetFocus(inputField)
+}
+
+func (a *App) showConfirmExitModal() {
+	frontPage, _ := a.Pages.GetFrontPage()
+	focus := a.TviewApp.GetFocus()
+
+	modal := tview.NewModal().
+		SetText("确定要退出火蜥蜴工具箱吗？").
+		AddButtons([]string{"确定退出", "取消"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			a.Pages.RemovePage("confirm_exit_modal")
+			if frontPage != "" {
+				a.Pages.SwitchToPage(frontPage)
+			}
+			if focus != nil {
+				a.TviewApp.SetFocus(focus)
+			}
+			if buttonLabel == "确定退出" {
+				a.TviewApp.Stop()
+			}
+		})
+	modal.SetBorder(true).
+		SetTitle(" 🚪 退出确认 ").
+		SetTitleColor(tcell.ColorRed).
+		SetBackgroundColor(colorBgLight)
+	a.Pages.AddPage("confirm_exit_modal", modal, true, true)
+	a.TviewApp.SetFocus(modal)
+}
+
+func (a *App) toggleFavorite() {
+	currentNode := a.Tree.GetCurrentNode()
+	if currentNode == nil {
+		return
+	}
+	ref := currentNode.GetReference()
+	if ref == nil {
+		return
+	}
+	tool, ok := ref.(framework.Tool)
+	if !ok {
+		return
+	}
+
+	toolID := tool.ID()
+	if a.Store.IsFavorite(toolID) {
+		a.Store.RemoveFavorite(toolID)
+	} else {
+		a.Store.AddFavorite(toolID)
+	}
+
+	a.refreshTree()
+	if found := a.findNodeByToolID(toolID); found != nil {
+		a.expandParents(found)
+		a.Tree.SetCurrentNode(found)
+	}
+	a.TviewApp.SetFocus(a.Tree)
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		a.TviewApp.QueueUpdateDraw(func() {
+			if found := a.findNodeByToolID(toolID); found != nil {
+				a.Tree.SetCurrentNode(found)
+			}
+			a.TviewApp.SetFocus(a.Tree)
+		})
+	}()
+}
+
+func (a *App) maybeNotifyTaskComplete(toolID, cmdText string, status TaskStatus, task *Task) {
+	frontPage, _ := a.Pages.GetFrontPage()
+	pageID := "term_" + toolID
+
+	if frontPage != pageID && frontPage != "main" {
+		statusText := "✅ 完成"
+		if status == StatusFailed {
+			statusText = "❌ 失败"
+		}
+		msg := fmt.Sprintf("后台任务 %s\n\n工具: %s\n参数: %s", statusText, task.ToolName, cmdText)
+		a.ShowModal("🔔 任务通知", msg)
+	} else if frontPage == "main" {
+		statusText := "完成"
+		if status == StatusFailed {
+			statusText = "失败"
+		}
+		msg := fmt.Sprintf("后台任务 %s: %s", statusText, task.ToolName)
+		a.ShowModal("🔔 任务通知", msg)
+	}
 }
 
 func (a *App) copyToClipboard(text string) error {
@@ -2141,7 +2389,7 @@ func (a *App) exportLog(toolName, content string) {
 		return
 	}
 
-	logDir := "my_tools_logs"
+	logDir := a.Store.GetLogExportDir()
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		a.ShowModal("导出错误", "无法创建日志目录: "+err.Error())
 		return
