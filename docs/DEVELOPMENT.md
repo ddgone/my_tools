@@ -30,6 +30,7 @@
    - 对于顶部 ASCII 艺术字（Logo、Font），**严禁使用文本流（TextView）自动换行**。
    - 必须使用类似 `BannerBox` 中的重写 `Draw(screen tcell.Screen)` 配合底层 `screen.SetContent`，确保字符绘制在绝对坐标上并自带边界裁剪，彻底解决窗口缩放导致的排版扭曲问题。
 3. **全局与焦点快捷键 (Shortcut Isolation)**：
+   - `F1`: 呼出全局快捷键速查面板（替代了原先各处冗余的 `(?:快捷键)` 提示，实现 UI 极简）。
    - `Ctrl+P` / `/`: 呼出全局搜索调色板。
    - `q`: 在首页且无输入框聚焦时退出应用。
    - `Ctrl+E`: 将当前获得焦点的模块放大至全屏，再次按还原。
@@ -40,7 +41,9 @@
    - `Ctrl+H`: 在输入框呼出该工具的历史执行记录与输出预览。
    - `Ctrl+A`: 在输入框一键提取完整命令至剪贴板（Linux 无头环境下将自动调用 OSC 52 穿透 SSH 写入本地客户端剪贴板）。
 
-### tview 框架全局事件与 Ctrl+C 劫持
+### tview 框架疑难杂症与解法 (Traps & Hacks)
+
+#### 1. 全局事件与 Ctrl+C 劫持
 由于 `tview` 底层源码中硬编码了对 `Ctrl+C` 的默认处理（若 `SetInputCapture` 返回的事件指针等于原始事件指针，则直接调用 `app.Stop()` 退出整个程序），如果想要拦截 `Ctrl+C` 用作中断底层进程而不退出 TUI，必须在全局拦截处返回一个**克隆的新事件**：
 ```go
 if event.Key() == tcell.KeyCtrlC {
@@ -49,6 +52,23 @@ if event.Key() == tcell.KeyCtrlC {
 }
 ```
 这使得 `Ctrl+C` 事件得以顺利向下传递至当前获得焦点的具体面板中进行消费（如停止某个后台 Task）。
+
+#### 2. 树组件重构与焦点光标丢失 (20ms Async Redraw)
+在 TUI 交互中，如果因为某个操作（如按 `ESC` 退出工具页返回主页，此时需要刷新“最近使用”记录）导致整个 `tview.TreeView` 被替换或重建，随后立即调用 `SetCurrentNode` 和 `SetFocus`，会导致光标不显示或无法滚动到可视区域内。
+这是因为在触发 `Draw()` 之前，树节点的屏幕坐标（Y轴）尚未计算完毕。
+**解法**：必须使用一个微小的异步延迟配合 `QueueUpdateDraw` 形成“回马枪”，确保在第一次完整渲染（产生坐标）后再执行焦点设定：
+```go
+// 退出并重构树后...
+go func() {
+    time.Sleep(20 * time.Millisecond) // 等待 20ms，让第一次渲染（盲绘）完成，计算出坐标
+    app.TviewApp.QueueUpdateDraw(func() {
+        if found := app.findNodeByToolID(lastToolID); found != nil {
+            app.Tree.SetCurrentNode(found)
+        }
+        app.TviewApp.SetFocus(app.Tree)
+    })
+}()
+```
 
 ## 🛠️ 如何开发和接入新工具？
 

@@ -61,8 +61,10 @@ type ExecRecord struct {
 type TermUIState struct {
 	Flex        *tview.Flex
 	OutputRow   *tview.Flex
+	Usage       *tview.TextView
 	Input       *tview.TextArea
 	Env         *tview.InputField
+	EnvForm     *tview.Form
 	Output      *tview.TextView
 	UndoBuffer  string
 	Records     []*ExecRecord
@@ -86,13 +88,13 @@ func (hw *historyWriter) Write(p []byte) (n int, err error) {
 }
 
 type App struct {
-	TviewApp *tview.Application
-	Pages    *tview.Pages
-	Tree     *SalamanderTreeView
-	Store    *storage.Storage
-	TermUI   map[string]*TermUIState
-	TaskBars map[string]*TaskBarState
-	lastNode *tview.TreeNode
+	TviewApp   *tview.Application
+	Pages      *tview.Pages
+	Tree       *SalamanderTreeView
+	Store      *storage.Storage
+	TermUI     map[string]*TermUIState
+	TaskBars   map[string]*TaskBarState
+	lastToolID string
 }
 
 // 删掉之前的硬编码字符串
@@ -310,6 +312,12 @@ func NewApp(store *storage.Storage) *App {
 			return tcell.NewEventKey(event.Key(), event.Rune(), event.Modifiers())
 		}
 
+		// 全局快捷键说明页 F1
+		if event.Key() == tcell.KeyF1 {
+			a.showShortcutHelp()
+			return nil
+		}
+
 		// q 退出 (仅在没有输入框获得焦点时生效，避免输入内容时误退)
 		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
 			if _, isInput := a.TviewApp.GetFocus().(*tview.InputField); !isInput {
@@ -337,6 +345,43 @@ func NewApp(store *storage.Storage) *App {
 func (a *App) Run() error {
 	// 移除 EnableMouse(true)，因为启用鼠标会接管终端的鼠标事件，导致用户无法通过鼠标原生框选复制文本。
 	return a.TviewApp.SetRoot(a.Pages, true).Run()
+}
+
+func (a *App) getTitleWithShortcut(baseTitle string, verboseShortcuts string, isMainHint bool) string {
+	if a.Store.GetShowVerboseShortcuts() {
+		return " " + baseTitle + " [gray](" + verboseShortcuts + ")[-] "
+	}
+	if isMainHint {
+		return " " + baseTitle + " [gray](F1:快捷键)[-] "
+	}
+	return " " + baseTitle + " "
+}
+
+func (a *App) UpdateAllPanelTitles() {
+	// We can't easily update banner here without re-creating it, but setupUI() already recreates it.
+	// We just need to update the cached TermUI states.
+	for _, ui := range a.TermUI {
+		if ui.Usage != nil {
+			isPy := strings.Contains(ui.Usage.GetTitle(), "Python专属")
+			if isPy {
+				ui.Usage.SetTitle(a.getTitleWithShortcut("📖 使用说明 (Python专属)", "Ctrl+E:全屏/还原", true))
+			} else {
+				ui.Usage.SetTitle(a.getTitleWithShortcut("📖 使用说明", "Ctrl+E:全屏/还原", true))
+			}
+		}
+		if ui.Output != nil {
+			ui.Output.SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false))
+		}
+		if ui.Input != nil {
+			ui.Input.SetTitle(a.getTitleWithShortcut("⌨️ 命令行输入", "Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制", false))
+		}
+		if ui.EnvForm != nil {
+			ui.EnvForm.SetTitle(a.getTitleWithShortcut("⚙️ Python 环境配置", "Tab:切换, Ctrl+E:全屏", false))
+		}
+		if ui.TaskBar != nil {
+			ui.TaskBar.SetTitle(a.getTitleWithShortcut("📋 任务", "Ctrl+B:隐藏, Ctrl+D:清理, Ctrl+C:取消", false))
+		}
+	}
 }
 
 func (a *App) setupUI() {
@@ -386,7 +431,7 @@ func (a *App) setupUI() {
 
 	banner := NewBannerBox(logoArt, fontArt, descText)
 	banner.SetBorder(true).
-		SetTitle(" 🦎 火蜥蜴工具箱 [gray](←/→/↑/↓:导航, Enter:执行, Ctrl+P:搜索, r:重置, b:折叠, q:退出)[-] ").
+		SetTitle(a.getTitleWithShortcut("🦎 火蜥蜴工具箱", "←/→/↑/↓:导航, Enter:执行, Ctrl+P:搜索, r:重置, b:折叠, q:退出", true)).
 		SetTitleColor(tcell.ColorRed).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -458,6 +503,36 @@ func (a *App) setupUI() {
 	a.Pages.AddAndSwitchToPage("main", mainLayout, true)
 }
 
+func (a *App) expandParents(target *tview.TreeNode) {
+	p := a.findParent(a.Tree.GetRoot(), target)
+	for p != nil && p != a.Tree.GetRoot() {
+		p.SetExpanded(true)
+		if nodeID := getNodeID(p); nodeID != "" {
+			a.Store.SetNodeState(nodeID, true)
+		}
+		p = a.findParent(a.Tree.GetRoot(), p)
+	}
+}
+
+func (a *App) findNodeByToolID(toolID string) *tview.TreeNode {
+	if a.Tree == nil || a.Tree.GetRoot() == nil {
+		return nil
+	}
+	var found *tview.TreeNode
+	a.Tree.GetRoot().Walk(func(node, parent *tview.TreeNode) bool {
+		// 跳过“最近使用”分支，确保光标回到工具的真实分类目录下
+		if node.GetText() == " ⭐ 最近使用 " {
+			return false // 不进入该分支
+		}
+		if t, ok := node.GetReference().(framework.Tool); ok && t.ID() == toolID {
+			found = node
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 func (a *App) findParent(root, target *tview.TreeNode) *tview.TreeNode {
 	if root == target {
 		return nil
@@ -484,7 +559,7 @@ type sysTerminalTool struct{}
 
 func (s *sysTerminalTool) ID() string       { return "sys_terminal" }
 func (s *sysTerminalTool) Name() string     { return "命令行 Shell" }
-func (s *sysTerminalTool) Category() string { return "💻 内置系统终端" }
+func (s *sysTerminalTool) Category() string { return "💻 系统与设置" }
 func (s *sysTerminalTool) Execute(ctx framework.AppContext) {
 	pwd, _ := os.Getwd()
 	cmdPrompt := "dir"
@@ -666,10 +741,10 @@ func (a *App) refreshTree() {
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
 
 	// --- 4. 终端系统 ---
-	sysTermNode := tview.NewTreeNode(" 💻 内置系统终端 ").
+	sysTermNode := tview.NewTreeNode(" 💻 系统与设置 ").
 		SetColor(tcell.ColorSkyblue).
 		SetSelectable(true).
-		SetExpanded(a.Store.GetNodeState("💻 内置系统终端", true))
+		SetExpanded(a.Store.GetNodeState("💻 系统与设置", true))
 
 	termTool := &sysTerminalTool{}
 	termItem := tview.NewTreeNode(fmt.Sprintf(" 📟 %s", termTool.Name())).
@@ -678,6 +753,16 @@ func (a *App) refreshTree() {
 		SetSelectable(true)
 	sysTermNode.AddChild(termItem)
 	root.AddChild(sysTermNode)
+
+	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
+
+	// --- 5. 系统设置 ---
+	setTool := &settingsTool{app: a}
+	setNode := tview.NewTreeNode(" ⚙️ 系统首选项 ").
+		SetReference(setTool).
+		SetColor(tcell.ColorSilver).
+		SetSelectable(true)
+	sysTermNode.AddChild(setNode) // 添加到 💻 系统与设置 节点下
 
 	a.Tree.SetRoot(root)
 	a.Tree.SetCurrentNode(root)
@@ -803,7 +888,7 @@ func (a *App) showCommandPalette() {
 	tree := tview.NewTreeView().SetGraphics(true)
 	tree.SetBorder(true).
 		SetBorderColor(tcell.ColorDarkGray).
-		SetTitle(" 🔍 搜索结果 (Tab:切换焦点, ↑/↓/←/→:导航, Enter:展开/执行) ").
+		SetTitle(" 🔍 搜索结果 ").
 		SetTitleColor(tcell.ColorGray)
 
 	input := tview.NewInputField().
@@ -814,7 +899,7 @@ func (a *App) showCommandPalette() {
 
 	input.SetBorder(true).
 		SetBorderColor(tcell.ColorYellow).
-		SetTitle(" ⚡ 快捷命令面板 [gray](ESC:退出)[-] ").
+		SetTitle(a.getTitleWithShortcut("⚡ 快捷命令面板", "ESC:退出", true)).
 		SetTitleColor(tcell.ColorYellow)
 
 	// 更新树
@@ -1016,12 +1101,12 @@ func (a *App) showCommandPalette() {
 func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 	a.Store.AddRecentTool(name, toolID, params)
 	_ = a.Store.Save()
-	a.refreshTree()
+	// 不在这里立即刷新树，而是延迟到退出 (ESC) 时刷新
 }
 
 func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
-	a.lastNode = a.Tree.GetCurrentNode()
+	a.lastToolID = tool.ID()
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -1041,9 +1126,10 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		SetText(usage).
 		SetScrollable(true)
 	usageView.SetBorder(true).
-		SetTitle(" 📖 使用说明 [gray](Ctrl+E:全屏/还原)[-] ").
+		SetTitle(a.getTitleWithShortcut("📖 使用说明", "Ctrl+E:全屏/还原", true)).
 		SetTitleColor(colorGo).
 		SetBorderColor(tcell.ColorDarkGray)
+	uiState.Usage = usageView
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -1055,7 +1141,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
-		SetTitle(" 📺 终端输出 [gray](Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏)[-] ").
+		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false)).
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1080,7 +1166,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制)[-] ").
+		SetTitle(a.getTitleWithShortcut("⌨️ 命令行输入", "Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制", false)).
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1170,11 +1256,29 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 				toggleMaximize()
 				return nil
 			}
+			a.refreshTree() // 退出时刷新树，更新最近使用
 			a.Pages.SwitchToPage("main")
-			if a.lastNode != nil {
-				a.Tree.SetCurrentNode(a.lastNode)
+			if a.lastToolID != "" {
+				if found := a.findNodeByToolID(a.lastToolID); found != nil {
+					a.expandParents(found)
+					a.Tree.SetCurrentNode(found)
+				}
 			}
 			a.TviewApp.SetFocus(a.Tree)
+
+			// 解决 tview 树组件在替换根节点后首次 Draw 无法正确定位光标的 Bug
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				a.TviewApp.QueueUpdateDraw(func() {
+					if a.lastToolID != "" {
+						if found := a.findNodeByToolID(a.lastToolID); found != nil {
+							a.Tree.SetCurrentNode(found)
+						}
+					}
+					a.TviewApp.SetFocus(a.Tree)
+				})
+			}()
+
 			return nil
 		}
 		if event.Key() == tcell.KeyTab {
@@ -1443,7 +1547,7 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 
 func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
-	a.lastNode = a.Tree.GetCurrentNode()
+	a.lastToolID = tool.ID()
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -1463,9 +1567,10 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetText(usage).
 		SetScrollable(true)
 	usageView.SetBorder(true).
-		SetTitle(" 📖 使用说明 (Python专属) [gray](Ctrl+E:全屏/还原)[-] ").
+		SetTitle(a.getTitleWithShortcut("📖 使用说明 (Python专属)", "Ctrl+E:全屏/还原", true)).
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
+	uiState.Usage = usageView
 
 	outputView := tview.NewTextView().
 		SetDynamicColors(true).
@@ -1477,7 +1582,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	uiState.Output = outputView
 
 	outputView.SetBorder(true).
-		SetTitle(" 📺 终端输出 [gray](Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏)[-] ").
+		SetTitle(a.getTitleWithShortcut("📺 终端输出", "Ctrl+L:清空, Ctrl+U:撤销清空, Ctrl+S:导出, Ctrl+E:全屏", false)).
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1506,9 +1611,10 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		SetButtonTextColor(tcell.ColorWhite)
 
 	envForm.SetBorder(true).
-		SetTitle(" ⚙️ Python 环境配置 [gray](Tab:切换, Ctrl+E:全屏)[-] ").
+		SetTitle(a.getTitleWithShortcut("⚙️ Python 环境配置", "Tab:切换, Ctrl+E:全屏", false)).
 		SetTitleColor(colorPy).
 		SetBorderColor(tcell.ColorDarkGray)
+	uiState.EnvForm = envForm
 
 	envInput := tview.NewInputField().
 		SetLabel("解释器路径: ").
@@ -1621,7 +1727,7 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 	uiState.Input = inputField
 
 	inputField.SetBorder(true).
-		SetTitle(" ⌨️ 命令行输入 [gray](Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制)[-] ").
+		SetTitle(a.getTitleWithShortcut("⌨️ 命令行输入", "Enter:执行, ESC:返回, ↑/↓:历史, Tab:切换, Ctrl+E:全屏, Ctrl+N:新命令, Ctrl+B:任务, Ctrl+A:复制", false)).
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 
@@ -1715,11 +1821,28 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 				toggleMaximize()
 				return nil
 			}
+			a.refreshTree() // 退出时刷新树，更新最近使用
 			a.Pages.SwitchToPage("main")
-			if a.lastNode != nil {
-				a.Tree.SetCurrentNode(a.lastNode)
+			if a.lastToolID != "" {
+				if found := a.findNodeByToolID(a.lastToolID); found != nil {
+					a.expandParents(found)
+					a.Tree.SetCurrentNode(found)
+				}
 			}
 			a.TviewApp.SetFocus(a.Tree)
+
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				a.TviewApp.QueueUpdateDraw(func() {
+					if a.lastToolID != "" {
+						if found := a.findNodeByToolID(a.lastToolID); found != nil {
+							a.Tree.SetCurrentNode(found)
+						}
+					}
+					a.TviewApp.SetFocus(a.Tree)
+				})
+			}()
+
 			return nil
 		}
 		if event.Key() == tcell.KeyTab {

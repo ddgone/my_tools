@@ -16,9 +16,10 @@ type HistoryItem struct {
 
 // UserData 用户数据
 type UserData struct {
-	RecentTools []HistoryItem                  `json:"recent_tools"`
-	NodeStates  map[string]bool                `json:"node_states"`  // 记录节点展开/收起状态
-	ToolHistory map[string][]map[string]string `json:"tool_history"` // 记录每个工具的历史执行参数
+	RecentTools          []HistoryItem                  `json:"recent_tools"`
+	NodeStates           map[string]bool                `json:"node_states"`            // 记录节点展开/收起状态
+	ToolHistory          map[string][]map[string]string `json:"tool_history"`           // 记录每个工具的历史执行参数
+	ShowVerboseShortcuts bool                           `json:"show_verbose_shortcuts"` // 是否显示冗长的快捷键提示
 }
 
 // Storage 数据存储
@@ -144,6 +145,17 @@ func (s *Storage) GetNodeState(nodeID string, defaultVal bool) bool {
 		return state
 	}
 	return defaultVal
+}
+
+// GetShowVerboseShortcuts 获取快捷键显示模式
+func (s *Storage) GetShowVerboseShortcuts() bool {
+	return s.data.ShowVerboseShortcuts
+}
+
+// SetShowVerboseShortcuts 设置快捷键显示模式
+func (s *Storage) SetShowVerboseShortcuts(show bool) {
+	s.data.ShowVerboseShortcuts = show
+	_ = s.Save()
 }
 
 // SetNodeState 设置节点展开状态

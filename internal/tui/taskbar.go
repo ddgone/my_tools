@@ -158,7 +158,7 @@ func (a *App) createTaskBarUI(ui *TermUIState, toolID string) {
 
 	taskBarFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 	taskBarFlex.SetBorder(true).
-		SetTitle(" 📋 任务 ").
+		SetTitle(a.getTitleWithShortcut("📋 任务", "Ctrl+B:隐藏, Ctrl+D:清理, Ctrl+C:取消", false)).
 		SetTitleColor(tcell.ColorOrange).
 		SetBorderColor(tcell.ColorDarkGray)
 	taskBarFlex.AddItem(taskList, 0, 1, true)
