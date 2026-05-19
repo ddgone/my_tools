@@ -57,24 +57,19 @@ func (a *App) showShortcutHelp() {
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorOrange)
 
-	// 设置一个居中的模态框
-	flex := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(textView, 32, 1, true).
-			AddItem(nil, 0, 1, false), 65, 1, true).
-		AddItem(nil, 0, 1, false)
+	frontPage, _ := a.Pages.GetFrontPage()
 
 	// 捕获按键退出
-	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyF1 || (event.Key() == tcell.KeyRune && event.Rune() == 'q') {
 			a.Pages.RemovePage("shortcuts")
+			if frontPage != "" {
+				a.Pages.SwitchToPage(frontPage)
+			}
 			return nil
 		}
 		return event
 	})
 
-	a.Pages.AddPage("shortcuts", flex, true, true)
-	a.TviewApp.SetFocus(flex)
+	a.showInModal(textView, 65, 32, "shortcuts")
 }

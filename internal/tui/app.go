@@ -517,6 +517,29 @@ func (a *App) setupUI() {
 	a.Pages.AddAndSwitchToPage("main", mainLayout, true)
 }
 
+// showInModal 将一个 Primitive 包装在带有纯色背景遮罩的居中布局中并显示
+func (a *App) showInModal(p tview.Primitive, width, height int, pageID string) {
+	// 使用纯背景色的 Grid 覆盖整个屏幕作为遮罩，彻底遮挡底层内容
+	// 注意：必须替换 Grid 默认的透明 Box（dontClear=true）为实心背景 Box
+	grid := tview.NewGrid()
+	grid.Box = tview.NewBox().SetBackgroundColor(colorBg)
+
+	if width > 0 && height > 0 {
+		// 如果指定了宽高，则使用 3x3 Grid 进行居中
+		inner := tview.NewGrid().
+			SetColumns(0, width, 0).
+			SetRows(0, height, 0).
+			AddItem(p, 1, 1, 1, 1, 0, 0, true)
+		grid.AddItem(inner, 0, 0, 1, 1, 0, 0, true)
+	} else {
+		// 如果未指定宽高（如 tview.Modal），则直接添加，让其自行处理居中
+		grid.AddItem(p, 0, 0, 1, 1, 0, 0, true)
+	}
+
+	a.Pages.AddAndSwitchToPage(pageID, grid, true)
+	a.TviewApp.SetFocus(p)
+}
+
 func (a *App) expandParents(target *tview.TreeNode) {
 	p := a.findParent(a.Tree.GetRoot(), target)
 	for p != nil && p != a.Tree.GetRoot() {
@@ -932,6 +955,7 @@ func (a *App) executeTool(t framework.Tool) {
 }
 
 func (a *App) ShowModal(title, message string) {
+	frontPage, _ := a.Pages.GetFrontPage()
 	focus := a.TviewApp.GetFocus()
 
 	// 生成一个唯一的 modal ID，防止多个弹窗覆盖同一个 page
@@ -942,8 +966,9 @@ func (a *App) ShowModal(title, message string) {
 		AddButtons([]string{"确定"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 			a.Pages.RemovePage(modalID)
-
-			// 简单的焦点恢复逻辑
+			if frontPage != "" {
+				a.Pages.SwitchToPage(frontPage)
+			}
 			if focus != nil {
 				a.TviewApp.SetFocus(focus)
 			}
@@ -953,8 +978,7 @@ func (a *App) ShowModal(title, message string) {
 		SetTitleColor(tcell.ColorWhite).
 		SetBackgroundColor(colorBgLight)
 
-	a.Pages.AddPage(modalID, modal, true, true)
-	a.TviewApp.SetFocus(modal)
+	a.showInModal(modal, 0, 0, modalID)
 }
 
 func (a *App) PromptInput(title, prompt, defaultValue string, callback func(string)) {
@@ -1000,8 +1024,7 @@ func (a *App) PromptInput(title, prompt, defaultValue string, callback func(stri
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	a.Pages.AddPage("input", form, true, true)
-	a.TviewApp.SetFocus(form)
+	a.showInModal(form, 50, 7, "input")
 }
 
 func (a *App) PromptChoice(title, prompt string, options []string, callback func(string)) {
@@ -1035,8 +1058,7 @@ func (a *App) PromptChoice(title, prompt string, options []string, callback func
 		SetTitleColor(tcell.ColorYellow).
 		SetBorderColor(tcell.ColorDarkGray)
 
-	a.Pages.AddPage("choice", form, true, true)
-	a.TviewApp.SetFocus(form)
+	a.showInModal(form, 50, 7, "choice")
 }
 
 func (a *App) showCommandPalette() {
@@ -1232,16 +1254,7 @@ func (a *App) showCommandPalette() {
 	flex.AddItem(input, 3, 1, true).
 		AddItem(tree, 0, 1, false)
 
-	// 使用一个空 Box 来做背景遮罩，使模态框居中
-	modalLayout := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(flex, 20, 1, true).              // 高度 20
-			AddItem(nil, 0, 1, false), 60, 1, true). // 宽度 60
-		AddItem(nil, 0, 1, false)
-
-	modalLayout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			a.Pages.RemovePage("palette")
 			a.Pages.SwitchToPage("main")
@@ -1251,7 +1264,7 @@ func (a *App) showCommandPalette() {
 		return event
 	})
 
-	a.Pages.AddPage("palette", modalLayout, true, true)
+	a.showInModal(flex, 80, 25, "palette")
 	a.TviewApp.SetFocus(input)
 }
 
@@ -2448,8 +2461,8 @@ func (a *App) showConfirmExitModal() {
 		SetTitle(" 🚪 退出确认 ").
 		SetTitleColor(tcell.ColorRed).
 		SetBackgroundColor(colorBgLight)
-	a.Pages.AddPage("confirm_exit_modal", modal, true, true)
-	a.TviewApp.SetFocus(modal)
+
+	a.showInModal(modal, 0, 0, "confirm_exit_modal")
 }
 
 func (a *App) toggleFavorite() {

@@ -226,16 +226,7 @@ func showImportExportModal(s *settingsTool, form *tview.Form) {
 		return event
 	})
 
-	flex := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(modal, 15, 1, true).
-			AddItem(nil, 0, 1, false), 75, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	s.app.Pages.AddPage("import_export_modal", flex, true, true)
-	s.app.TviewApp.SetFocus(modal)
+	s.app.showInModal(modal, 75, 15, "import_export_modal")
 }
 
 func (s *settingsTool) Execute(ctx framework.AppContext) {
@@ -433,16 +424,5 @@ func (s *settingsTool) Execute(ctx framework.AppContext) {
 		return event
 	})
 
-	contentLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-	contentLayout.AddItem(form, 22, 1, true)
-
-	mainFlex := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(contentLayout, 22, 1, true).
-			AddItem(nil, 0, 1, false), 80, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	s.app.Pages.AddPage(s.ID(), mainFlex, true, true)
+	s.app.Pages.AddAndSwitchToPage(s.ID(), form, true)
 }
