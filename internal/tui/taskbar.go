@@ -120,6 +120,7 @@ type TaskBarState struct {
 	Visible       bool
 	UndoTasks     []*Task
 	UndoActiveIdx int
+	ResultsViewed bool // 是否已在工具页面查看过结果
 }
 
 func (a *App) ensureTaskBar(ui *TermUIState, toolID string) (*TaskBarState, *tview.Flex) {

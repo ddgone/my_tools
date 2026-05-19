@@ -615,10 +615,99 @@ func (s *sysTerminalTool) Execute(ctx framework.AppContext) {
 	})
 }
 
+func (a *App) getToolTaskStatus(toolID string) (runningCount int, hasSuccess bool, hasFailed bool, hasUnviewed bool) {
+	bar, ok := a.TaskBars[toolID]
+	if !ok || len(bar.Tasks) == 0 {
+		return 0, false, false, false
+	}
+
+	bar.mu.Lock()
+	defer bar.mu.Unlock()
+
+	for _, t := range bar.Tasks {
+		if t.Status == StatusRunning {
+			runningCount++
+		} else if t.Status == StatusSuccess {
+			hasSuccess = true
+		} else if t.Status == StatusFailed {
+			hasFailed = true
+		}
+	}
+
+	hasUnviewed = !bar.ResultsViewed
+	return
+}
+
+func (a *App) formatToolNode(node *tview.TreeNode, t framework.Tool, baseIcon string, baseColor tcell.Color, isStatusCenter bool) {
+	runningCount, hasSuccess, hasFailed, hasUnviewed := a.getToolTaskStatus(t.ID())
+
+	label := fmt.Sprintf(" %s %s", baseIcon, t.Name())
+	color := baseColor
+
+	if isStatusCenter {
+		// 状态中心模式：整行变色，强调状态
+		if runningCount > 0 {
+			label = fmt.Sprintf(" %s %s (%d) [运行中]", baseIcon, t.Name(), runningCount)
+			color = tcell.ColorYellow
+		} else if hasUnviewed {
+			if hasFailed {
+				label = fmt.Sprintf(" %s %s [失败]", baseIcon, t.Name())
+				color = tcell.ColorRed
+			} else if hasSuccess {
+				label = fmt.Sprintf(" %s %s [完成]", baseIcon, t.Name())
+				color = tcell.ColorGreen
+			}
+		}
+	} else {
+		// 普通入口模式：保持原色（身份优先），仅添加轻量后缀
+		if runningCount > 0 {
+			label = fmt.Sprintf(" %s %s (%d) [运行中]", baseIcon, t.Name(), runningCount)
+			// 不改颜色，让它保持 Go蓝/Py绿
+		} else if hasUnviewed {
+			if hasFailed {
+				label = fmt.Sprintf(" %s %s ●", baseIcon, t.Name()) // 使用一个小圆点标识有未读错误
+			} else if hasSuccess {
+				label = fmt.Sprintf(" %s %s ●", baseIcon, t.Name()) // 使用一个小圆点标识有未读成功
+			}
+		}
+	}
+
+	node.SetText(label).SetColor(color).SetReference(t)
+}
+
 func (a *App) refreshTree() {
 	root := tview.NewTreeNode("🦎 火蜥蜴工具箱").SetColor(tcell.ColorWhite).SetSelectable(false)
 
-	// --- 0. 收藏夹 ---
+	// --- 0. 正在运行 ---
+	runningNode := tview.NewTreeNode(" 🏃 运行任务 ").
+		SetColor(tcell.ColorYellow).
+		SetSelectable(true).
+		SetExpanded(a.Store.GetNodeState("🏃 运行任务", true))
+
+	hasAnyTasks := false
+	// 我们遍历注册表，寻找所有有任务（运行中或未读）的工具
+	for _, t := range framework.Registry {
+		runningCount, _, _, hasUnviewed := a.getToolTaskStatus(t.ID())
+		if runningCount > 0 || hasUnviewed {
+			hasAnyTasks = true
+			toolColor := colorGo
+			icon := "🔧"
+			if strings.Contains(t.Category(), "Python") {
+				toolColor = colorPy
+				icon = "📄"
+			}
+			toolNode := tview.NewTreeNode("")
+			a.formatToolNode(toolNode, t, icon, toolColor, true) // 状态中心使用 true
+			runningNode.AddChild(toolNode)
+		}
+	}
+
+	if hasAnyTasks {
+		root.AddChild(runningNode)
+		root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
+	}
+
+	// --- 1. 收藏夹 ---
 	favorites := a.Store.GetFavorites()
 	favNode := tview.NewTreeNode(" ❤️ 收藏夹 ").
 		SetColor(tcell.ColorPink).
@@ -641,10 +730,8 @@ func (a *App) refreshTree() {
 					toolColor = colorPy
 					icon = "📄"
 				}
-				toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, favTool.Name())).
-					SetReference(favTool).
-					SetColor(toolColor).
-					SetSelectable(true)
+				toolNode := tview.NewTreeNode("")
+				a.formatToolNode(toolNode, favTool, icon, toolColor, false) // 非状态中心使用 false
 				favNode.AddChild(toolNode)
 			}
 		}
@@ -655,7 +742,7 @@ func (a *App) refreshTree() {
 	root.AddChild(favNode)
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
 
-	// --- 1. 最近使用 ---
+	// --- 2. 最近使用 ---
 	recentTools := a.Store.GetRecentTools()
 	recentNode := tview.NewTreeNode(" ⭐ 最近使用 ").
 		SetColor(tcell.ColorYellow).
@@ -678,6 +765,18 @@ func (a *App) refreshTree() {
 			}
 
 			if targetTool != nil {
+				// 判断工具类型给予不同的颜色
+				toolColor := colorGo
+				icon := "🔧"
+				if strings.Contains(targetTool.Category(), "Python") {
+					toolColor = colorPy
+					icon = "📄"
+				}
+
+				toolNode := tview.NewTreeNode("")
+				a.formatToolNode(toolNode, targetTool, icon, toolColor, false) // 非状态中心使用 false
+
+				// 最近使用的特殊逻辑：保留参数后缀
 				paramsStr := ""
 				if len(rt.LastParams) > 0 {
 					var keys []string
@@ -691,19 +790,8 @@ func (a *App) refreshTree() {
 					}
 					paramsStr = " [" + strings.Join(parts, ", ") + "]"
 				}
+				toolNode.SetText(toolNode.GetText() + paramsStr)
 
-				// 判断工具类型给予不同的颜色
-				toolColor := colorGo
-				icon := "🔧"
-				if strings.Contains(targetTool.Category(), "Python") {
-					toolColor = colorPy
-					icon = "📄"
-				}
-
-				toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s%s", icon, targetTool.Name(), paramsStr)).
-					SetReference(targetTool).
-					SetColor(toolColor).
-					SetSelectable(true)
 				recentNode.AddChild(toolNode)
 				count++
 			}
@@ -717,13 +805,13 @@ func (a *App) refreshTree() {
 	// 添加一个空行节点作为视觉分隔
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false))
 
-	// --- 2. 内置原生应用 ---
+	// --- 3. 内置原生应用 ---
 	nativeNode := tview.NewTreeNode(" 🚀 内置原生应用 ").
 		SetColor(tcell.ColorSalmon).
 		SetSelectable(true).
 		SetExpanded(a.Store.GetNodeState("🚀 内置原生应用", true))
 
-	// --- 3. 扩展兼容脚本 ---
+	// --- 4. 扩展兼容脚本 ---
 	scriptNode := tview.NewTreeNode(" 📜 扩展兼容脚本 ").
 		SetColor(tcell.ColorKhaki).
 		SetSelectable(true).
@@ -779,10 +867,8 @@ func (a *App) refreshTree() {
 			icon = "📄"
 			color = colorPy
 		}
-		toolNode := tview.NewTreeNode(fmt.Sprintf(" %s %s", icon, t.Name())).
-			SetReference(t).
-			SetColor(color).
-			SetSelectable(true)
+		toolNode := tview.NewTreeNode("")
+		a.formatToolNode(toolNode, t, icon, color, true) // 原始分类也作为状态中心，方便在长列表中定位
 
 		currentParent.AddChild(toolNode)
 	}
@@ -792,23 +878,21 @@ func (a *App) refreshTree() {
 	root.AddChild(scriptNode)
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
 
-	// --- 4. 终端系统 ---
+	// --- 5. 终端系统 ---
 	sysTermNode := tview.NewTreeNode(" 💻 系统与设置 ").
 		SetColor(tcell.ColorSkyblue).
 		SetSelectable(true).
 		SetExpanded(a.Store.GetNodeState("💻 系统与设置", true))
 
 	termTool := &sysTerminalTool{}
-	termItem := tview.NewTreeNode(fmt.Sprintf(" 📟 %s", termTool.Name())).
-		SetReference(termTool).
-		SetColor(tcell.ColorLightCyan).
-		SetSelectable(true)
+	termItem := tview.NewTreeNode("")
+	a.formatToolNode(termItem, termTool, "📟", tcell.ColorLightCyan, false) // 终端系统不作为状态中心
 	sysTermNode.AddChild(termItem)
 	root.AddChild(sysTermNode)
 
 	root.AddChild(tview.NewTreeNode("").SetSelectable(false)) // 空行分隔
 
-	// --- 5. 系统设置 ---
+	// --- 6. 系统设置 ---
 	setTool := &settingsTool{app: a}
 	setNode := tview.NewTreeNode(" ⚙️ 系统首选项 ").
 		SetReference(setTool).
@@ -817,7 +901,17 @@ func (a *App) refreshTree() {
 	sysTermNode.AddChild(setNode) // 添加到 💻 系统与设置 节点下
 
 	a.Tree.SetRoot(root)
-	a.Tree.SetCurrentNode(root)
+
+	// 尝试恢复之前的选择
+	if a.lastToolID != "" {
+		if found := a.findNodeByToolID(a.lastToolID); found != nil {
+			a.Tree.SetCurrentNode(found)
+		} else {
+			a.Tree.SetCurrentNode(root)
+		}
+	} else {
+		a.Tree.SetCurrentNode(root)
+	}
 
 	if a.Store.GetAutoExpandAll() {
 		root.Walk(func(node, parent *tview.TreeNode) bool {
@@ -1170,6 +1264,15 @@ func (a *App) RecordToolUsage(name, toolID string, params map[string]string) {
 func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
 	a.lastToolID = tool.ID()
+
+	// 标记结果已读
+	if bar, ok := a.TaskBars[tool.ID()]; ok {
+		bar.mu.Lock()
+		bar.ResultsViewed = true
+		bar.mu.Unlock()
+		a.refreshTree()
+	}
+
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -1422,8 +1525,11 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					barState.UndoActiveIdx = barState.ActiveIdx
 					barState.Tasks = nil
 					barState.ActiveIdx = -1
+					barState.ResultsViewed = true
 				}
 				barState.mu.Unlock()
+
+				a.refreshTree() // 清理任务后刷新树
 
 				if len(barState.UndoTasks) > 0 {
 					a.hideTaskBar(uiState, barState)
@@ -1447,11 +1553,13 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					barState.Tasks = append([]*Task(nil), barState.UndoTasks...)
 					barState.ActiveIdx = barState.UndoActiveIdx
 					barState.UndoTasks = nil
+					barState.ResultsViewed = false // 恢复的任务视为未读
 					barState.mu.Unlock()
 
 					a.showTaskBar(uiState, barState)
 					a.refreshTaskList(uiState, barState)
 					rebuildFocusables()
+					a.refreshTree()
 
 					if barState.ActiveIdx >= 0 && barState.ActiveIdx < len(barState.Tasks) {
 						uiState.ShownTask = barState.Tasks[barState.ActiveIdx]
@@ -1547,9 +1655,12 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 			barState.mu.Lock()
 			barState.Tasks = append(barState.Tasks, task)
 			barState.ActiveIdx = len(barState.Tasks) - 1
+			barState.ResultsViewed = true // 在工具页面内执行，视为已读
 			a.refreshTaskList(uiState, barState)
 			visible := barState.Visible
 			barState.mu.Unlock()
+
+			a.refreshTree()
 
 			if !visible {
 				a.showTaskBar(uiState, barState)
@@ -1637,10 +1748,18 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 					}
 
 					barState.mu.Lock()
+					frontPage, _ := a.Pages.GetFrontPage()
+					isCurrentToolPage := frontPage == "term_"+tool.ID()
+					if !isCurrentToolPage {
+						barState.ResultsViewed = false
+					} else {
+						barState.ResultsViewed = true
+					}
 					a.refreshTaskList(uiState, barState)
 					barState.mu.Unlock()
 
 					a.taskFinished(uiState)
+					a.refreshTree()
 					outputView.ScrollToEnd()
 					a.maybeNotifyTaskComplete(tool.ID(), cmdText, finalStatus, task)
 				})
@@ -1660,6 +1779,15 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
 	pageID := "term_" + tool.ID()
 	a.lastToolID = tool.ID()
+
+	// 标记结果已读
+	if bar, ok := a.TaskBars[tool.ID()]; ok {
+		bar.mu.Lock()
+		bar.ResultsViewed = true
+		bar.mu.Unlock()
+		a.refreshTree()
+	}
+
 	if ui, ok := a.TermUI[tool.ID()]; ok {
 		a.Pages.SwitchToPage(pageID)
 		a.TviewApp.SetFocus(ui.Input)
@@ -2035,8 +2163,11 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					barState.UndoActiveIdx = barState.ActiveIdx
 					barState.Tasks = nil
 					barState.ActiveIdx = -1
+					barState.ResultsViewed = true
 				}
 				barState.mu.Unlock()
+
+				a.refreshTree() // 清理任务后刷新树
 
 				if len(barState.UndoTasks) > 0 {
 					a.hideTaskBar(uiState, barState)
@@ -2060,11 +2191,13 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					barState.Tasks = append([]*Task(nil), barState.UndoTasks...)
 					barState.ActiveIdx = barState.UndoActiveIdx
 					barState.UndoTasks = nil
+					barState.ResultsViewed = false // 恢复的任务视为未读
 					barState.mu.Unlock()
 
 					a.showTaskBar(uiState, barState)
 					a.refreshTaskList(uiState, barState)
 					rebuildFocusables()
+					a.refreshTree()
 
 					if barState.ActiveIdx >= 0 && barState.ActiveIdx < len(barState.Tasks) {
 						uiState.ShownTask = barState.Tasks[barState.ActiveIdx]
@@ -2170,9 +2303,12 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 			barState.mu.Lock()
 			barState.Tasks = append(barState.Tasks, task)
 			barState.ActiveIdx = len(barState.Tasks) - 1
+			barState.ResultsViewed = true // 在工具页面内执行，视为已读
 			a.refreshTaskList(uiState, barState)
 			visible := barState.Visible
 			barState.mu.Unlock()
+
+			a.refreshTree()
 
 			if !visible {
 				a.showTaskBar(uiState, barState)
@@ -2261,10 +2397,18 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 					}
 
 					barState.mu.Lock()
+					frontPage, _ := a.Pages.GetFrontPage()
+					isCurrentToolPage := frontPage == "term_"+tool.ID()
+					if !isCurrentToolPage {
+						barState.ResultsViewed = false
+					} else {
+						barState.ResultsViewed = true
+					}
 					a.refreshTaskList(uiState, barState)
 					barState.mu.Unlock()
 
 					a.taskFinished(uiState)
+					a.refreshTree()
 					outputView.ScrollToEnd()
 					a.maybeNotifyTaskComplete(tool.ID(), cmdText, finalStatus, task)
 				})
