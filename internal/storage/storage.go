@@ -25,6 +25,7 @@ type UserData struct {
 	DefaultPythonPath    string                         `json:"default_python_path"`
 	AutoWordWrap         bool                           `json:"auto_word_wrap"`
 	AutoExpandAll        bool                           `json:"auto_expand_all"`
+	BGMEnabled           bool                           `json:"bgm_enabled"`
 	Favorites            []string                       `json:"favorites"`
 }
 
@@ -197,6 +198,10 @@ func (s *Storage) ClearNodeStates() {
 	_ = s.Save()
 }
 
+func (s *Storage) Reset() error {
+	return os.Remove(s.dataFile)
+}
+
 func (s *Storage) GetLogExportDir() string {
 	return s.data.LogExportDir
 }
@@ -298,4 +303,13 @@ func (s *Storage) IsFavorite(toolID string) bool {
 
 func (s *Storage) RawData() *UserData {
 	return s.data
+}
+
+func (s *Storage) GetBGMEnabled() bool {
+	return s.data.BGMEnabled
+}
+
+func (s *Storage) SetBGMEnabled(enabled bool) {
+	s.data.BGMEnabled = enabled
+	_ = s.Save()
 }

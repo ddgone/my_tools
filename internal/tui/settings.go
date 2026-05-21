@@ -3,6 +3,8 @@ package tui
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ type settingsSnapshot struct {
 	DefaultPythonPath    string `json:"default_python_path"`
 	AutoWordWrap         bool   `json:"auto_word_wrap"`
 	AutoExpandAll        bool   `json:"auto_expand_all"`
+	BGMEnabled           bool   `json:"bgm_enabled"`
 }
 
 func readSettingsFromForm(s *settingsTool, form *tview.Form) settingsSnapshot {
@@ -82,6 +85,10 @@ func readSettingsFromForm(s *settingsTool, form *tview.Form) settingsSnapshot {
 	idx, _ = dd.GetCurrentOption()
 	snap.AutoExpandAll = idx == 1
 
+	dd = form.GetFormItemByLabel("8bit背景音乐(实验性)").(*tview.DropDown)
+	idx, _ = dd.GetCurrentOption()
+	snap.BGMEnabled = idx == 1
+
 	return snap
 }
 
@@ -94,6 +101,18 @@ func applySettingsToStore(s *settingsTool, snap settingsSnapshot) {
 	s.app.Store.SetDefaultPythonPath(snap.DefaultPythonPath)
 	s.app.Store.SetAutoWordWrap(snap.AutoWordWrap)
 	s.app.Store.SetAutoExpandAll(snap.AutoExpandAll)
+	s.app.Store.SetBGMEnabled(snap.BGMEnabled)
+}
+
+const configPrefix = "MT:!"
+
+func decodeConfigString(text string) ([]byte, error) {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, configPrefix) {
+		return nil, fmt.Errorf("配置字符串缺少标识头 %s，请确认内容完整", configPrefix)
+	}
+	payload := strings.TrimPrefix(text, configPrefix)
+	return base64.StdEncoding.DecodeString(payload)
 }
 
 func showImportExportModal(s *settingsTool, form *tview.Form) {
@@ -105,36 +124,79 @@ func showImportExportModal(s *settingsTool, form *tview.Form) {
 		SetButtonTextColor(tcell.ColorWhite)
 
 	modal.SetBorder(true).
-		SetTitle(" 📦 导入/导出配置 [gray](ESC: 取消)[-] ").
+		SetTitle(" 📦 导入/导出配置 [gray](ESC: 取消, Tab: 切换焦点)[-] ").
 		SetTitleColor(tcell.ColorSilver).
 		SetBorderColor(tcell.ColorDarkGray)
 
 	snap := readSettingsFromForm(s, form)
 
 	b, _ := json.Marshal(snap)
-	encoded := base64.StdEncoding.EncodeToString(b)
+	encoded := configPrefix + base64.StdEncoding.EncodeToString(b)
 
-	inputField := tview.NewInputField().
+	configArea := tview.NewTextArea().
+		SetText(encoded, false).
 		SetLabel("配置数据: ").
-		SetText(encoded).
-		SetFieldWidth(50)
+		SetSize(10, 0)
+	configArea.SetBackgroundColor(colorBgDark)
+	configArea.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
 
-	modal.AddFormItem(inputField)
+	configArea.SetBorder(true).
+		SetTitle(" [white]↕↔ 可滚动查看/编辑完整配置字符串 [-] ").
+		SetTitleColor(tcell.ColorSilver).
+		SetBorderColor(tcell.ColorDarkGray)
+
+	modal.AddFormItem(configArea)
 
 	modal.AddButton("复制到剪贴板", func() {
-		text := inputField.GetText()
-		if err := s.app.copyToClipboard(text); err == nil {
-			s.app.ShowModal("复制成功", "配置已复制到剪贴板！\n你可以将它发送给其他人。")
+		text := configArea.GetText()
+		osc52, err := s.app.copyToClipboard(text)
+		if err == nil {
+			if osc52 {
+				s.app.ShowModal("已通过终端协议发送", "已使用 OSC52 协议将配置提交至本地终端\n请确认你的终端软件(如 iTerm2 / WezTerm)已开启剪贴板访问权限\n你可以将它发送给其他人。")
+			} else {
+				s.app.ShowModal("复制成功", "配置已复制到剪贴板！\n你可以将它发送给其他人。")
+			}
 		} else {
 			s.app.ShowModal("复制失败", err.Error())
 		}
 	})
 
-	modal.AddButton("保存并应用", func() {
-		text := strings.TrimSpace(inputField.GetText())
-		decoded, err := base64.StdEncoding.DecodeString(text)
+	modal.AddButton("从剪贴板导入", func() {
+		if runtime.GOOS == "linux" {
+			configArea.SetText("", false)
+			s.app.Pages.SendToFront("import_export_modal")
+			s.app.TviewApp.SetFocus(configArea)
+			s.app.ShowModal("导入提示", "Linux 远程连接暂不支持一键导入剪贴板内容。\n\n请在下方编辑区直接 Ctrl+V 粘贴配置字符串，\n然后点击「保存并应用」。")
+			return
+		}
+		imported, osc52, err := s.app.pasteFromClipboard()
 		if err != nil {
-			s.app.ShowModal("格式错误", "无法解析配置字符串，请确保粘贴了正确的内容。")
+			configArea.SetText("", false)
+			if osc52 {
+				s.app.ShowModal("导入失败", err.Error())
+			} else {
+				s.app.ShowModal("读取失败", fmt.Sprintf("无法读取剪贴板:\n%v", err))
+			}
+			return
+		}
+		imported = strings.TrimSpace(imported)
+		if imported == "" {
+			s.app.ShowModal("读取提示", "剪贴板为空或内容无效。")
+			return
+		}
+		if _, err := decodeConfigString(imported); err != nil {
+			s.app.ShowModal("格式错误", err.Error())
+			return
+		}
+		configArea.SetText(imported, false)
+		s.app.Pages.SendToFront("import_export_modal")
+	})
+
+	modal.AddButton("保存并应用", func() {
+		text := configArea.GetText()
+		decoded, err := decodeConfigString(text)
+		if err != nil {
+			s.app.ShowModal("格式错误", err.Error())
 			return
 		}
 		var newSettings settingsSnapshot
@@ -199,6 +261,16 @@ func showImportExportModal(s *settingsTool, form *tview.Form) {
 			dd.SetCurrentOption(0)
 		}
 
+		dd = form.GetFormItemByLabel("8bit背景音乐").(*tview.DropDown)
+		if newSettings.BGMEnabled {
+			dd.SetCurrentOption(1)
+		} else {
+			dd.SetCurrentOption(0)
+		}
+
+		applySettingsToStore(s, readSettingsFromForm(s, form))
+		s.app.syncBGM()
+
 		s.app.Pages.RemovePage("import_export_modal")
 		s.app.Pages.SwitchToPage(s.ID())
 		s.app.TviewApp.SetFocus(form)
@@ -226,7 +298,7 @@ func showImportExportModal(s *settingsTool, form *tview.Form) {
 		return event
 	})
 
-	s.app.showInModal(modal, 75, 15, "import_export_modal")
+	s.app.showInModal(modal, 82, 18, "import_export_modal")
 }
 
 func (s *settingsTool) Execute(ctx framework.AppContext) {
@@ -239,6 +311,7 @@ func (s *settingsTool) Execute(ctx framework.AppContext) {
 		DefaultPythonPath:    s.app.Store.GetDefaultPythonPath(),
 		AutoWordWrap:         s.app.Store.GetAutoWordWrap(),
 		AutoExpandAll:        s.app.Store.GetAutoExpandAll(),
+		BGMEnabled:           s.app.Store.GetBGMEnabled(),
 	}
 
 	form := tview.NewForm().
@@ -348,9 +421,19 @@ func (s *settingsTool) Execute(ctx framework.AppContext) {
 		s.app.Store.SetAutoExpandAll(optionIndex == 1)
 	})
 
+	bgmIdx := 0
+	if initial.BGMEnabled {
+		bgmIdx = 1
+	}
+	form.AddDropDown("8bit背景音乐", onOffOptions, bgmIdx, func(option string, optionIndex int) {
+		s.app.Store.SetBGMEnabled(optionIndex == 1)
+		s.app.syncBGM()
+	})
+
 	for _, label := range []string{
 		"快捷键提示模式", "最近使用显示数量", "命令历史保留数量",
 		"退出前确认", "终端输出自动换行", "启动时展开所有分类",
+		"8bit背景音乐",
 	} {
 		if dd, ok := form.GetFormItemByLabel(label).(*tview.DropDown); ok {
 			dd.SetFieldWidth(45)
@@ -379,6 +462,34 @@ func (s *settingsTool) Execute(ctx framework.AppContext) {
 		}()
 	})
 
+	form.AddButton("初始化应用", func() {
+		modal := tview.NewModal().
+			SetText("⚠️  确定要初始化应用吗？\n\n此操作将:\n  • 重置所有设置为默认值\n  • 清除所有历史记录和使用记录\n  • 清除所有收藏\n\n应用将自动关闭，请重新启动。").
+			AddButtons([]string{"确定初始化", "取消"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				s.app.Pages.RemovePage("reset_confirm_modal")
+				s.app.Pages.SwitchToPage(s.ID())
+				s.app.TviewApp.SetFocus(form)
+				if buttonLabel == "确定初始化" {
+					if err := s.app.Store.Reset(); err != nil {
+						s.app.ShowModal("重置失败", fmt.Sprintf("无法清除数据:\n%v", err))
+						return
+					}
+					s.app.ShowModal("初始化完成", "数据已清除，应用即将退出。\n请重新启动火蜥蜴工具箱。")
+					go func() {
+						time.Sleep(1500 * time.Millisecond)
+						s.app.TviewApp.Stop()
+					}()
+				}
+			})
+		modal.SetBorder(true).
+			SetTitle(" 🔄 初始化应用 ").
+			SetTitleColor(tcell.ColorRed).
+			SetBackgroundColor(colorBgLight)
+
+		s.app.showInModal(modal, 55, 14, "reset_confirm_modal")
+	})
+
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		focus := s.app.TviewApp.GetFocus()
 		if _, isList := focus.(*tview.List); isList {
@@ -399,6 +510,7 @@ func (s *settingsTool) Execute(ctx framework.AppContext) {
 
 		if event.Key() == tcell.KeyEscape {
 			applySettingsToStore(s, initial)
+			s.app.syncBGM()
 			s.app.Pages.RemovePage(s.ID())
 			s.app.setupUI()
 			s.app.UpdateAllPanelTitles()

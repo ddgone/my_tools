@@ -95,6 +95,7 @@ type App struct {
 	TermUI     map[string]*TermUIState
 	TaskBars   map[string]*TaskBarState
 	lastToolID string
+	bgm        *bgmPlayer
 }
 
 // 删掉之前的硬编码字符串
@@ -303,6 +304,8 @@ func NewApp(store *storage.Storage) *App {
 	}
 
 	a.setupUI()
+
+	a.syncBGM()
 
 	// 全局按键
 	a.TviewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -1606,8 +1609,13 @@ func (a *App) ShowTerminal(tool framework.Tool, title string, usage string, run 
 		}
 		if event.Key() == tcell.KeyCtrlA {
 			cmdText := inputField.GetText()
-			if err := a.copyToClipboard(cmdText); err == nil {
-				a.ShowModal("复制成功", "命令已复制到剪贴板！")
+			osc52, err := a.copyToClipboard(cmdText)
+			if err == nil {
+				if osc52 {
+					a.ShowModal("已通过终端协议发送", "已使用 OSC52 协议将命令提交至本地终端\n请确认你的终端软件(如 iTerm2 / WezTerm)已开启剪贴板访问权限")
+				} else {
+					a.ShowModal("复制成功", "命令已复制到剪贴板！")
+				}
 			} else {
 				a.ShowModal("复制失败", err.Error())
 			}
@@ -2244,8 +2252,13 @@ func (a *App) ShowPythonTerminal(tool framework.Tool, title string, usage string
 		}
 		if event.Key() == tcell.KeyCtrlA {
 			cmdText := inputField.GetText()
-			if err := a.copyToClipboard(cmdText); err == nil {
-				a.ShowModal("复制成功", "命令已复制到剪贴板！")
+			osc52, err := a.copyToClipboard(cmdText)
+			if err == nil {
+				if osc52 {
+					a.ShowModal("已通过终端协议发送", "已使用 OSC52 协议将命令提交至本地终端\n请确认你的终端软件(如 iTerm2 / WezTerm)已开启剪贴板访问权限")
+				} else {
+					a.ShowModal("复制成功", "命令已复制到剪贴板！")
+				}
 			} else {
 				a.ShowModal("复制失败", err.Error())
 			}
@@ -2524,19 +2537,79 @@ func (a *App) maybeNotifyTaskComplete(toolID, cmdText string, status TaskStatus,
 	}
 }
 
-func (a *App) copyToClipboard(text string) error {
-	err := clipboard.WriteAll(text)
+func (a *App) copyToClipboard(text string) (osc52Used bool, err error) {
+	err = clipboard.WriteAll(text)
 	if err != nil {
 		errStr := err.Error()
-		if runtime.GOOS == "linux" && (strings.Contains(errStr, "No clipboard") || strings.Contains(errStr, "exit status")) {
-			// 尝试使用 OSC 52 终端转义序列通过 SSH 直接向本地客户端发送剪贴板内容
+		if strings.Contains(errStr, "No clipboard") || strings.Contains(errStr, "exit status") {
 			b64 := base64.StdEncoding.EncodeToString([]byte(text))
 			os.Stdout.WriteString(fmt.Sprintf("\x1b]52;c;%s\x07", b64))
-			return fmt.Errorf("服务器无剪贴板。\n已尝试使用 OSC52 终端指令发送至本地剪贴板。\n💡 注: 需确保你的终端软件(如iTerm/Windows Terminal)已开启'允许终端访问剪贴板'功能。")
+			return true, nil
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return false, nil
+}
+
+func (a *App) pasteFromClipboard() (text string, osc52Used bool, err error) {
+	text, err = clipboard.ReadAll()
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "No clipboard") || strings.Contains(errStr, "exit status") || strings.Contains(errStr, "exec:") {
+			return a.tryOSC52Read()
+		}
+		return "", false, err
+	}
+	return text, false, nil
+}
+
+func (a *App) tryOSC52Read() (text string, osc52Used bool, err error) {
+	os.Stdout.WriteString("\x1b]52;c;?\x07")
+
+	result := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		f, openErr := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+		if openErr != nil {
+			f = os.Stdin
+		}
+		defer f.Close()
+
+		var buf [4096]byte
+		n, readErr := f.Read(buf[:])
+		if readErr != nil {
+			errCh <- readErr
+			return
+		}
+
+		s := string(buf[:n])
+		if idx := strings.Index(s, "\x1b]52;c;"); idx >= 0 {
+			rest := s[idx+len("\x1b]52;c;"):]
+			if endIdx := strings.IndexByte(rest, '\x07'); endIdx >= 0 {
+				result <- rest[:endIdx]
+				return
+			}
+			if endIdx := strings.Index(rest, "\x1b\\"); endIdx >= 0 {
+				result <- rest[:endIdx]
+				return
+			}
+		}
+		errCh <- fmt.Errorf("未收到有效的 OSC52 响应")
+	}()
+
+	select {
+	case b64 := <-result:
+		decoded, decErr := base64.StdEncoding.DecodeString(b64)
+		if decErr != nil {
+			return "", true, fmt.Errorf("OSC52 返回数据解码失败: %v\n请将焦点移到配置编辑区后按 Ctrl+V 手动粘贴", decErr)
+		}
+		return string(decoded), true, nil
+	case readErr := <-errCh:
+		return "", true, fmt.Errorf("OSC52 查询失败: %v\n请将焦点移到配置编辑区后按 Ctrl+V 手动粘贴", readErr)
+	case <-time.After(2 * time.Second):
+		return "", true, fmt.Errorf("OSC52 查询超时，终端可能不支持此功能\n请将焦点移到配置编辑区后按 Ctrl+V 手动粘贴")
+	}
 }
 
 // 导出日志功能
@@ -2564,9 +2637,30 @@ func (a *App) exportLog(toolName, content string) {
 		return
 	}
 
-	if err := a.copyToClipboard(content); err != nil {
-		a.ShowModal("导出成功 (剪贴板不可用)", fmt.Sprintf("日志已保存至:\n%s\n\n⚠️ 注意: %v", exportPath, err))
+	osc52, err := a.copyToClipboard(content)
+	if err != nil {
+		a.ShowModal("导出成功 (剪贴板不可用)", fmt.Sprintf("日志已保存至:\n%s\n\n⚠️ 复制失败: %v", exportPath, err))
+	} else if osc52 {
+		a.ShowModal("导出成功", fmt.Sprintf("日志已保存至:\n%s\n\n✅ 已通过 OSC52 协议发送至本地终端\n请确认终端已开启剪贴板访问权限", exportPath))
 	} else {
 		a.ShowModal("导出成功", fmt.Sprintf("日志已保存至:\n%s\n\n✅ 已自动复制到剪贴板！", exportPath))
+	}
+}
+
+func (a *App) syncBGM() {
+	enabled := a.Store.GetBGMEnabled()
+	if enabled {
+		if a.bgm == nil {
+			p, err := newBGMPlayer()
+			if err != nil {
+				return
+			}
+			a.bgm = p
+		}
+	} else {
+		if a.bgm != nil {
+			a.bgm.stop()
+			a.bgm = nil
+		}
 	}
 }
