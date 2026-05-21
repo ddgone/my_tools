@@ -78,4 +78,10 @@ func main() {
 	} else {
 		fmt.Println("提示: 你可以随时运行 `go run scripts/build.go` 来重新编译。")
 	}
+
+	fmt.Println("\n⚠️ [注意] Linux 平台背景音乐(BGM)说明:")
+	fmt.Println("  当前通过交叉编译生成的 Linux 版本是不带音频支持的（静音版）。")
+	fmt.Println("  如果你需要在 Linux 下听到 BGM，必须在 Linux 真机上进行原生编译：")
+	fmt.Println("    1. 安装 ALSA 依赖: sudo apt-get install libasound2-dev")
+	fmt.Println("    2. 原生编译: CGO_ENABLED=1 go build -o my_tools_linux .")
 }
