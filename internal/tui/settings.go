@@ -85,7 +85,7 @@ func readSettingsFromForm(s *settingsTool, form *tview.Form) settingsSnapshot {
 	idx, _ = dd.GetCurrentOption()
 	snap.AutoExpandAll = idx == 1
 
-	dd = form.GetFormItemByLabel("8bit背景音乐(实验性)").(*tview.DropDown)
+	dd = form.GetFormItemByLabel("8bit背景音乐").(*tview.DropDown)
 	idx, _ = dd.GetCurrentOption()
 	snap.BGMEnabled = idx == 1
 

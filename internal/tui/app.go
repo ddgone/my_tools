@@ -2649,6 +2649,7 @@ func (a *App) exportLog(toolName, content string) {
 
 func (a *App) syncBGM() {
 	enabled := a.Store.GetBGMEnabled()
+
 	if enabled {
 		if a.bgm == nil {
 			p, err := newBGMPlayer()
