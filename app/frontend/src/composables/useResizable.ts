@@ -1,0 +1,103 @@
+import { onUnmounted, ref, watch, type Ref } from 'vue'
+
+export type Axis = 'x' | 'y'
+
+interface ResizableOptions {
+  axis: Axis
+  min: number
+  max: number
+  initial: number
+  reverse?: boolean
+  storageKey?: string
+}
+
+function loadSize(key: string, fallback: number): number {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw !== null) {
+      const parsed = Number(raw)
+      if (!Number.isNaN(parsed)) return parsed
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return fallback
+}
+
+function saveSize(key: string, value: number) {
+  try {
+    localStorage.setItem(key, String(value))
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+export function useResizable(options: ResizableOptions): {
+  size: Ref<number>
+  dividerProps: {
+    onPointerdown: (e: PointerEvent) => void
+    class: string
+    style: Record<string, string>
+    'data-dir': string
+  }
+} {
+  const initialValue = options.storageKey
+    ? loadSize(options.storageKey, options.initial)
+    : options.initial
+
+  const clamped = (v: number) => Math.max(options.min, Math.min(options.max, v))
+
+  const size = ref(clamped(initialValue))
+  const dragging = ref(false)
+
+  if (options.storageKey) {
+    watch(size, (v) => saveSize(options.storageKey!, v))
+  }
+
+  function onPointerdown(e: PointerEvent) {
+    e.preventDefault()
+    dragging.value = true
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    document.body.style.userSelect = 'none'
+  }
+
+  function onPointermove(e: PointerEvent) {
+    if (!dragging.value) return
+
+    const delta = options.axis === 'x' ? e.movementX : e.movementY
+    const adjusted = options.reverse ? -delta : delta
+    size.value = clamped(size.value + adjusted)
+  }
+
+  function onPointerup() {
+    dragging.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
+
+  document.addEventListener('pointermove', onPointermove)
+  document.addEventListener('pointerup', onPointerup)
+
+  onUnmounted(() => {
+    document.removeEventListener('pointermove', onPointermove)
+    document.removeEventListener('pointerup', onPointerup)
+  })
+
+  const dividerClass = options.axis === 'x'
+    ? 'w-1 cursor-col-resize hover:bg-dracula-cyan/30 active:bg-dracula-cyan/50 shrink-0 transition-colors'
+    : 'h-1 cursor-row-resize hover:bg-dracula-cyan/30 active:bg-dracula-cyan/50 shrink-0 transition-colors'
+
+  const dividerStyle: Record<string, string> = options.axis === 'x'
+    ? { width: '4px' }
+    : { height: '4px' }
+
+  return {
+    size,
+    dividerProps: {
+      onPointerdown,
+      class: dividerClass,
+      style: dividerStyle,
+      'data-dir': options.axis,
+    },
+  }
+}

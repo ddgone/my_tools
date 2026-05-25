@@ -217,31 +217,36 @@ Python 工具不优先打成二进制，默认按脚本交付，这样安装目�
 
 ```text
 /
-├─ app/
-│  └─ desktop/                # Wails 桌面宿主
-├─ catalog/
-│  └─ builtin/               # 内置工具清单与加载器
-├─ core/
-│  └─ toolspec/              # 工具规格核心类型
-├─ runtime/                  # 远程执行等能力的预留边界
-├─ builder/                  # 单工具构建与导出的预留边界
-├─ toolkits/                 # 工具实现资产的预留边界
+├─ app/                      # Wails 桌面宿主
+│  ├─ frontend/              # Vue 3 前端
+│  └─ internal/              # 后端内部包（ssh, runtime, builder）
+├─ libs/                     # 共享 Go 库
+│  ├─ catalog/
+│  │  └─ builtin/           # 内置工具清单与加载器
+│  ├─ core/
+│  │  └─ toolspec/          # 工具规格核心类型
+│  └─ framework/            # 旧工具框架
+├─ tools/                    # 工具实现资产
+│  ├─ go_tools/
+│  └─ python_tools/
 ├─ docs/                     # 文档
-├─ go.mod
-└─ go.work
+├─ scripts/
+│  └─ build.go
+├─ go.work
+└─ go.work.sum
 ```
 
 当前最重要的代码入口：
 
-- `app/desktop/main.go`
-- `app/desktop/app.go`
-- `app/desktop/execution.go`
-- `app/desktop/legacy_tools.go`
-- `app/desktop/frontend/src/views/HomeView.vue`
-- `app/desktop/frontend/src/views/ExecuteView.vue`
-- `core/toolspec/types.go`
-- `catalog/builtin/service.go`
-- `catalog/builtin/manifests/*.yaml`
+- `app/main.go`
+- `app/app.go`
+- `app/execution.go`
+- `app/legacy.go`
+- `app/frontend/src/views/HomeView.vue`
+- `app/frontend/src/views/ExecuteView.vue`
+- `libs/core/toolspec/types.go`
+- `libs/catalog/builtin/service.go`
+- `libs/catalog/builtin/manifests/*.yaml`
 
 ---
 
@@ -317,25 +322,25 @@ Python 工具不优先打成二进制，默认按脚本交付，这样安装目�
 当前桌面程序正式产物位置：
 
 ```text
-app/desktop/build/bin/fire-salamander-desktop.exe
+build/bin/fire-salamander-desktop.app
 ```
 
 当前唯一正确的构建方式：
 
-```powershell
-cd app/desktop
-& "$env:USERPROFILE\go\bin\wails.exe" build -clean
+```bash
+cd app
+wails build -clean
 ```
 
 或在仓库根目录执行：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
+```bash
+go run scripts/build.go
 ```
 
 注意：
 
-- 不要在 `app/desktop` 目录直接用 `go build ./...` 生成桌面程序
+- 不要在 `app` 目录直接用 `go build ./...` 生成桌面程序
 - 那样会生成一个看起来像正式产物、但其实不能正确运行的误产物
 
 ---

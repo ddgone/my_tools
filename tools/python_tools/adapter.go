@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"my_tools/pkg/framework"
+	"my_tools/libs/framework"
 )
 
 //go:embed scripts/*.py

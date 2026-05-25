@@ -1,77 +1,112 @@
 # 🦎 火蜥蜴工具箱 (Fire Salamander Tools)
 
-这是一个基于 Go 语言和 `tview` 开发的现代化、跨平台终端图形界面 (TUI) 工具箱。它提供了一个极简的插件化架构，允许开发者快速接入独立的命令行工具，并为它们自动生成统一、美观的带记忆功能的终端式交互界面。
+桌面工具平台。一个 IDE/Postman 风格的单页工作台，统一管理 Go/Python 工具的本地执行、远程执行和导出分发。
 
-## ✨ 核心特性
+基于 **Wails v2 + Vue 3 + Go**。
 
-- **纯 Go 实现，完美跨平台**：没有任何 CGO 依赖，所有 UI、配置甚至外部 Python 脚本均可打包进单个可执行文件中，支持单文件编译和分发（Windows/Linux/macOS）。
-- **内嵌 Python 支持**：支持无缝执行 Python 脚本，通过 `//go:embed` 技术将其打入二进制文件（目标机需安装 Python 环境）。
-- **极简插件化架构**：工具代码与 UI 代码完全解耦。只需实现一个极简的接口并注册，TUI 就会自动生成菜单和运行界面。
-- **现代化的 TUI 体验**：
-  - 炫酷的黑/绿/青/黄极客配色。
-  - 支持键盘全键盘导航（方向键、Tab焦点切换、Enter执行）。
-  - **终端式 (Terminal-like) 执行面板**：上方显示文档，中间显示实时流式日志，下方提供支持长参数的命令行输入框，右侧自带**多任务管理侧边栏**。
-  - **强大的快捷操作**：全局搜索(`Ctrl+P`)、面板最大化(`Ctrl+E`)、进程打断(`Ctrl+C`)、日志导出(`Ctrl+S`)及一键复制(`Ctrl+A`)。
-- **智能记录与记忆**：
-  - “最近使用”与“收藏夹”面板自动置顶，随时收藏(`Ctrl+F`)高频工具。
-  - **会话恢复**：从执行页退回主页后，按 `Ctrl+R` 一键恢复上一次的工作会话。
-  - 自动记忆每个工具的历史输入参数，按 `↑` / `↓` 快速翻阅历史命令。
-  - 智能的参数解析机制：完美支持包含空格的带引号路径（例如 `-input "C:\My Files"`）。
+## 项目结构
 
----
-
-## 🚀 快速开始
-
-### 编译 (跨平台)
-
-本项目提供了一个极其方便的全平台编译脚本。无论你在 Windows 还是 macOS/Linux 下，只要安装了 Go，即可一键编译所有平台的版本：
-
-```bash
-# 运行构建脚本
-go run scripts/build.go
+```
+my_tools/
+├── app/                   # Wails 桌面应用（Go module: fire-salamander-desktop）
+│   ├── frontend/          # Vue 3 + Vite + Naive UI + Tailwind CSS
+│   ├── internal/          # 后端内部包 (ssh/runtime/builder)
+│   ├── main.go            # Wails 入口
+│   ├── app.go             # App struct, startup, bootstrap API
+│   ├── execution.go       # 本地/远程执行引擎 + 任务事件
+│   ├── dialog.go          # Wails 原生文件对话框
+│   ├── legacy.go          # 旧工具闭包桥接
+│   ├── go.mod             # Go module
+│   └── wails.json         # Wails 配置
+├── libs/                  # 共享 Go 库
+│   ├── core/toolspec/     # 工具规格核心类型
+│   ├── catalog/builtin/   # 内置工具清单 (YAML manifests)
+│   └── framework/         # 旧工具框架（桥接用）
+├── tools/                 # 工具实现
+│   ├── go_tools/          # Go 原生工具 (3个)
+│   └── python_tools/      # Python 脚本工具
+├── docs/                  # 架构文档 + ADR
+│   ├── ARCHITECTURE.md
+│   ├── PROJECT_OVERVIEW.md
+│   ├── CONTEXT.md
+│   └── adr/ (13篇)
+├── scripts/
+│   └── build.go           # 跨平台构建脚本
+└── go.work                # Go workspace (use . ./app)
 ```
 
-编译成功后，所有可执行文件都会生成在 `build/` 目录下，如 `my_tools_windows_amd64.exe` 等。
+## 快速开始
 
-## 🛠️ 如何添加自己的 Python 脚本？
+### 构建桌面应用
 
-由于工具箱内置了 `python_tools` 代理适配器，你只需将任意 `.py` 文件放入 `tools/python_tools/scripts/` 目录，重新编译即可：
+```bash
+# 一键完整构建
+go run scripts/build.go
 
-1. 把 `your_script.py` 放入 `tools/python_tools/scripts/`。
-2. 运行 `go run scripts/build.go` 重新编译。
-3. 启动工具箱，在侧边栏的 **Python 脚本** 分类下，就会自动出现并可以运行你的 Python 工具！
+# 或直接 Wails 构建
+cd app && "$(go env GOPATH)/bin/wails" build -clean
 
-### 操作指南
+# 开发模式
+cd app && "$(go env GOPATH)/bin/wails" dev
+```
 
-1. 启动工具箱后，使用 `↑` / `↓` 键在树形菜单中移动。
-2. 遇到文件夹（📁），按 `Enter` 键展开或折叠。
-3. 选中具体工具（🔧 或 🐍），按 `Enter` 进入工具的**终端执行面板**。
-   - **收藏与恢复**：在工具上按 `Ctrl+F` 可切换收藏状态；在主菜单按 `Ctrl+R` 可快速恢复上次退出时的工具执行页。
-4. **全局快捷键**：
-   - 按 `F1` 呼出全局快捷键速查面板（包含各个面板的高级快捷键）。
-   - 按 `Ctrl+P` 或 `/` 呼出全局命令调色板，快速搜索工具。
-   - 在任何长耗时任务执行中，按 `Ctrl+C` 可安全打断并停止任务，而不影响主程序。
-5. 在终端执行面板中：
-   - 使用 `Tab` 键在“说明”、“输出”、“任务栏”和“输入框”之间切换焦点。
-   - 在下方输入框键入命令参数，按 `Enter` 执行（支持后台同时运行多个任务，右侧任务栏可管理任务状态）。
-   - 按 `Ctrl+B` 隐藏/显示多任务栏；按 `Ctrl+L` 一键清空输出与已完成任务；按 `Ctrl+U` 撤销清空。
-   - 执行完毕后按 `ESC` 键退回主菜单（支持状态记忆，退回不丢日志，后台任务完成后将跨页面弹窗通知）。
-6. **内置系统终端**：首页 `💻 系统与设置` -> `📟 命令行 Shell`，提供了一个极速响应的跨平台内嵌系统终端。
-7. **系统设置**：在首页 `💻 系统与设置` -> `⚙️ 系统首选项`，可配置极简模式、默认 Python 路径、日志导出目录、最近使用数量、命令历史数量、自动换行等 7 项全局偏好。
-8. 在主菜单且无输入框聚焦时按 `q` 键退出程序（可在设置中开启退出确认对话框）。
+产物位置：`build/bin/`（构建脚本）或 `app/build/bin/`（直接 wails build）
 
----
+### 构建单平台/全平台
 
-## 📦 内置工具
+```bash
+# 仅当前平台
+go run scripts/build.go
 
-目前已内置以下基础及专业工具：
+# 全平台交叉编译
+go run scripts/build.go -all
+```
 
-### 数据处理
-- **点云 UTM 转 GeoJSON 工具 (`utm_geojson`)**
-  - **说明**: 线下点云资料编译输出压缩文件解包与 UTM-GeoJSON 转换工具。支持多线程批量解压 `.tar.gz` 提取 `utm.txt`，并将其转换为标准的 `.geojson` 轨迹文件，同时支持目录合并功能。
-  - **示例**: `-input "C:\out_source" -workers 4 -full-extract`
+## 工具管理
 
-### 文本处理 (`text`)
-- **大小写转换**：将输入的字符串统一转为大写或小写。
-- **文本反转**：将字符串前后反转。
-- **去除首尾空格**：快速清除字符串两端的空白字符。
+### 内置工具（4个）
+
+| 工具 | 类型 | 说明 |
+|------|------|------|
+| utm_extract_to_gis | Go | 点云UTM坐标提取与GIS转换 |
+| geojson_to_shapefile | Go | GeoJSON转Shapefile |
+| pos_trajectory_to_gis | Go | POS轨迹转GIS格式 |
+| restore_pcd_by_mgrs | Python | MGRS坐标还原点云数据 |
+
+工具通过 `libs/catalog/builtin/manifests/*.yaml` 定义清单，`libs/catalog/builtin/service.go` 加载。
+
+### 添加自定义工具
+
+**Go 工具**：在 `tools/go_tools/` 下新建目录，实现 `Tool` 接口，在 `app/legacy.go` 中注册。
+
+**Python 工具**：将 `.py` 文件放入 `tools/python_tools/scripts/`，重新编译即可在 `Python 脚本` 分类下看到。
+
+## 前端
+
+前端位于 `app/frontend/`，技术栈：
+- Vue 3 + TypeScript + Pinia + Naive UI + Tailwind CSS
+- 单页工作台（无缝路由跳转）
+- 工具分类树 + 可关闭页签 + 执行终端
+
+### 前端命令
+
+```bash
+cd app/frontend
+npm install          # 安装依赖
+npm run dev          # 启动开发服务器
+npm run lint         # ESLint
+npm run typecheck    # TypeScript 类型检查
+```
+
+## 文档
+
+| 文档 | 内容 |
+|------|------|
+| [CONTEXT.md](CONTEXT.md) | 领域术语表与项目语言 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 当前架构落地情况 |
+| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | 项目全景 |
+| [docs/adr/](docs/adr/) | 架构决策记录 (13篇) |
+
+## 许可证
+
+MIT

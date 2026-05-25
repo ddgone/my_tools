@@ -1,0 +1,141 @@
+package ssh
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sync"
+)
+
+type Connection struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	User        string `json:"user"`
+	AuthMethod  string `json:"authMethod"`
+	Password    string `json:"password,omitempty"`
+	KeyPath     string `json:"keyPath,omitempty"`
+	Description string `json:"description"`
+	LastUsedAt  int64  `json:"lastUsedAt,omitempty"`
+}
+
+type Store struct {
+	mu          sync.RWMutex
+	connections map[string]*Connection
+	configPath  string
+}
+
+func NewStore() *Store {
+	var home string
+	if runtime.GOOS == "windows" {
+		home = os.Getenv("USERPROFILE")
+	} else {
+		home = os.Getenv("HOME")
+	}
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+	}
+
+	dir := filepath.Join(home, ".fire-salamander")
+	fp := filepath.Join(dir, "ssh_connections.json")
+
+	return &Store{
+		connections: map[string]*Connection{},
+		configPath:  fp,
+	}
+}
+
+func (s *Store) LoadConfig() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.configPath == "" {
+		return fmt.Errorf("SSH配置路径未初始化")
+	}
+
+	dir := filepath.Dir(s.configPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("无法创建配置目录 %s: %w", dir, err)
+	}
+
+	data, err := os.ReadFile(s.configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("读取SSH配置(%s)失败: %w", s.configPath, err)
+	}
+
+	return json.Unmarshal(data, &s.connections)
+}
+
+func (s *Store) saveLocked() error {
+	data, err := json.MarshalIndent(s.connections, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化SSH配置失败: %w", err)
+	}
+
+	if err := os.WriteFile(s.configPath, data, 0600); err != nil {
+		return fmt.Errorf("写入SSH配置失败: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) List() []*Connection {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*Connection, 0, len(s.connections))
+	for _, conn := range s.connections {
+		cp := *conn
+		cp.Password = ""
+		cp.KeyPath = ""
+		result = append(result, &cp)
+	}
+	return result
+}
+
+func (s *Store) Save(conn Connection) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if conn.ID == "" {
+		conn.ID = fmt.Sprintf("ssh_%d_%s", len(s.connections), conn.Host)
+	}
+
+	if conn.Port == 0 {
+		conn.Port = 22
+	}
+
+	s.connections[conn.ID] = &conn
+	return s.saveLocked()
+}
+
+func (s *Store) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.connections, id)
+	return s.saveLocked()
+}
+
+func (s *Store) GetCredentials(id string) (*Connection, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	conn, ok := s.connections[id]
+	if !ok {
+		return nil, fmt.Errorf("SSH连接不存在: %s", id)
+	}
+
+	cp := *conn
+	return &cp, nil
+}
