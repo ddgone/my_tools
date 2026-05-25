@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -295,13 +294,13 @@ func (a *App) removeTask(bar *TaskBarState, target *Task) {
 }
 
 var taskFailPatterns = []string{
-	`总计:\s*0\s*个`,
-	`total:\s*0`,
-	`共处理\s*0\s*个`,
-	`unmarshal.*error`,
-	`invalid character`,
-	`no such file`,
-	`cannot find`,
+	"总计: 0 个",
+	"total: 0",
+	"共处理 0 个",
+	"unmarshal",
+	"invalid character",
+	"no such file",
+	"cannot find",
 }
 
 func parseTaskResult(task *Task, err error) TaskStatus {
@@ -310,7 +309,7 @@ func parseTaskResult(task *Task, err error) TaskStatus {
 	}
 	lower := strings.ToLower(task.Output)
 	for _, p := range taskFailPatterns {
-		if matched, _ := regexp.MatchString(p, lower); matched {
+		if strings.Contains(lower, p) {
 			return StatusFailed
 		}
 	}

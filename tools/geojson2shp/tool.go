@@ -361,10 +361,10 @@ func (t *G2STool) Execute(ctx framework.AppContext) {
 [cyan]实际运行示例 (可以直接复制到下方输入):[-]
 
 1. 转换单个文件:
-   -input "C:\Users\zhangzijiang\Desktop\merged_tracks.geojson"
+   -input "<你的.geojson文件路径>"
 
 2. 转换整个目录:
-   -input "C:\Users\zhangzijiang\Desktop\my_tools\test\output" -output "C:\result"
+   -input "<你的geojson文件目录>" -output "<输出目录>"
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {

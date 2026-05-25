@@ -372,10 +372,10 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 [cyan]实际运行示例 (可以直接复制到下方输入):[-]
 
 1. 基本用法（只指定输入目录，输出默认放 input/output）:
-   -input "C:\Users\zhangzijiang\Desktop\my_tools\test\pos_data"
+   -input "<你的pos数据目录>"
 
 2. 指定输出目录:
-   -input "C:\Users\zhangzijiang\Desktop\my_tools\test\pos_data" -output "C:\Users\zhangzijiang\Desktop\result"
+   -input "<你的pos数据目录>" -output "<输出目录>"
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {

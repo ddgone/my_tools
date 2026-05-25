@@ -868,13 +868,13 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 [cyan]实际运行示例 (可以直接复制到下方输入):[-]
 
 1. 批量处理一个目录 (常用，注意路径中有空格请用引号包裹):
-   -input "C:\Users\zhangzijiang\Desktop\my_tools\test\out_source" -workers 4
+   -input "<你的输入目录>" -workers 4
 
 2. 单独转换某一个文件:
-   -convert C:\Users\zhangzijiang\Desktop\my_tools\test\utm.txt -zone 50
+   -convert <你的utm.txt文件路径> -zone 50
 
 3. 将分散的 GeoJSON 文件合并:
-   -merge C:\Users\zhangzijiang\Desktop\my_tools\test\output
+   -merge <你的geoJSON文件所在目录>
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {

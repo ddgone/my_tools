@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
 
 type HistoryItem struct {
@@ -30,6 +32,7 @@ type UserData struct {
 }
 
 type Storage struct {
+	mu       sync.RWMutex
 	dataFile string
 	data     *UserData
 }
@@ -53,6 +56,8 @@ func NewStorage() *Storage {
 }
 
 func (s *Storage) Load() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	data, err := os.ReadFile(s.dataFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -101,7 +106,9 @@ func (s *Storage) Load() error {
 }
 
 func (s *Storage) Save() error {
+	s.mu.RLock()
 	data, err := json.MarshalIndent(s.data, "", "  ")
+	s.mu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -110,6 +117,8 @@ func (s *Storage) Save() error {
 }
 
 func (s *Storage) AddRecentTool(toolName, toolPath string, params map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, item := range s.data.RecentTools {
 		if item.ToolPath == toolPath {
 			s.data.RecentTools = append(s.data.RecentTools[:i], s.data.RecentTools[i+1:]...)
@@ -121,7 +130,7 @@ func (s *Storage) AddRecentTool(toolName, toolPath string, params map[string]str
 		ToolName:   toolName,
 		ToolPath:   toolPath,
 		LastParams: params,
-		Timestamp:  0,
+		Timestamp:  time.Now().Unix(),
 	}
 
 	s.data.RecentTools = append([]HistoryItem{item}, s.data.RecentTools...)
@@ -156,10 +165,14 @@ func isMapEqual(a, b map[string]string) bool {
 }
 
 func (s *Storage) GetRecentTools() []HistoryItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.RecentTools
 }
 
 func (s *Storage) GetToolHistory(toolPath string) []map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.data.ToolHistory == nil {
 		return nil
 	}
@@ -167,6 +180,8 @@ func (s *Storage) GetToolHistory(toolPath string) []map[string]string {
 }
 
 func (s *Storage) GetNodeState(nodeID string, defaultVal bool) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.data.NodeStates == nil {
 		s.data.NodeStates = make(map[string]bool)
 	}
@@ -177,24 +192,32 @@ func (s *Storage) GetNodeState(nodeID string, defaultVal bool) bool {
 }
 
 func (s *Storage) GetShowVerboseShortcuts() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.ShowVerboseShortcuts
 }
 
 func (s *Storage) SetShowVerboseShortcuts(show bool) {
+	s.mu.Lock()
 	s.data.ShowVerboseShortcuts = show
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) SetNodeState(nodeID string, expanded bool) {
+	s.mu.Lock()
 	if s.data.NodeStates == nil {
 		s.data.NodeStates = make(map[string]bool)
 	}
 	s.data.NodeStates[nodeID] = expanded
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) ClearNodeStates() {
+	s.mu.Lock()
 	s.data.NodeStates = make(map[string]bool)
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
@@ -203,69 +226,99 @@ func (s *Storage) Reset() error {
 }
 
 func (s *Storage) GetLogExportDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.LogExportDir
 }
 
 func (s *Storage) SetLogExportDir(dir string) {
+	s.mu.Lock()
 	s.data.LogExportDir = dir
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetRecentToolsCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.RecentToolsCount
 }
 
 func (s *Storage) SetRecentToolsCount(count int) {
+	s.mu.Lock()
 	s.data.RecentToolsCount = count
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetHistoryRetention() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.HistoryRetention
 }
 
 func (s *Storage) SetHistoryRetention(retention int) {
+	s.mu.Lock()
 	s.data.HistoryRetention = retention
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetConfirmExit() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.ConfirmExit
 }
 
 func (s *Storage) SetConfirmExit(confirm bool) {
+	s.mu.Lock()
 	s.data.ConfirmExit = confirm
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetDefaultPythonPath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.DefaultPythonPath
 }
 
 func (s *Storage) SetDefaultPythonPath(path string) {
+	s.mu.Lock()
 	s.data.DefaultPythonPath = path
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetAutoWordWrap() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.AutoWordWrap
 }
 
 func (s *Storage) SetAutoWordWrap(wrap bool) {
+	s.mu.Lock()
 	s.data.AutoWordWrap = wrap
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetAutoExpandAll() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.AutoExpandAll
 }
 
 func (s *Storage) SetAutoExpandAll(expand bool) {
+	s.mu.Lock()
 	s.data.AutoExpandAll = expand
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) GetFavorites() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.data.Favorites == nil {
 		return nil
 	}
@@ -273,26 +326,33 @@ func (s *Storage) GetFavorites() []string {
 }
 
 func (s *Storage) AddFavorite(toolID string) {
+	s.mu.Lock()
 	for _, id := range s.data.Favorites {
 		if id == toolID {
+			s.mu.Unlock()
 			return
 		}
 	}
 	s.data.Favorites = append(s.data.Favorites, toolID)
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) RemoveFavorite(toolID string) {
+	s.mu.Lock()
 	for i, id := range s.data.Favorites {
 		if id == toolID {
 			s.data.Favorites = append(s.data.Favorites[:i], s.data.Favorites[i+1:]...)
 			break
 		}
 	}
+	s.mu.Unlock()
 	_ = s.Save()
 }
 
 func (s *Storage) IsFavorite(toolID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, id := range s.data.Favorites {
 		if id == toolID {
 			return true
@@ -302,14 +362,20 @@ func (s *Storage) IsFavorite(toolID string) bool {
 }
 
 func (s *Storage) RawData() *UserData {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data
 }
 
 func (s *Storage) GetBGMEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.data.BGMEnabled
 }
 
 func (s *Storage) SetBGMEnabled(enabled bool) {
+	s.mu.Lock()
 	s.data.BGMEnabled = enabled
+	s.mu.Unlock()
 	_ = s.Save()
 }
