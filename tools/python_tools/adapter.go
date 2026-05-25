@@ -18,8 +18,40 @@ import (
 //go:embed scripts/*.py
 var pythonScripts embed.FS
 
+type toolMeta struct {
+	id       string
+	name     string
+	category string
+	usage    string
+}
+
+var scriptMeta = map[string]toolMeta{
+	"restore_pcd_by_mgrs.py": {
+		id:       "restore_pcd_by_mgrs",
+		name:     "白犀牛偏转后的pcd文件转换回未偏转的las文件",
+		category: "Python 脚本",
+		usage: `[yellow]白犀牛偏转后的 PCD 文件转换回未偏转的 LAS 文件[-]
+
+[cyan]功能说明:[-]
+将经过白犀牛偏转处理的 PCD 点云文件，根据文件名中的 MGRS 百米块信息，
+反向还原为原始 UTM 坐标系的 LAS 文件。
+
+PCD 文件名必须包含 MGRS 百米块格式（如 50QKL416457），脚本会自动识别
+并提供正确的 UTM 偏移量来恢复坐标。
+
+[cyan]参数说明:[-]
+  -input  <目录>    必需，包含 .pcd 文件的目录
+  -output <目录>    可选，输出 .las 文件的目录，默认在输入目录下创建 output 子文件夹
+  -workers <数量>   可选，并行线程数，默认 1
+
+[cyan]使用示例:[-]
+  -input D:\pcd_data -output D:\las_output
+  -input .\pcd_data -workers 4
+`,
+	},
+}
+
 func init() {
-	// Scan embedded scripts and register them as tools
 	entries, err := fs.ReadDir(pythonScripts, "scripts")
 	if err != nil {
 		fmt.Printf("无法读取内嵌的 Python 脚本: %v\n", err)
@@ -29,12 +61,23 @@ func init() {
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".py") {
 			baseName := strings.TrimSuffix(entry.Name(), ".py")
-			framework.Register(&PythonTool{
-				scriptName: entry.Name(),
-				id:         "py_" + baseName,
-				name:       "Python: " + baseName,
-				category:   "Python 脚本",
-			})
+
+			if meta, ok := scriptMeta[entry.Name()]; ok {
+				framework.Register(&PythonTool{
+					scriptName: entry.Name(),
+					id:         meta.id,
+					name:       meta.name,
+					category:   meta.category,
+					usage:      meta.usage,
+				})
+			} else {
+				framework.Register(&PythonTool{
+					scriptName: entry.Name(),
+					id:         "py_" + baseName,
+					name:       "Python: " + baseName,
+					category:   "Python 脚本",
+				})
+			}
 		}
 	}
 }
@@ -44,6 +87,7 @@ type PythonTool struct {
 	id         string
 	name       string
 	category   string
+	usage      string
 }
 
 func (t *PythonTool) ID() string       { return t.id }
@@ -51,7 +95,9 @@ func (t *PythonTool) Name() string     { return t.name }
 func (t *PythonTool) Category() string { return t.category }
 
 func (t *PythonTool) Execute(ctx framework.AppContext) {
-	usage := fmt.Sprintf(`[yellow]内嵌 Python 脚本工具: %s[-]
+	usage := t.usage
+	if usage == "" {
+		usage = fmt.Sprintf(`[yellow]内嵌 Python 脚本工具: %s[-]
 
 [cyan]说明:[-]
 这是一个通过 Go 工具箱直接调用的 Python 脚本。
@@ -63,6 +109,7 @@ func (t *PythonTool) Execute(ctx framework.AppContext) {
 [cyan]示例:[-]
 arg1 "arg 2 with space" --flag value
 `, t.scriptName)
+	}
 
 	ctx.ShowPythonTerminal(t.Name(), usage, func(runCtx context.Context, env string, args string, out io.Writer) error {
 		// Handle special pip installation command
@@ -125,7 +172,7 @@ arg1 "arg 2 with space" --flag value
 		parsedArgs := framework.ParseArgs(args)
 
 		// Prepare command
-		cmdArgs := append([]string{tempPath}, parsedArgs...)
+		cmdArgs := append([]string{"-u", tempPath}, parsedArgs...)
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
 			cmd = exec.Command(env, cmdArgs...)

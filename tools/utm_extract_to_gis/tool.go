@@ -1,4 +1,4 @@
-package utm_geojson
+package utm_extract_to_gis
 
 import (
 	"archive/tar"

@@ -1,4 +1,4 @@
-package geojson2shp
+package geojson_to_shapefile
 
 import (
 	"context"

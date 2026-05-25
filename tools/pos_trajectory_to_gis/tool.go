@@ -1,4 +1,4 @@
-package pos2gis
+package pos_trajectory_to_gis
 
 import (
 	"context"

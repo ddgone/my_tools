@@ -8,10 +8,10 @@ import (
 	"my_tools/internal/tui"
 
 	// 注册所有的工具
-	_ "my_tools/tools/geojson2shp"
-	_ "my_tools/tools/pos2gis"
+	_ "my_tools/tools/geojson_to_shapefile"
+	_ "my_tools/tools/pos_trajectory_to_gis"
 	_ "my_tools/tools/python_tools"
-	_ "my_tools/tools/utm_geojson"
+	_ "my_tools/tools/utm_extract_to_gis"
 )
 
 func main() {
