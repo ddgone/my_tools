@@ -10,6 +10,7 @@ require (
 	github.com/jfreymuth/oggvorbis v1.0.5
 	github.com/jonas-p/go-shp v0.1.1
 	github.com/rivo/tview v0.42.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

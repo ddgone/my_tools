@@ -1,0 +1,34 @@
+id: pos2gis_converter
+name: 点云pos轨迹转换GeoJSON+Shapefile
+kind: go
+category: KD测试工具 > 点云处理工具
+icon: go
+description: 将 POS JSON 轨迹批量转换为 GeoJSON 与点线 Shapefile。
+docs:
+  summary: 旧版 POS 轨迹转换工具的桌面化入口，保留目录批量处理与输出目录覆盖能力。
+  usage: |
+    面向点云 POS 编译系统导出的 JSON 轨迹目录。
+    结构化表单对应旧版 TUI 的最常用输入方式。
+params:
+  - key: input
+    argKey: input
+    type: path
+    label: 输入目录
+    placeholder: 选择包含 POS JSON 文件的目录
+    required: true
+    help: 程序会遍历目录下所有 .json 文件并进行转换。
+  - key: output
+    argKey: output
+    type: path
+    label: 输出目录
+    placeholder: 留空则在输入目录下生成 output
+    help: 不填写时会沿用旧版默认行为。
+execution:
+  local:
+    adapter: go-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/pos_trajectory_to_gis/tool.go

@@ -1,0 +1,97 @@
+package toolspec
+
+type ToolKind string
+
+const (
+	ToolKindGo     ToolKind = "go"
+	ToolKindPython ToolKind = "python"
+)
+
+type ParameterFieldType string
+
+const (
+	FieldTypeText     ParameterFieldType = "text"
+	FieldTypeTextarea ParameterFieldType = "textarea"
+	FieldTypeNumber   ParameterFieldType = "number"
+	FieldTypeBoolean  ParameterFieldType = "boolean"
+	FieldTypePath     ParameterFieldType = "path"
+	FieldTypeSelect   ParameterFieldType = "select"
+)
+
+type ExecutionAdapter string
+
+const (
+	ExecutionAdapterGoBinary     ExecutionAdapter = "go-binary"
+	ExecutionAdapterPythonScript ExecutionAdapter = "python-script"
+)
+
+type RemoteStrategy string
+
+const (
+	RemoteStrategyUploadBinary RemoteStrategy = "upload-binary-and-run"
+	RemoteStrategyUploadScript RemoteStrategy = "upload-script-and-run"
+)
+
+type ExportStrategy string
+
+const (
+	ExportStrategyBinary ExportStrategy = "export-binary"
+	ExportStrategyScript ExportStrategy = "export-script"
+)
+
+type ToolDocs struct {
+	Summary string `yaml:"summary" json:"summary"`
+	Usage   string `yaml:"usage" json:"usage"`
+}
+
+type ParameterOption struct {
+	Label string `yaml:"label" json:"label"`
+	Value string `yaml:"value" json:"value"`
+}
+
+type ParameterSpec struct {
+	Key         string             `yaml:"key" json:"key"`
+	ArgKey      string             `yaml:"argKey,omitempty" json:"argKey,omitempty"`
+	Type        ParameterFieldType `yaml:"type" json:"type"`
+	Label       string             `yaml:"label" json:"label"`
+	Placeholder string             `yaml:"placeholder,omitempty" json:"placeholder,omitempty"`
+	Required    bool               `yaml:"required,omitempty" json:"required,omitempty"`
+	Default     any                `yaml:"default,omitempty" json:"default,omitempty"`
+	Help        string             `yaml:"help,omitempty" json:"help,omitempty"`
+	Options     []ParameterOption  `yaml:"options,omitempty" json:"options,omitempty"`
+}
+
+type LocalExecutionSpec struct {
+	Adapter ExecutionAdapter `yaml:"adapter" json:"adapter"`
+}
+
+type RemoteExecutionSpec struct {
+	Strategy RemoteStrategy `yaml:"strategy" json:"strategy"`
+}
+
+type ExecutionSpec struct {
+	Local  LocalExecutionSpec  `yaml:"local" json:"local"`
+	Remote RemoteExecutionSpec `yaml:"remote" json:"remote"`
+}
+
+type ExportSpec struct {
+	Strategy ExportStrategy `yaml:"strategy" json:"strategy"`
+}
+
+type SourceSpec struct {
+	Entry string `yaml:"entry" json:"entry"`
+}
+
+type ToolManifest struct {
+	ID          string          `yaml:"id" json:"id"`
+	Name        string          `yaml:"name" json:"name"`
+	Kind        ToolKind        `yaml:"kind" json:"kind"`
+	Category    string          `yaml:"category" json:"category"`
+	Icon        string          `yaml:"icon" json:"icon"`
+	Description string          `yaml:"description" json:"description"`
+	Docs        ToolDocs        `yaml:"docs" json:"docs"`
+	Params      []ParameterSpec `yaml:"params" json:"params"`
+	Execution   ExecutionSpec   `yaml:"execution" json:"execution"`
+	Export      ExportSpec      `yaml:"export" json:"export"`
+	Source      SourceSpec      `yaml:"source" json:"source"`
+}

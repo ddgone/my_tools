@@ -1,0 +1,53 @@
+id: utm_geojson_converter
+name: 点云UTM提取&UTM转换GeoJSON+Shapefile
+kind: go
+category: KD测试工具 > 点云处理工具
+icon: go
+description: 批量处理点云目录中的 UTM 轨迹，输出 GeoJSON 与 Shapefile。
+docs:
+  summary: 面向点云资料编译输出目录的批量转换工具，支持快速提取、完整解压与合并输出。
+  usage: |
+    默认结构化表单覆盖最常用的批量模式。
+    如果需要单文件转换或合并 GeoJSON，请切换到原始参数模式。
+params:
+  - key: input
+    argKey: input
+    type: path
+    label: 输入目录
+    placeholder: 选择 out_source 或点云结果目录
+    required: true
+    help: 最常用的是批量处理目录模式，对应旧版 TUI 的 -input。
+  - key: workers
+    argKey: workers
+    type: number
+    label: 并发数
+    default: 4
+    help: 并发处理的 worker 数量。
+  - key: fullExtract
+    argKey: full-extract
+    type: boolean
+    label: 完整解压
+    default: false
+    help: 是否先执行完整解压流程。
+  - key: cleanup
+    argKey: cleanup
+    type: select
+    label: 清理级别
+    default: "0"
+    help: 仅在完整解压时有意义。
+    options:
+      - label: 不清理
+        value: "0"
+      - label: 删除解压文件
+        value: "2"
+      - label: 删除原始压缩包
+        value: "3"
+execution:
+  local:
+    adapter: go-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/utm_extract_to_gis/tool.go
