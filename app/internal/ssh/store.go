@@ -1,12 +1,14 @@
 package ssh
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
+
+	"fire-salamander-desktop/internal/runtimeenv"
 )
 
 type Connection struct {
@@ -29,22 +31,12 @@ type Store struct {
 }
 
 func NewStore() *Store {
-	var home string
-	if runtime.GOOS == "windows" {
-		home = os.Getenv("USERPROFILE")
-	} else {
-		home = os.Getenv("HOME")
-	}
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			home = "."
-		}
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		layout = runtimeenv.Layout{Root: "."}
 	}
 
-	dir := filepath.Join(home, ".fire-salamander")
-	fp := filepath.Join(dir, "ssh_connections.json")
+	fp := filepath.Join(layout.ConfigDir(), "ssh_connections.json")
 
 	return &Store{
 		connections: map[string]*Connection{},
@@ -77,12 +69,15 @@ func (s *Store) LoadConfig() error {
 }
 
 func (s *Store) saveLocked() error {
-	data, err := json.MarshalIndent(s.connections, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(s.connections); err != nil {
 		return fmt.Errorf("序列化SSH配置失败: %w", err)
 	}
 
-	if err := os.WriteFile(s.configPath, data, 0600); err != nil {
+	if err := os.WriteFile(s.configPath, buf.Bytes(), 0600); err != nil {
 		return fmt.Errorf("写入SSH配置失败: %w", err)
 	}
 
@@ -116,6 +111,23 @@ func (s *Store) Save(conn Connection) error {
 	}
 
 	s.connections[conn.ID] = &conn
+	return s.saveLocked()
+}
+
+func (s *Store) Update(id string, conn Connection) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.connections[id]; !ok {
+		return fmt.Errorf("SSH连接不存在: %s", id)
+	}
+
+	if conn.Port == 0 {
+		conn.Port = 22
+	}
+	conn.ID = id
+
+	s.connections[id] = &conn
 	return s.saveLocked()
 }
 

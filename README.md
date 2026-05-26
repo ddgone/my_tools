@@ -50,7 +50,7 @@ cd app && "$(go env GOPATH)/bin/wails" build -clean
 cd app && "$(go env GOPATH)/bin/wails" dev
 ```
 
-产物位置：`build/bin/`（构建脚本）或 `app/build/bin/`（直接 wails build）
+产物位置：`build/image/host/`（构建脚本）
 
 ### 构建单平台/全平台
 

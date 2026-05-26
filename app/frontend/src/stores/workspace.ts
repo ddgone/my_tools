@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ToolManifest } from '@/types/workbench'
 
 export interface ToolTabState {
@@ -8,6 +8,7 @@ export interface ToolTabState {
   rawArgs: string
   pythonEnv: string
   formModel: Record<string, string | number | boolean | null>
+  openedAt: number
 }
 
 export interface UserSettings {
@@ -106,6 +107,7 @@ function createTabState(
     rawArgs,
     pythonEnv: lastPythonEnv || 'python',
     formModel,
+    openedAt: Date.now(),
   }
 }
 
@@ -133,9 +135,21 @@ function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | num
   return parts.join(' ')
 }
 
+export interface SSHTabState {
+  tabId: string
+  connectionId: string
+  label: string
+  isNew: boolean
+  openedAt: number
+}
+
+let sshTabCounter = 0
+
 export const useWorkspaceStore = defineStore('workspace', () => {
   const openTabs = ref<ToolTabState[]>([])
   const activeTabIndex = ref(-1)
+  const sshTabs = ref<SSHTabState[]>([])
+  const activeSSHTabIndex = ref(-1)
   const showSearch = ref(false)
   const showHotkeyHelp = ref(false)
   const showSettings = ref(false)
@@ -150,7 +164,86 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(toolHistory, (v) => saveJSON(STORAGE_KEYS.history, v), { deep: true })
   watch(settings, (v) => saveJSON(STORAGE_KEYS.settings, v), { deep: true })
 
+  const activeTabType = computed(() => {
+    if (activeSSHTabIndex.value >= 0) return 'ssh'
+    if (activeTabIndex.value >= 0) return 'tool'
+    return 'none'
+  })
+
+  const activeToolTab = computed(() =>
+    activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined,
+  )
+
+  const activeSSHTab = computed(() =>
+    activeSSHTabIndex.value >= 0 ? sshTabs.value[activeSSHTabIndex.value] : undefined,
+  )
+
   const activeTab = () => (activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined)
+
+  interface UnifiedTabItem {
+    type: 'tool' | 'ssh'
+    key: string
+    label: string
+    openedAt: number
+    arrayIndex: number
+  }
+
+  const unifiedTabs = computed<UnifiedTabItem[]>(() => {
+    const items: UnifiedTabItem[] = [
+      ...openTabs.value.map((t, i) => ({
+        type: 'tool' as const,
+        key: `tool:${t.toolId}`,
+        label: t.toolId,
+        openedAt: t.openedAt,
+        arrayIndex: i,
+      })),
+      ...sshTabs.value.map((s, i) => ({
+        type: 'ssh' as const,
+        key: `ssh:${s.tabId}`,
+        label: s.label,
+        openedAt: s.openedAt,
+        arrayIndex: i,
+      })),
+    ]
+    items.sort((a, b) => a.openedAt - b.openedAt)
+    return items
+  })
+
+  function activateUnifiedTab(item: UnifiedTabItem) {
+    if (item.type === 'tool') {
+      activeTabIndex.value = item.arrayIndex
+      activeSSHTabIndex.value = -1
+    } else {
+      activeSSHTabIndex.value = item.arrayIndex
+      activeTabIndex.value = -1
+    }
+  }
+
+  function closeUnifiedTab(item: UnifiedTabItem) {
+    if (item.type === 'tool') {
+      openTabs.value.splice(item.arrayIndex, 1)
+      if (item.arrayIndex === activeTabIndex.value) {
+        if (openTabs.value.length === 0) {
+          activeTabIndex.value = -1
+        } else if (item.arrayIndex >= openTabs.value.length) {
+          activeTabIndex.value = openTabs.value.length - 1
+        }
+      } else if (item.arrayIndex < activeTabIndex.value) {
+        activeTabIndex.value--
+      }
+    } else {
+      sshTabs.value.splice(item.arrayIndex, 1)
+      if (item.arrayIndex === activeSSHTabIndex.value) {
+        if (sshTabs.value.length === 0) {
+          activeSSHTabIndex.value = -1
+        } else if (item.arrayIndex >= sshTabs.value.length) {
+          activeSSHTabIndex.value = sshTabs.value.length - 1
+        }
+      } else if (item.arrayIndex < activeSSHTabIndex.value) {
+        activeSSHTabIndex.value--
+      }
+    }
+  }
 
   function openTool(tool: ToolManifest) {
     const existing = openTabs.value.findIndex((t) => t.toolId === tool.id)
@@ -167,6 +260,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       }
       activeTabIndex.value = existing
+      activeSSHTabIndex.value = -1
       return
     }
 
@@ -179,6 +273,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const tab = createTabState(tool, lastArgs, lastPythonEnv, lastFormModel)
     openTabs.value.push(tab)
     activeTabIndex.value = openTabs.value.length - 1
+    activeSSHTabIndex.value = -1
   }
 
   function closeTab(index: number) {
@@ -252,10 +347,84 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
 
+  function openSSHNew() {
+    sshTabCounter++
+    const label = `新建连接 ${sshTabCounter}`
+    const existing = sshTabs.value.findIndex((t) => t.isNew && !t.connectionId)
+    if (existing >= 0) {
+      activeSSHTabIndex.value = existing
+      return
+    }
+    const tab: SSHTabState = {
+      tabId: `ssh_new_${sshTabCounter}`,
+      connectionId: '',
+      label,
+      isNew: true,
+      openedAt: Date.now(),
+    }
+    sshTabs.value.push(tab)
+    activeSSHTabIndex.value = sshTabs.value.length - 1
+    activeTabIndex.value = -1
+  }
+
+  function openSSHEdit(connId: string, label: string) {
+    const existing = sshTabs.value.findIndex((t) => t.connectionId === connId)
+    if (existing >= 0) {
+      activeSSHTabIndex.value = existing
+      activeTabIndex.value = -1
+      return
+    }
+    const tab: SSHTabState = {
+      tabId: `ssh_${connId}`,
+      connectionId: connId,
+      label,
+      isNew: false,
+      openedAt: Date.now(),
+    }
+    sshTabs.value.push(tab)
+    activeSSHTabIndex.value = sshTabs.value.length - 1
+    activeTabIndex.value = -1
+  }
+
+  function closeSSHTab(index: number) {
+    sshTabs.value.splice(index, 1)
+    if (index === activeSSHTabIndex.value) {
+      if (sshTabs.value.length === 0) {
+        activeSSHTabIndex.value = -1
+      } else if (index >= sshTabs.value.length) {
+        activeSSHTabIndex.value = sshTabs.value.length - 1
+      }
+    } else if (index < activeSSHTabIndex.value) {
+      activeSSHTabIndex.value--
+    }
+  }
+
+  function setActiveSSHTab(index: number) {
+    if (index >= 0 && index < sshTabs.value.length) {
+      activeSSHTabIndex.value = index
+      activeTabIndex.value = -1
+    }
+  }
+
+  function activateToolTab(index: number) {
+    if (index >= 0 && index < openTabs.value.length) {
+      activeTabIndex.value = index
+      activeSSHTabIndex.value = -1
+    }
+  }
+
   return {
     openTabs,
     activeTabIndex,
+    sshTabs,
+    activeSSHTabIndex,
+    activeTabType,
+    activeToolTab,
+    activeSSHTab,
     activeTab,
+    unifiedTabs,
+    activateUnifiedTab,
+    closeUnifiedTab,
     showSearch,
     showHotkeyHelp,
     showSettings,
@@ -267,6 +436,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     closeTab,
     updateRawArgs,
     setActiveTab,
+    setActiveSSHTab,
+    activateToolTab,
+    openSSHNew,
+    openSSHEdit,
+    closeSSHTab,
     recordUsage,
     toggleFavorite,
     isFavorite,

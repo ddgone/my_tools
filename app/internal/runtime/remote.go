@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -46,6 +47,12 @@ func (r *RemoteExecutor) Upload(ctx context.Context, localPath, remotePath strin
 	}
 	defer session.Close()
 
+	file, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("打开本地产物失败: %w", err)
+	}
+	defer file.Close()
+
 	stdin, err := session.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("获取stdin失败: %w", err)
@@ -53,10 +60,19 @@ func (r *RemoteExecutor) Upload(ctx context.Context, localPath, remotePath strin
 
 	go func() {
 		defer stdin.Close()
-		<-ctx.Done()
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = stdin.Close()
+			case <-done:
+			}
+		}()
+		_, _ = io.Copy(stdin, file)
+		close(done)
 	}()
 
-	cmd := fmt.Sprintf("cat > %s", remotePath)
+	cmd := fmt.Sprintf("cat > %s", ShellQuote(remotePath))
 	if err := session.Run(cmd); err != nil {
 		return fmt.Errorf("上传失败: %w", err)
 	}
@@ -109,6 +125,69 @@ func BuildRemoteRunScript(scriptPath, args string) string {
 		parts = append(parts, strings.Fields(args)...)
 	}
 	return strings.Join(parts, " ")
+}
+
+type RemotePlatform struct {
+	OS   string
+	Arch string
+}
+
+func (r *RemoteExecutor) RunOutput(ctx context.Context, cmd string) (string, error) {
+	var buf bytes.Buffer
+	if err := r.Execute(ctx, cmd, &buf); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
+func (r *RemoteExecutor) DetectPlatform(ctx context.Context) (RemotePlatform, error) {
+	output, err := r.RunOutput(ctx, "uname -s && uname -m")
+	if err != nil {
+		return RemotePlatform{}, fmt.Errorf("检测远端平台失败: %w", err)
+	}
+
+	lines := strings.Split(output, "\n")
+	if len(lines) < 2 {
+		return RemotePlatform{}, fmt.Errorf("无法解析远端平台信息: %q", output)
+	}
+
+	platform := RemotePlatform{
+		OS:   normalizeRemoteOS(lines[0]),
+		Arch: normalizeRemoteArch(lines[1]),
+	}
+	if platform.OS == "" || platform.Arch == "" {
+		return RemotePlatform{}, fmt.Errorf("暂不支持的远端平台: %q", output)
+	}
+	return platform, nil
+}
+
+func ShellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func normalizeRemoteOS(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "linux":
+		return "linux"
+	case "darwin":
+		return "darwin"
+	default:
+		return ""
+	}
+}
+
+func normalizeRemoteArch(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "x86_64", "amd64":
+		return "amd64"
+	case "aarch64", "arm64":
+		return "arm64"
+	default:
+		return ""
+	}
 }
 
 type RemoteExecResult struct {

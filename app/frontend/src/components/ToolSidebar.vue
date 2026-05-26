@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NButton, NInput, NInputNumber, NScrollbar, NTag } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
+import { NDropdown, NScrollbar, NTag, useMessage } from 'naive-ui'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { DeleteSSHConnection, ListSSHConnections, SaveSSHConnection } from '../../wailsjs/go/main/App'
+import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 
-defineProps<{
+const props = defineProps<{
   width: number
 }>()
 
+const emit = defineEmits<{
+  selectConnection: [conn: SSHConnection]
+  createConnection: []
+}>()
+
+const message = useMessage()
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
@@ -20,48 +26,57 @@ const collapsedCategories = ref(new Set<string>())
 const sidebarView = ref<'tools' | 'ssh' | 'history' | 'export'>('tools')
 
 const sshConnections = ref<SSHConnection[]>([])
-const sshFormVisible = ref(false)
-const sshForm = ref<SSHConnection>({
-  id: '',
-  name: '',
-  host: '',
-  port: 22,
-  user: 'root',
-  authMethod: 'password',
-  password: '',
-  keyPath: '',
-  description: '',
-})
 
 async function loadSSHConnections() {
-  sshConnections.value = await ListSSHConnections()
-}
-
-async function saveSSHConnection() {
-  await SaveSSHConnection(sshForm.value)
-  sshFormVisible.value = false
-  resetSSHForm()
-  await loadSSHConnections()
-}
-
-async function removeSSHConnection(id: string) {
-  await DeleteSSHConnection(id)
-  await loadSSHConnections()
-}
-
-function resetSSHForm() {
-  sshForm.value = {
-    id: '',
-    name: '',
-    host: '',
-    port: 22,
-    user: 'root',
-    authMethod: 'password',
-    password: '',
-    keyPath: '',
-    description: '',
+  try {
+    sshConnections.value = await ListSSHConnections()
+  } catch {
+    sshConnections.value = []
   }
 }
+
+async function handleDeleteSSH(id: string) {
+  try {
+    await DeleteSSHConnection(id)
+    message.success('连接已删除')
+    await loadSSHConnections()
+  } catch (e: any) {
+    message.error(e.toString())
+  }
+}
+
+async function handleTestSSH(id: string) {
+  try {
+    const result = await TestSSHConnection(id)
+    if (result.success) {
+      message.success(result.message)
+    } else {
+      message.error(result.message)
+    }
+  } catch (e: any) {
+    message.error(e.toString())
+  }
+}
+
+function selectConnection(conn: SSHConnection) {
+  emit('selectConnection', conn)
+}
+
+function createConnection() {
+  emit('createConnection')
+}
+
+function copyHost(conn: SSHConnection) {
+  const text = `${conn.user}@${conn.host}:${conn.port}`
+  navigator.clipboard.writeText(text)
+  message.success('已复制: ' + text)
+}
+
+watch(sidebarView, (view) => {
+  if (view === 'ssh') {
+    loadSSHConnections()
+  }
+})
 
 const filteredTools = computed(() => {
   const tools = workbench.bootstrap?.tools ?? []
@@ -124,6 +139,38 @@ function kindTagType(kind: string) {
   return kind === 'python' ? 'success' : 'info'
 }
 
+function sshDropdownOptions(_conn: SSHConnection) {
+  return [
+    { label: '✏️ 编辑', key: 'edit' },
+    { label: '📋 复制地址', key: 'copy' },
+    { label: '🔍 检查连通性', key: 'test' },
+    { type: 'divider' as const, key: 'd1' },
+    { label: '🗑 删除', key: 'delete' },
+  ]
+}
+
+function handleSSHMenuSelect(key: string, conn: SSHConnection) {
+  switch (key) {
+    case 'edit':
+      selectConnection(conn)
+      break
+    case 'copy':
+      copyHost(conn)
+      break
+    case 'test':
+      handleTestSSH(conn.id)
+      break
+    case 'delete':
+      handleDeleteSSH(conn.id)
+      break
+  }
+}
+
+defineExpose({
+  sidebarView,
+  loadSSHConnections,
+})
+
 const sidebarViews = [
   { key: 'tools' as const, icon: '🔧', label: '工具列表' },
   { key: 'ssh' as const, icon: '🔗', label: 'SSH 服务器' },
@@ -135,7 +182,7 @@ const sidebarViews = [
 <template>
   <aside
     class="flex shrink-0 flex-col border-r border-dracula-soft bg-[#1a1b26]"
-    :style="{ width: width + 'px' }"
+    :style="{ width: props.width + 'px' }"
   >
     <div class="border-b border-dracula-soft p-3">
       <div class="relative">
@@ -303,100 +350,64 @@ const sidebarViews = [
 
       <div
         v-else-if="sidebarView === 'ssh'"
-        class="space-y-2 p-2"
+        class="flex h-full flex-col"
       >
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between px-3 py-2">
           <span class="text-xs font-medium text-slate-300">SSH 连接</span>
           <button
-            class="rounded px-2 py-0.5 text-[11px] text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
-            @click="sshFormVisible = !sshFormVisible; resetSSHForm()"
+            class="rounded px-2 py-0.5 text-[11px] text-dracula-cyan transition hover:bg-dracula-cyan/10"
+            @click="createConnection()"
           >
-            {{ sshFormVisible ? '取消' : '+ 新建' }}
+            + 新建
           </button>
         </div>
+
         <div
-          v-if="sshFormVisible"
-          class="space-y-2 rounded-lg border border-dracula-soft bg-black/10 p-3"
+          v-if="sshConnections.length === 0"
+          class="flex flex-1 items-center justify-center p-4"
         >
-          <n-input
-            v-model:value="sshForm.name"
-            size="tiny"
-            placeholder="连接名称"
-          />
-          <div class="flex gap-1">
-            <n-input
-              v-model:value="sshForm.host"
-              size="tiny"
-              placeholder="主机地址"
-              class="flex-1"
-            />
-            <n-input-number
-              v-model:value="sshForm.port"
-              size="tiny"
-              placeholder="22"
-              :min="1"
-              :max="65535"
-              style="width: 70px"
-            />
-          </div>
-          <n-input
-            v-model:value="sshForm.user"
-            size="tiny"
-            placeholder="用户名"
-          />
-          <n-input
-            v-model:value="sshForm.password"
-            size="tiny"
-            placeholder="密码"
-            type="password"
-          />
-          <n-input
-            v-model:value="sshForm.description"
-            size="tiny"
-            placeholder="备注（可选）"
-          />
-          <n-button
-            size="tiny"
-            type="primary"
-            block
-            @click="saveSSHConnection"
-          >
-            保存连接
-          </n-button>
-        </div>
-        <div
-          v-if="sshConnections.length === 0 && !sshFormVisible"
-          class="py-8 text-center text-xs text-slate-600"
-        >
-          暂无SSH连接
-        </div>
-        <div
-          v-for="conn in sshConnections"
-          :key="conn.id"
-          class="rounded-lg border border-dracula-soft bg-black/10 p-2.5 text-xs"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <div class="font-medium text-slate-200 truncate">
-                {{ conn.name }}
-              </div>
-              <div class="mt-0.5 text-slate-500">
-                {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
-              </div>
-              <div
-                v-if="conn.description"
-                class="mt-0.5 text-slate-600"
-              >
-                {{ conn.description }}
-              </div>
-            </div>
+          <div class="text-center">
+            <p class="text-xs text-slate-500">
+              暂无 SSH 连接
+            </p>
             <button
-              class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-slate-600 transition hover:bg-dracula-red/10 hover:text-dracula-red"
-              @click="removeSSHConnection(conn.id)"
+              class="mt-3 rounded-md border border-dracula-soft px-3 py-1.5 text-xs text-dracula-cyan transition hover:bg-dracula-cyan/10"
+              @click="createConnection()"
             >
-              ✕
+              + 新建第一个连接
             </button>
           </div>
+        </div>
+
+        <div class="space-y-1 p-2">
+          <button
+            v-for="conn in sshConnections"
+            :key="conn.id"
+            class="group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-white/5"
+            @click="selectConnection(conn)"
+          >
+            <span class="text-base">🖥</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium text-slate-200">
+                {{ conn.name }}
+              </div>
+              <div class="truncate text-[10px] text-slate-500">
+                {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+              </div>
+            </div>
+            <NDropdown
+              trigger="click"
+              :options="sshDropdownOptions(conn)"
+              @select="(key: string) => handleSSHMenuSelect(key, conn)"
+            >
+              <button
+                class="shrink-0 rounded p-1 text-slate-600 opacity-0 transition hover:bg-white/10 hover:text-slate-300 group-hover:opacity-100"
+                @click.stop
+              >
+                ···
+              </button>
+            </NDropdown>
+          </button>
         </div>
       </div>
 

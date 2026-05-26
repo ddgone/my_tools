@@ -39,7 +39,9 @@ func wailsBin() string {
 func main() {
 	rootDir, _ := os.Getwd()
 	appDir := filepath.Join(rootDir, "app")
-	outDir := filepath.Join(rootDir, "build")
+	imageDir := filepath.Join(rootDir, "build", "image")
+	hostDir := filepath.Join(imageDir, "host")
+	runtimeDir := filepath.Join(rootDir, "build", "runtime")
 
 	buildAll := false
 	for _, a := range os.Args[1:] {
@@ -59,9 +61,14 @@ func main() {
 	vet.Stderr = os.Stderr
 	vet.Run()
 
-	os.RemoveAll(outDir)
+	os.RemoveAll(hostDir)
 	os.RemoveAll(filepath.Join(appDir, "build"))
-	os.MkdirAll(outDir, 0755)
+	os.MkdirAll(hostDir, 0755)
+	os.MkdirAll(imageDir, 0755)
+
+	cleanBuildRootStale(rootDir)
+
+	initRuntimeDirs(runtimeDir)
 
 	if buildAll {
 		platforms := make([]string, len(allTargets))
@@ -77,11 +84,10 @@ func main() {
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 
-		// move all output to root build/
 		srcBin := filepath.Join(appDir, "build", "bin")
 		if entries, readErr := os.ReadDir(srcBin); readErr == nil {
 			for _, e := range entries {
-				os.Rename(filepath.Join(srcBin, e.Name()), filepath.Join(outDir, e.Name()))
+				os.Rename(filepath.Join(srcBin, e.Name()), filepath.Join(hostDir, e.Name()))
 			}
 		}
 		os.RemoveAll(filepath.Join(appDir, "build"))
@@ -102,21 +108,20 @@ func main() {
 			os.Exit(1)
 		}
 
-		// move output to root build/
 		srcBin := filepath.Join(appDir, "build", "bin")
 		if entries, readErr := os.ReadDir(srcBin); readErr == nil {
 			for _, e := range entries {
-				os.Rename(filepath.Join(srcBin, e.Name()), filepath.Join(outDir, e.Name()))
+				os.Rename(filepath.Join(srcBin, e.Name()), filepath.Join(hostDir, e.Name()))
 			}
 		}
 		os.RemoveAll(filepath.Join(appDir, "build"))
 	}
 
 	if runtime.GOOS == "darwin" {
-		if entries, err := os.ReadDir(outDir); err == nil {
+		if entries, err := os.ReadDir(hostDir); err == nil {
 			for _, e := range entries {
 				if strings.HasSuffix(e.Name(), ".app") {
-					appPath := filepath.Join(outDir, e.Name())
+					appPath := filepath.Join(hostDir, e.Name())
 					exec.Command("xattr", "-d", "com.apple.quarantine", appPath).Run()
 					exec.Command("xattr", "-cr", appPath).Run()
 				}
@@ -124,11 +129,70 @@ func main() {
 		}
 	}
 
+	writeDefaultConfig(runtimeDir)
+
 	fmt.Println("\n====================================")
-	fmt.Printf("✅ 产物: %s\n", outDir)
-	entries, _ := os.ReadDir(outDir)
+	fmt.Printf("✅ 产物: %s\n", hostDir)
+	entries, _ := os.ReadDir(hostDir)
 	for _, e := range entries {
 		fmt.Printf("   %s\n", e.Name())
 	}
 	fmt.Println("====================================")
+}
+
+func cleanBuildRootStale(rootDir string) {
+	buildDir := filepath.Join(rootDir, "build")
+	entries, err := os.ReadDir(buildDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		os.Remove(filepath.Join(buildDir, e.Name()))
+	}
+}
+
+var runtimeDirs = []string{
+	"cache",
+	"cache/builds",
+	"cache/scripts",
+	"config",
+	"logs",
+	"exports",
+}
+
+func initRuntimeDirs(runtimeDir string) {
+	for _, sub := range runtimeDirs {
+		os.MkdirAll(filepath.Join(runtimeDir, sub), 0755)
+	}
+}
+
+const defaultConfigJSON = `{
+  "app": {
+    "version": "1.0.0",
+    "language": "zh-CN"
+  },
+  "execution": {
+    "defaultPython": "python3",
+    "maxHistory": 50,
+    "remoteTimeoutSec": 30
+  },
+  "ui": {
+    "theme": "dracula",
+    "verboseShortcuts": false
+  }
+}
+`
+
+func writeDefaultConfig(runtimeDir string) {
+	configDir := filepath.Join(runtimeDir, "config")
+	os.MkdirAll(configDir, 0755)
+
+	appConfig := filepath.Join(configDir, "app.json")
+	if _, err := os.Stat(appConfig); err == nil {
+		return
+	}
+	os.WriteFile(appConfig, []byte(defaultConfigJSON), 0644)
 }

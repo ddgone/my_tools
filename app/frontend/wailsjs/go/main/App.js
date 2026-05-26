@@ -10,6 +10,10 @@ export function DeleteSSHConnection(arg1) {
   return window['go']['main']['App']['DeleteSSHConnection'](arg1);
 }
 
+export function GetSSHConnection(arg1) {
+  return window['go']['main']['App']['GetSSHConnection'](arg1);
+}
+
 export function GetWorkbenchBootstrap() {
   return window['go']['main']['App']['GetWorkbenchBootstrap']();
 }
@@ -40,4 +44,16 @@ export function StartLocalExecution(arg1) {
 
 export function StartRemoteExecution(arg1) {
   return window['go']['main']['App']['StartRemoteExecution'](arg1);
+}
+
+export function TestSSHConnection(arg1) {
+  return window['go']['main']['App']['TestSSHConnection'](arg1);
+}
+
+export function TestSSHConnectionRaw(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TestSSHConnectionRaw'](arg1, arg2, arg3, arg4);
+}
+
+export function UpdateSSHConnection(arg1, arg2) {
+  return window['go']['main']['App']['UpdateSSHConnection'](arg1, arg2);
 }

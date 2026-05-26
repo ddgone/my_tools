@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { darkTheme, NConfigProvider, NGlobalStyle } from 'naive-ui'
+import { darkTheme, NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
 import WorkspaceLayout from './components/WorkspaceLayout.vue'
 
 const themeOverrides = {
@@ -29,7 +29,9 @@ const themeOverrides = {
     :theme="darkTheme"
     :theme-overrides="themeOverrides"
   >
-    <n-global-style />
-    <WorkspaceLayout />
+    <n-message-provider>
+      <n-global-style />
+      <WorkspaceLayout />
+    </n-message-provider>
   </n-config-provider>
 </template>

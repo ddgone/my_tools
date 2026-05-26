@@ -105,7 +105,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
 产物默认输出到：
 
 ```text
-app/desktop/build/bin/fire-salamander-desktop.exe
+build/image/host/fire-salamander-desktop.exe
 ```
 
 这是当前应该双击运行的唯一正式桌面产物。

@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"fire-salamander-desktop/internal/builder"
 	"fire-salamander-desktop/internal/runtime"
+	"fire-salamander-desktop/internal/runtimeenv"
 	"fire-salamander-desktop/internal/ssh"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"my_tools/libs/framework"
 )
 
 type ExecutionRequest struct {
@@ -268,47 +272,18 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 		writer := &taskEventWriter{taskID: task.ID, app: a}
 		defer writer.Flush()
 
-		fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", task.ToolName)
-
-		tmpDir, err := os.MkdirTemp("", "fire-salamander-build-*")
-		if err != nil {
-			a.emitTaskLog(task.ID, "[错误] 创建临时目录失败: "+err.Error())
-			a.mu.Lock()
-			task.Status = "error"
-			task.ExitMessage = err.Error()
-			task.EndedAt = time.Now().UnixMilli()
-			a.mu.Unlock()
-			a.emitTaskUpdate(task)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-
-		kind := builder.KindGo
-		if string(manifest.Kind) == "python" {
-			kind = builder.KindPython
-		}
-
-		pkgPath, err := builder.BuildPackage(builder.BuildRequest{
-			ToolID:    req.ToolID,
-			ToolName:  manifest.Name,
-			Kind:      kind,
-			OutputDir: tmpDir,
-		})
-		if err != nil {
-			fmt.Fprintf(writer, "[远程] 构建产物失败: %v\n", err)
-		} else {
-			fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
-		}
-
 		execErr := executeRemotely(runCtx, writer, remoteExecParams{
-			host:      target.Host,
-			port:      target.Port,
-			user:      target.User,
-			password:  realConn.Password,
-			toolID:    req.ToolID,
-			kind:      string(manifest.Kind),
-			args:      req.Args,
-			pythonEnv: req.PythonEnv,
+			host:        target.Host,
+			port:        target.Port,
+			user:        target.User,
+			password:    realConn.Password,
+			toolID:      req.ToolID,
+			taskID:      task.ID,
+			toolName:    task.ToolName,
+			kind:        string(manifest.Kind),
+			args:        req.Args,
+			pythonEnv:   req.PythonEnv,
+			sourceEntry: manifest.Source.Entry,
 		})
 
 		a.mu.Lock()
@@ -337,7 +312,9 @@ type remoteExecParams struct {
 	host, user, password string
 	port                 int
 	toolID, kind, args   string
+	taskID, toolName     string
 	pythonEnv            string
+	sourceEntry          string
 }
 
 func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) error {
@@ -351,27 +328,130 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 
 	fmt.Fprintf(writer, "[远程] 连接成功\n")
 
-	var cmd string
-	if params.kind == "python" {
-		env := params.pythonEnv
-		if env == "" {
-			env = "python3"
-		}
-		argPart := strings.TrimSpace(params.args)
-		if argPart != "" {
-			cmd = fmt.Sprintf("%s %s", env, argPart)
+	platform, err := executor.DetectPlatform(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(writer, "[远程] 目标平台: %s/%s\n", platform.OS, platform.Arch)
+
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		return fmt.Errorf("初始化运行时目录失败: %w", err)
+	}
+	if err := layout.Ensure(); err != nil {
+		return fmt.Errorf("准备运行时目录失败: %w", err)
+	}
+
+	repoRoot, ok := locateRepoRoot()
+	if !ok {
+		return fmt.Errorf("当前运行环境缺少源码工作区，暂时无法构建单工具远程产物")
+	}
+
+	fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
+	pkgPath, err := builder.BuildPackage(builder.BuildRequest{
+		ToolID:      params.toolID,
+		ToolName:    params.toolName,
+		Kind:        builderKind(params.kind),
+		OutputDir:   layout.BuildCacheDir(),
+		RepoRoot:    repoRoot,
+		SourceEntry: params.sourceEntry,
+		TargetOS:    platform.OS,
+		TargetArch:  platform.Arch,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
+
+	remoteDir, err := executor.RunOutput(ctx, "mktemp -d /tmp/fire-salamander-XXXXXX")
+	if err != nil {
+		return fmt.Errorf("创建远端临时目录失败: %w", err)
+	}
+	remoteDir = strings.TrimSpace(remoteDir)
+	fmt.Fprintf(writer, "[远程] 远端工作目录: %s\n", remoteDir)
+	defer func() {
+		cleanupCmd := fmt.Sprintf("rm -rf %s", runtime.ShellQuote(remoteDir))
+		if cleanupErr := executor.Execute(context.Background(), cleanupCmd, writer); cleanupErr != nil {
+			fmt.Fprintf(writer, "[远程] 清理远端临时目录失败: %v\n", cleanupErr)
 		} else {
-			cmd = fmt.Sprintf("%s -c \"print('远程Python环境就绪')\"", env)
+			fmt.Fprintf(writer, "[远程] 已清理远端临时目录\n")
 		}
-	} else {
-		argPart := strings.TrimSpace(params.args)
-		if argPart != "" {
-			cmd = fmt.Sprintf("echo 'Go远程执行: %s' && %s", params.toolID, argPart)
-		} else {
-			cmd = fmt.Sprintf("echo 'Go远程执行环境就绪: %s'", params.toolID)
+	}()
+
+	remoteEntry := path.Join(remoteDir, filepath.Base(pkgPath))
+	fmt.Fprintf(writer, "[远程] 正在上传产物到 %s ...\n", remoteEntry)
+	if err := executor.Upload(ctx, pkgPath, remoteEntry); err != nil {
+		return err
+	}
+
+	runCmd, chmodCmd := buildRemoteRunCommand(remoteEntry, params)
+	if chmodCmd != "" {
+		if err := executor.Execute(ctx, chmodCmd, writer); err != nil {
+			return fmt.Errorf("设置远端产物权限失败: %w", err)
 		}
 	}
 
-	fmt.Fprintf(writer, "[远程] 执行: %s\n", cmd)
-	return executor.Execute(ctx, cmd, writer)
+	fmt.Fprintf(writer, "[远程] 执行: %s\n", runCmd)
+	return executor.Execute(ctx, runCmd, writer)
+}
+
+func builderKind(kind string) builder.ToolKind {
+	if kind == "python" {
+		return builder.KindPython
+	}
+	return builder.KindGo
+}
+
+func locateRepoRoot() (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for {
+		if fileExists(filepath.Join(dir, "go.work")) && fileExists(filepath.Join(dir, "app", "wails.json")) {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string, string) {
+	quotedArgs := joinRemoteShellArgs(framework.ParseArgs(params.args))
+	if params.kind == "python" {
+		env := strings.TrimSpace(params.pythonEnv)
+		if env == "" {
+			env = "python3"
+		}
+		cmd := fmt.Sprintf("cd %s && %s %s", runtime.ShellQuote(path.Dir(remoteEntry)), runtime.ShellQuote(env), runtime.ShellQuote("./"+path.Base(remoteEntry)))
+		if quotedArgs != "" {
+			cmd += " " + quotedArgs
+		}
+		return cmd, ""
+	}
+
+	cmd := fmt.Sprintf("cd %s && %s", runtime.ShellQuote(path.Dir(remoteEntry)), runtime.ShellQuote("./"+path.Base(remoteEntry)))
+	if quotedArgs != "" {
+		cmd += " " + quotedArgs
+	}
+	return cmd, fmt.Sprintf("chmod +x %s", runtime.ShellQuote(remoteEntry))
+}
+
+func joinRemoteShellArgs(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args))
+	for _, arg := range args {
+		parts = append(parts, runtime.ShellQuote(arg))
+	}
+	return strings.Join(parts, " ")
 }

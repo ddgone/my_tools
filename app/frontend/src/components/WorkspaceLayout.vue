@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
+import type { SSHConnection } from '@/types/workbench'
 import AppHeader from './AppHeader.vue'
 import ToolSidebar from './ToolSidebar.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
@@ -12,6 +14,7 @@ import SettingsModal from './SettingsModal.vue'
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
+const workspace = useWorkspaceStore()
 
 const { size: sidebarWidth, dividerProps } = useResizable({
   axis: 'x',
@@ -20,6 +23,22 @@ const { size: sidebarWidth, dividerProps } = useResizable({
   initial: 256,
   storageKey: 'fire-salamander:sidebar-width',
 })
+
+const sidebarRef = ref<InstanceType<typeof ToolSidebar> | null>(null)
+
+function handleSelectConnection(conn: SSHConnection) {
+  workspace.openSSHEdit(conn.id, conn.name)
+}
+
+function handleCreateConnection() {
+  workspace.openSSHNew()
+}
+
+async function handleRefreshSSHList() {
+  if (sidebarRef.value) {
+    await sidebarRef.value.loadSSHConnections()
+  }
+}
 
 onMounted(async () => {
   await Promise.all([workbench.loadBootstrap(), execution.hydrate()])
@@ -30,7 +49,12 @@ onMounted(async () => {
   <div class="flex h-screen flex-col overflow-hidden bg-dracula-bg text-dracula-text">
     <AppHeader />
     <div class="flex flex-1 overflow-hidden">
-      <ToolSidebar :width="sidebarWidth" />
+      <ToolSidebar
+        ref="sidebarRef"
+        :width="sidebarWidth"
+        @select-connection="handleSelectConnection"
+        @create-connection="handleCreateConnection"
+      />
       <div
         v-bind="dividerProps"
         class="group relative shrink-0 bg-dracula-soft"
@@ -38,7 +62,7 @@ onMounted(async () => {
       >
         <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
       </div>
-      <WorkspaceTabs />
+      <WorkspaceTabs @refresh-ssh-list="handleRefreshSSHList" />
     </div>
     <StatusBar />
     <HotkeyHelpModal />

@@ -9,6 +9,11 @@ import type { ParameterSpec } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
+import SSHDetailPanel from './SSHDetailPanel.vue'
+
+const emit = defineEmits<{
+  refreshSshList: []
+}>()
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
@@ -32,8 +37,8 @@ const { size: topHeight, dividerProps: hDividerProps } = useResizable({
   storageKey: 'fire-salamander:panel-split',
 })
 
-const activeToolId = computed(() => workspace.activeTab()?.toolId ?? '')
-const activeTab = computed(() => workspace.activeTab())
+const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
+const activeToolTabComputed = computed(() => workspace.activeToolTab)
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
@@ -45,10 +50,10 @@ const searchResults = computed(() => {
   const q = searchInput.value.trim().toLowerCase()
   if (!q) return allTools.value
   return allTools.value.filter(
-      (t) =>
-          t.name.toLowerCase().includes(q) ||
-          t.description.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q),
+    (t) =>
+      t.name.toLowerCase().includes(q) ||
+      t.description.toLowerCase().includes(q) ||
+      t.category.toLowerCase().includes(q),
   )
 })
 
@@ -64,11 +69,11 @@ function isTabRunning(toolId: string) {
 }
 
 const activeTask = computed(() =>
-    activeTabTaskId.value ? execution.recentTasks.find((t) => t.id === activeTabTaskId.value) ?? null : null,
+  activeTabTaskId.value ? execution.recentTasks.find((t) => t.id === activeTabTaskId.value) ?? null : null,
 )
 
 async function handleExecute() {
-  const tab = workspace.activeTab()
+  const tab = workspace.activeToolTab
   const tool = tab ? toolById(tab.toolId) : null
   if (!tool || !tab) return
 
@@ -87,7 +92,7 @@ async function handleExecute() {
 }
 
 async function handleRemoteExecute(connId: string) {
-  const tab = workspace.activeTab()
+  const tab = workspace.activeToolTab
   const tool = tab ? toolById(tab.toolId) : null
   if (!tool || !tab) return
 
@@ -113,7 +118,7 @@ async function handleCancel() {
 }
 
 async function handleFileDialog(param: ParameterSpec) {
-  const tab = activeTab.value
+  const tab = activeToolTabComputed.value
   if (!tab) return
 
   const isSave = param.key.toLowerCase().includes('output') || param.key.toLowerCase().includes('save')
@@ -141,6 +146,13 @@ async function handleFileDialog(param: ParameterSpec) {
   }
 }
 
+function onPythonEnvUpdate(value: string) {
+  const tab = activeToolTabComputed.value
+  if (tab) {
+    tab.pythonEnv = value
+  }
+}
+
 function openSearch() {
   searchInput.value = ''
   showSearchModal.value = true
@@ -158,10 +170,13 @@ function selectSearchResult(toolId: string) {
   closeSearch()
 }
 
-function onPythonEnvUpdate(value: string) {
-  const tab = activeTab.value
-  if (tab) {
-    tab.pythonEnv = value
+function handleSSHSaved() {
+  emit('refreshSshList')
+}
+
+function handleSSHClose() {
+  if (workspace.activeSSHTabIndex >= 0) {
+    workspace.closeSSHTab(workspace.activeSSHTabIndex)
   }
 }
 
@@ -200,38 +215,42 @@ onUnmounted(() => {
     <div class="flex shrink-0 items-center border-b border-dracula-soft bg-[#1a1b26]">
       <div class="flex flex-1 overflow-x-auto">
         <button
-          v-for="(tab, index) in workspace.openTabs"
-          :key="tab.toolId"
+          v-for="item in workspace.unifiedTabs"
+          :key="item.key"
           class="group flex shrink-0 items-center gap-2 border-r border-dracula-soft px-4 py-2 text-sm transition"
           :class="
-            index === workspace.activeTabIndex
+            (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
+            (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
               ? 'bg-dracula-bg text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
-          @click="workspace.setActiveTab(index)"
+          @click="workspace.activateUnifiedTab(item)"
         >
+          <span v-if="item.type === 'ssh'" class="text-xs">🖥</span>
           <span
-            v-if="isTabRunning(tab.toolId)"
+            v-if="item.type === 'tool' && isTabRunning(item.label)"
             class="h-1.5 w-1.5 rounded-full bg-dracula-green"
           />
-          <span class="max-w-[140px] truncate">{{ toolById(tab.toolId)?.name ?? tab.toolId }}</span>
+          <span class="max-w-[160px] truncate">
+            {{ item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label }}
+          </span>
           <span
             class="ml-1 flex h-4 w-4 items-center justify-center rounded text-xs opacity-0 transition group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
-            @click.stop="workspace.closeTab(index)"
+            @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
         </button>
       </div>
     </div>
 
-    <template v-if="workspace.activeTab()">
+    <template v-if="workspace.activeTabType === 'tool' && workspace.activeToolTab">
       <div class="flex flex-1 flex-col overflow-hidden">
         <div
           class="shrink-0 overflow-y-auto border-b border-dracula-soft p-4"
           :style="{ height: topHeight + 'px' }"
         >
           <ToolDetailPanel
-            :tool="toolById(workspace.activeTab()!.toolId)"
-            :tab="workspace.activeTab()!"
+            :tool="toolById(workspace.activeToolTab.toolId)"
+            :tab="workspace.activeToolTab"
             :active-task-id="activeTabTaskId"
             :is-running="activeTask?.status === 'running'"
             :is-launching="launching"
@@ -241,7 +260,7 @@ onUnmounted(() => {
             @remote-execute="handleRemoteExecute"
           />
           <ParameterPanel
-            :tool="toolById(workspace.activeTab()!.toolId)"
+            :tool="toolById(workspace.activeToolTab.toolId)"
             @execute="handleExecute"
             @file-dialog="handleFileDialog"
           />
@@ -259,6 +278,15 @@ onUnmounted(() => {
           <ExecutionTerminal :task-id="activeTabTaskId" />
         </div>
       </div>
+    </template>
+
+    <template v-else-if="workspace.activeTabType === 'ssh' && workspace.activeSSHTab">
+      <SSHDetailPanel
+        :connection-id="workspace.activeSSHTab.connectionId"
+        :is-new="workspace.activeSSHTab.isNew"
+        @close="handleSSHClose"
+        @saved="handleSSHSaved"
+      />
     </template>
 
     <div

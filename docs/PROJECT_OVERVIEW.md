@@ -322,7 +322,7 @@ Python 工具不优先打成二进制，默认按脚本交付，这样安装目�
 当前桌面程序正式产物位置：
 
 ```text
-build/bin/fire-salamander-desktop.app
+build/image/host/fire-salamander-desktop.exe
 ```
 
 当前唯一正确的构建方式：

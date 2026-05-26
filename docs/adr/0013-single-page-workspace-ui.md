@@ -49,13 +49,16 @@
 2. **移除页面路由文件**：`HomeView.vue` 和 `ExecuteView.vue` 被拆解为一组独立组件
 3. **新增 `WorkspaceLayout.vue`** 作为全局布局壳
 4. **新增组件矩阵**：
-   - `AppHeader.vue` — 顶部导航栏（Logo、搜索、SSH/导出/任务/设置入口）
-   - `ToolSidebar.vue` — 左侧工具分类树 + 搜索 + 底部视图切换
-   - `WorkspaceTabs.vue` — 工具页签栏 + 活动工具工作区
-   - `ParameterPanel.vue` — 三模式参数配置区（可视化表单 / 命令行 / 工具说明）
-   - `ExecutionTerminal.vue` — 始终可见的执行日志终端
+   - `AppHeader.vue` — 顶部导航栏
+   - `ToolSidebar.vue` — 左侧工具分类树 + SSH 服务器列表 + 底部视图切换
+   - `WorkspaceTabs.vue` — 统一页签栏（工具页签 + SSH 页签按时间排序）+ 活动工作区
+   - `ToolDetailPanel.vue` — 工具详情 + 执行按钮区
+   - `SSHDetailPanel.vue` — SSH 连接编辑表单（与工具页签同等的 Tab 内容组件）
+   - `ParameterPanel.vue` — 参数配置区
+   - `ExecutionTerminal.vue` — 执行日志终端
    - `StatusBar.vue` — 底部状态栏
-5. **引入 workspace store**（Pinia）管理多页签状态：打开的工具列表、活动工具 ID、每个工具的独立参数状态
+5. **引入 workspace store**（Pinia）管理多页签状态：工具页签列表、SSH 页签列表、统一页签排序、每个工具/SSH 的独立状态
+6. **SSH 连接管理接入 Tab 系统**：SSH 连接的新建、编辑均以 Tab 页形式在主工作区打开，与工具 Tab 享受同等交互体验
 
 ### 放弃的方案
 
@@ -74,4 +77,5 @@
 
 - [ADR 0001: 桌面宿主优先](./0001-desktop-host-first.md) — 此 ADR 是桌面宿主优先理念在 UI 层的最终落地
 - [ADR 0008: 能力迁移不追求 UI 对等](./0008-capability-migration-not-ui-parity.md) — 单页工作台是能力迁移原则下 UI 可以自由重设计的体现
-- [ADR 0010: 结构化表单与原始参数模式共存](./0010-structured-form-with-raw-args-mode.md) — ParameterPanel 继承此决策，增加"工具说明"作为第三种展示模式
+- [ADR 0010: 结构化表单与原始参数模式共存](./0010-structured-form-with-raw-args-mode.md) — ParameterPanel 继承此决策
+- [ADR 0016: SSH 连接管理与工具享有同等 Tab 页体验](./0016-ssh-connection-management-tab-parity.md) — SSH 页签是该范式的自然延伸

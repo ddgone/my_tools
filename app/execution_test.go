@@ -60,3 +60,37 @@ func TestStartLocalExecutionRunsLegacyTool(t *testing.T) {
 
 	t.Fatalf("task %s did not finish before deadline", task.ID)
 }
+
+func TestBuildRemoteRunCommandForGoTool(t *testing.T) {
+	cmd, chmodCmd := buildRemoteRunCommand("/tmp/fire-salamander-abcd/geojson_to_shp_linux_amd64", remoteExecParams{
+		kind: "go",
+		args: `-input "/data/demo file.geojson" -workers 4`,
+	})
+
+	expectedCmd := "cd '/tmp/fire-salamander-abcd' && './geojson_to_shp_linux_amd64' '-input' '/data/demo file.geojson' '-workers' '4'"
+	if cmd != expectedCmd {
+		t.Fatalf("unexpected go command:\nwant: %s\ngot:  %s", expectedCmd, cmd)
+	}
+
+	expectedChmod := "chmod +x '/tmp/fire-salamander-abcd/geojson_to_shp_linux_amd64'"
+	if chmodCmd != expectedChmod {
+		t.Fatalf("unexpected chmod command:\nwant: %s\ngot:  %s", expectedChmod, chmodCmd)
+	}
+}
+
+func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
+	cmd, chmodCmd := buildRemoteRunCommand("/tmp/fire-salamander-abcd/restore_pcd_by_mgrs.py", remoteExecParams{
+		kind:      "python",
+		pythonEnv: "python3",
+		args:      `-input "/data/source dir"`,
+	})
+
+	expectedCmd := "cd '/tmp/fire-salamander-abcd' && 'python3' './restore_pcd_by_mgrs.py' '-input' '/data/source dir'"
+	if cmd != expectedCmd {
+		t.Fatalf("unexpected python command:\nwant: %s\ngot:  %s", expectedCmd, cmd)
+	}
+
+	if chmodCmd != "" {
+		t.Fatalf("python command should not need chmod, got %s", chmodCmd)
+	}
+}

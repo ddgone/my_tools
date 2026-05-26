@@ -124,10 +124,36 @@ func (a *App) ListSSHConnections() []*ssh.Connection {
 	return a.sshStore.List()
 }
 
+func (a *App) GetSSHConnection(id string) (*ssh.Connection, error) {
+	return a.sshStore.GetCredentials(id)
+}
+
 func (a *App) SaveSSHConnection(conn ssh.Connection) error {
 	return a.sshStore.Save(conn)
 }
 
 func (a *App) DeleteSSHConnection(id string) error {
 	return a.sshStore.Delete(id)
+}
+
+func (a *App) UpdateSSHConnection(id string, conn ssh.Connection) error {
+	return a.sshStore.Update(id, conn)
+}
+
+func (a *App) TestSSHConnection(id string) ssh.TestResult {
+	creds, err := a.sshStore.GetCredentials(id)
+	if err != nil {
+		return ssh.TestResult{Success: false, Message: err.Error()}
+	}
+	if creds.Password == "" && creds.KeyPath == "" {
+		return ssh.TestResult{Success: false, Message: "连接缺少认证凭据"}
+	}
+	return ssh.TestConnection(creds.Host, creds.Port, creds.User, creds.Password)
+}
+
+func (a *App) TestSSHConnectionRaw(host string, port int, user, password string) ssh.TestResult {
+	if host == "" || user == "" {
+		return ssh.TestResult{Success: false, Message: "主机地址和用户名不能为空"}
+	}
+	return ssh.TestConnection(host, port, user, password)
 }
