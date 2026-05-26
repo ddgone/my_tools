@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { NButton, NPopover, NTag } from 'naive-ui'
+import { NButton, NIcon, NInput, NPopover, NText, NTag } from 'naive-ui'
+import { Play, Globe, Stop, CloudUpload, ServerOutline, CodeSlash, LogoPython } from '@vicons/ionicons5'
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ToolTabState } from '@/stores/workspace'
@@ -43,111 +44,153 @@ watch(remotePopoverVisible, (visible) => {
   <div v-if="tool">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <span>{{ tool.category }}</span>
-          <span>·</span>
-          <n-tag
+        <div class="flex items-center gap-x-2">
+          <NText
+            depth="3"
+            class="text-xs"
+          >
+            {{ tool.category }}
+          </NText>
+          <span class="text-dracula-soft text-xs">·</span>
+          <NTag
             size="tiny"
-            :bordered="false"
+            :bordered="true"
             :type="tool.kind === 'python' ? 'success' : 'info'"
           >
+            <template #icon>
+              <NIcon
+                :component="tool.kind === 'python' ? LogoPython : CodeSlash"
+                size="12"
+              />
+            </template>
             {{ tool.kind }}
-          </n-tag>
+          </NTag>
         </div>
-        <h2 class="m-0 mt-1 text-lg font-semibold text-white">
+        <h2 class="m-0 mt-1 text-lg font-semibold text-dracula-text">
           {{ tool.name }}
         </h2>
-        <p class="mt-1 text-sm leading-relaxed text-slate-400">
+        <NText
+          depth="2"
+          class="mt-1 text-sm leading-relaxed"
+        >
           {{ tool.docs.summary || tool.description }}
-        </p>
+        </NText>
       </div>
 
-      <div class="flex shrink-0 flex-wrap items-center gap-2">
-        <div class="flex items-center gap-1.5">
-          <n-button
-            type="success"
-            size="small"
-            :disabled="isRunning || isLaunching"
-            :loading="isLaunching"
-            @click="emit('execute')"
-          >
-            ▶ 本地运行
-          </n-button>
-          <n-button
-            v-if="isRunning"
-            type="error"
-            size="small"
-            @click="emit('cancel')"
-          >
-            ⏹ 停止
-          </n-button>
+      <div class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+        <NButton
+          type="success"
+          size="small"
+          :disabled="isRunning || isLaunching"
+          :loading="isLaunching"
+          @click="emit('execute')"
+        >
+          <template #icon>
+            <NIcon :component="Play" />
+          </template>
+          本地运行
+        </NButton>
 
-          <n-popover
-            v-model:show="remotePopoverVisible"
-            trigger="click"
-            placement="bottom-end"
-            :disabled="isRunning"
-          >
-            <template #trigger>
-              <n-button
-                type="info"
-                size="small"
-                :disabled="isRunning"
-                secondary
+        <NButton
+          v-if="isRunning"
+          type="error"
+          size="small"
+          @click="emit('cancel')"
+        >
+          <template #icon>
+            <NIcon :component="Stop" />
+          </template>
+          停止
+        </NButton>
+
+        <NPopover
+          v-model:show="remotePopoverVisible"
+          trigger="click"
+          placement="bottom-end"
+          :disabled="isRunning"
+        >
+          <template #trigger>
+            <NButton
+              type="info"
+              size="small"
+              :disabled="isRunning"
+              secondary
+            >
+              <template #icon>
+                <NIcon :component="Globe" />
+              </template>
+              远程执行
+            </NButton>
+          </template>
+          <div class="min-w-[220px] rounded-lg border border-dracula-soft bg-dracula-panel p-1.5">
+            <NText
+              depth="3"
+              class="block px-2 pb-1.5 text-[10px] uppercase"
+            >
+              选择目标服务器
+            </NText>
+            <div
+              v-if="sshConnections.length === 0"
+              class="px-2 py-3 text-center"
+            >
+              <NText
+                depth="3"
+                class="text-xs"
               >
-                🔗 远程执行
-              </n-button>
-            </template>
-            <div class="min-w-[200px] rounded-lg border border-dracula-soft bg-dracula-panel p-1.5">
-              <div class="mb-1.5 px-2 text-[10px] uppercase text-slate-500">
-                选择目标服务器
-              </div>
-              <button
-                v-for="conn in sshConnections"
-                :key="conn.id"
-                class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-white/5"
-                @click="selectRemote(conn.id)"
-              >
-                <span class="truncate text-slate-200">{{ conn.name }}</span>
-                <span class="ml-auto shrink-0 text-[10px] text-slate-500">{{ conn.user }}@{{ conn.host }}</span>
-              </button>
-              <div
-                v-if="sshConnections.length === 0"
-                class="space-y-2 px-2 py-3 text-center text-xs text-slate-500"
-              >
-                <p class="m-0">
-                  暂无 SSH 连接
-                </p>
-                <p class="m-0 text-[10px] text-slate-600">
-                  请先在左侧边栏点击 🔗 添加连接
-                </p>
-              </div>
+                暂无 SSH 连接
+              </NText>
             </div>
-          </n-popover>
+            <button
+              v-for="conn in sshConnections"
+              :key="conn.id"
+              class="flex w-full items-center gap-x-2 rounded-md px-2.5 py-1.5 text-left text-xs transition hover:bg-white/5"
+              @click="selectRemote(conn.id)"
+            >
+              <NIcon
+                :component="ServerOutline"
+                size="12"
+              />
+              <span class="truncate text-slate-200">{{ conn.name }}</span>
+              <NText
+                depth="3"
+                class="ml-auto shrink-0 text-[10px]"
+              >
+                {{ conn.user }}@{{ conn.host }}
+              </NText>
+            </button>
+          </div>
+        </NPopover>
 
-          <n-button
-            size="small"
-            disabled
-            secondary
-          >
-            📦 导出
-          </n-button>
-        </div>
+        <NButton
+          size="small"
+          disabled
+          secondary
+        >
+          <template #icon>
+            <NIcon :component="CloudUpload" />
+          </template>
+          导出
+        </NButton>
       </div>
     </div>
 
     <div
       v-if="tool.kind === 'python' && tab"
-      class="mt-3 flex items-center gap-2"
+      class="mt-3 flex items-center gap-x-2"
     >
-      <label class="text-[11px] uppercase tracking-wide text-slate-500">Python 解释器</label>
-      <input
-        :value="tab.pythonEnv"
-        type="text"
-        placeholder="python"
-        class="rounded border border-dracula-soft bg-black/30 px-2 py-1 text-xs text-slate-300 outline-none transition focus:border-dracula-cyan/50"
-        @input="emit('update:python-env', ($event.target as HTMLInputElement).value)"
+      <NText
+        depth="3"
+        class="text-[11px] uppercase tracking-wide"
       >
+        Python 解释器
+      </NText>
+      <NInput
+        :value="tab.pythonEnv"
+        placeholder="python"
+        size="small"
+        class="w-32"
+        @update:value="emit('update:python-env', $event)"
+      />
     </div>
   </div>
 </template>

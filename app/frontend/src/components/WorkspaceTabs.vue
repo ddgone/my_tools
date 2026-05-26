@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { NInput, NIcon, NScrollbar, NText, NTag } from 'naive-ui'
+import { Search, ServerOutline, CodeSlash, LogoPython } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -180,6 +182,10 @@ function handleSSHClose() {
   }
 }
 
+function kindIcon(kind: string) {
+  return kind === 'python' ? LogoPython : CodeSlash
+}
+
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
     e.preventDefault()
@@ -217,16 +223,20 @@ onUnmounted(() => {
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
-          class="group flex shrink-0 items-center gap-2 border-r border-dracula-soft px-4 py-2 text-sm transition"
+          class="group flex shrink-0 items-center gap-1.5 border-r border-dracula-soft px-3 py-2 text-sm transition"
           :class="
             (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
-            (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
+              (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
               ? 'bg-dracula-bg text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
           @click="workspace.activateUnifiedTab(item)"
         >
-          <span v-if="item.type === 'ssh'" class="text-xs">🖥</span>
+          <NIcon
+            v-if="item.type === 'ssh'"
+            :component="ServerOutline"
+            size="14"
+          />
           <span
             v-if="item.type === 'tool' && isTabRunning(item.label)"
             class="h-1.5 w-1.5 rounded-full bg-dracula-green"
@@ -291,70 +301,115 @@ onUnmounted(() => {
 
     <div
       v-else
-      class="flex flex-1 items-center justify-center"
+      class="flex flex-1 items-center justify-center bg-dracula-bg"
     >
       <div class="text-center">
-        <div class="text-5xl opacity-50">
-          🦎
-        </div>
-        <p class="mt-4 text-lg text-slate-500">
+        <NText
+          depth="3"
+          class="text-6xl"
+        >
+          火
+        </NText>
+        <p class="mt-4 text-base text-slate-500">
           火蜥蜴工具箱
         </p>
         <p class="mt-2 text-sm text-slate-600">
           从左侧选择工具开始使用
         </p>
-        <p class="mt-4 text-xs text-slate-600">
-          Ctrl+P 搜索 | Ctrl+F 收藏 | F1 帮助
-        </p>
+        <div class="mt-6 flex items-center justify-center gap-x-4">
+          <NTag
+            size="small"
+            :bordered="false"
+            class="opacity-50"
+          >
+            Ctrl+P 搜索
+          </NTag>
+          <NTag
+            size="small"
+            :bordered="false"
+            class="opacity-50"
+          >
+            Ctrl+F 收藏
+          </NTag>
+          <NTag
+            size="small"
+            :bordered="false"
+            class="opacity-50"
+          >
+            F1 帮助
+          </NTag>
+        </div>
       </div>
     </div>
 
     <Teleport to="body">
-      <div
-        v-if="showSearchModal"
-        class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[15vh]"
-        @click="closeSearch"
+      <Transition
+        name="fade-scale"
+        appear
       >
         <div
-          class="w-full max-w-lg rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
-          @click.stop
+          v-if="showSearchModal"
+          class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[15vh] backdrop-blur-sm"
+          @click="closeSearch"
         >
-          <div class="relative border-b border-dracula-soft p-4">
-            <input
-              v-model="searchInput"
-              type="text"
-              placeholder="搜索工具名称、说明..."
-              class="w-full bg-transparent text-base text-white placeholder-slate-500 outline-none"
-              autofocus
-            >
-            <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-500">ESC 关闭</span>
-          </div>
-          <div class="max-h-64 overflow-y-auto p-2">
-            <button
-              v-for="tool in searchResults"
-              :key="tool.id"
-              class="flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-left transition hover:bg-white/5"
-              @click="selectSearchResult(tool.id)"
-            >
-              <span class="text-sm text-slate-400">{{ tool.kind === 'python' ? '🐍' : '⚡' }}</span>
-              <div class="min-w-0 flex-1">
-                <div class="text-sm text-white">
-                  {{ tool.name }}
+          <div
+            class="w-full max-w-lg rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
+            @click.stop
+          >
+            <div class="p-4">
+              <NInput
+                v-model:value="searchInput"
+                placeholder="搜索工具名称、说明..."
+                size="large"
+                autofocus
+                clearable
+              >
+                <template #prefix>
+                  <NIcon :component="Search" />
+                </template>
+              </NInput>
+            </div>
+            <NScrollbar style="max-height: 320px">
+              <div class="px-2 pb-2">
+                <div
+                  v-for="tool in searchResults"
+                  :key="tool.id"
+                  class="flex cursor-pointer items-center gap-x-3 rounded-lg px-3 py-2.5 transition hover:bg-white/5"
+                  @click="selectSearchResult(tool.id)"
+                >
+                  <NIcon
+                    :component="kindIcon(tool.kind)"
+                    size="18"
+                    :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <NText class="text-sm">
+                      {{ tool.name }}
+                    </NText>
+                    <NText
+                      depth="3"
+                      class="truncate text-xs"
+                    >
+                      {{ tool.category }} · {{ tool.description }}
+                    </NText>
+                  </div>
                 </div>
-                <div class="truncate text-xs text-slate-500">
-                  {{ tool.category }} · {{ tool.description }}
+                <div
+                  v-if="searchResults.length === 0"
+                  class="py-8 text-center"
+                >
+                  <NText
+                    depth="3"
+                    class="text-sm"
+                  >
+                    未找到匹配的工具
+                  </NText>
                 </div>
               </div>
-            </button>
-            <div
-              v-if="searchResults.length === 0"
-              class="p-4 text-center text-sm text-slate-500"
-            >
-              未找到匹配的工具
-            </div>
+            </NScrollbar>
           </div>
         </div>
-      </div>
+      </Transition>
     </Teleport>
   </div>
 </template>

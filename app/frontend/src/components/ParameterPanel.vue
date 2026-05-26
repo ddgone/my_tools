@@ -2,13 +2,23 @@
 import { computed, ref, watch } from 'vue'
 import {
   NButton,
+  NForm,
+  NFormItem,
+  NIcon,
   NInput,
+  NInputGroup,
   NInputNumber,
   NSelect,
   NSwitch,
+  NTabs,
+  NTabPane,
+  NText,
+  NTag,
   type SelectOption,
 } from 'naive-ui'
+import { FolderOpen, Copy } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
 
 const props = defineProps<{
@@ -21,44 +31,26 @@ const emit = defineEmits<{
 }>()
 
 const workspace = useWorkspaceStore()
+const message = useMessage()
+
+const activeTab = computed(() => workspace.activeTab())
 
 type ParamMode = 'form' | 'cli' | 'docs'
 const activeMode = ref<ParamMode>('form')
 
-const paramModes: { key: ParamMode; label: string }[] = [
-  { key: 'form', label: '可视化表单' },
-  { key: 'cli', label: '命令行模式' },
-  { key: 'docs', label: '工具说明' },
-]
-
-function inputKind(param: ParameterSpec): string {
-  return param.type
-}
+watch(
+  () => activeTab.value?.formModel,
+  () => {
+    if (props.tool && activeTab.value && activeMode.value === 'form') {
+      workspace.updateRawArgs(props.tool, activeTab.value)
+    }
+  },
+  { deep: true },
+)
 
 function selectOptions(param: ParameterSpec): SelectOption[] {
   return (param.options ?? []).map((o) => ({ label: o.label, value: o.value }))
 }
-
-const activeTab = computed(() => workspace.activeTab())
-
-const canSubmit = computed(() => {
-  if (!props.tool || !activeTab.value) return false
-  return props.tool.params.every((param) => {
-    if (!param.required) return true
-    const value = activeTab.value!.formModel[param.key]
-    return value !== undefined && value !== null && value !== ''
-  })
-})
-
-watch(
-    () => activeTab.value?.formModel,
-    () => {
-      if (props.tool && activeTab.value && activeMode.value === 'form') {
-        workspace.updateRawArgs(props.tool, activeTab.value)
-      }
-    },
-    { deep: true },
-)
 
 function onTextUpdate(param: ParameterSpec, value: string) {
   const tab = activeTab.value
@@ -78,11 +70,6 @@ function onBoolUpdate(param: ParameterSpec, value: boolean) {
 function onSelectUpdate(param: ParameterSpec, value: string) {
   const tab = activeTab.value
   if (tab) tab.formModel[param.key] = value
-}
-
-function onRawArgsUpdate(value: string) {
-  const tab = activeTab.value
-  if (tab) tab.rawArgs = value
 }
 
 function formTextValue(param: ParameterSpec): string | null {
@@ -107,6 +94,11 @@ function formSelectValue(param: ParameterSpec): string | null {
 function tabRawArgs(): string {
   return activeTab.value?.rawArgs ?? ''
 }
+
+async function copyCli() {
+  await navigator.clipboard.writeText(tabRawArgs())
+  message.success('已复制到剪贴板')
+}
 </script>
 
 <template>
@@ -114,154 +106,182 @@ function tabRawArgs(): string {
     v-if="tool"
     class="mt-4"
   >
-    <div class="flex border-b border-dracula-soft">
-      <button
-        v-for="mode in paramModes"
-        :key="mode.key"
-        class="px-3 py-2 text-xs transition"
-        :class="
-          activeMode === mode.key
-            ? 'border-b-2 border-dracula-cyan text-dracula-cyan'
-            : 'border-b-2 border-transparent text-slate-500 hover:text-slate-300'
-        "
-        @click="activeMode = mode.key"
-      >
-        {{ mode.label }}
-      </button>
-    </div>
+    <NTabs
+      v-model:value="activeMode"
+      type="bar"
+      animated
+    >
+      <NTabPane
+        name="form"
+        tab="可视化表单"
+      />
+      <NTabPane
+        name="cli"
+        tab="命令行模式"
+      />
+      <NTabPane
+        name="docs"
+        tab="工具说明"
+      />
+    </NTabs>
 
-    <div class="mt-3">
+    <div class="mt-4">
       <div v-if="activeMode === 'form'">
-        <div class="grid grid-cols-2 gap-x-6 gap-y-1">
-          <div
-            v-for="param in tool.params"
-            :key="param.key"
-            class="mb-2"
-          >
-            <label class="mb-1 block text-[11px] uppercase tracking-wide text-slate-500">
-              {{ param.label }}
-              <span
-                v-if="param.required"
-                class="text-dracula-red"
-              >*</span>
-            </label>
-
-            <div
-              v-if="inputKind(param) === 'text' || inputKind(param) === 'path'"
-              class="flex gap-1"
+        <NForm
+          label-placement="top"
+          label-align="left"
+          size="small"
+        >
+          <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+            <NFormItem
+              v-for="param in tool.params"
+              :key="param.key"
+              :label="param.label"
+              :required="param.required"
             >
-              <n-input
+              <NInputGroup v-if="param.type === 'text' || param.type === 'path'">
+                <NInput
+                  :value="formTextValue(param)"
+                  :placeholder="param.placeholder"
+                  @update:value="onTextUpdate(param, $event)"
+                />
+                <NButton
+                  v-if="param.type === 'path'"
+                  @click="emit('fileDialog', param)"
+                >
+                  <template #icon>
+                    <NIcon :component="FolderOpen" />
+                  </template>
+                </NButton>
+              </NInputGroup>
+
+              <NInput
+                v-else-if="param.type === 'textarea'"
                 :value="formTextValue(param)"
+                type="textarea"
                 :placeholder="param.placeholder"
-                size="small"
-                class="flex-1"
+                :autosize="{ minRows: 2, maxRows: 4 }"
                 @update:value="onTextUpdate(param, $event)"
               />
-              <button
-                v-if="inputKind(param) === 'path'"
-                class="shrink-0 rounded border border-dracula-soft px-2 text-xs text-slate-400 transition hover:border-dracula-cyan/50 hover:text-slate-200"
-                title="选择文件/目录"
-                @click="emit('fileDialog', param)"
-              >
-                📂
-              </button>
-            </div>
 
-            <n-input
-              v-else-if="inputKind(param) === 'textarea'"
-              :value="formTextValue(param)"
-              type="textarea"
-              :placeholder="param.placeholder"
-              :autosize="{ minRows: 2, maxRows: 4 }"
-              size="small"
-              @update:value="onTextUpdate(param, $event)"
-            />
-            <n-input-number
-              v-else-if="inputKind(param) === 'number'"
-              :value="formNumberValue(param)"
-              size="small"
-              class="w-full"
-              :show-button="false"
-              @update:value="onNumberUpdate(param, $event)"
-            />
-            <n-switch
-              v-else-if="inputKind(param) === 'boolean'"
-              :value="formBoolValue(param)"
-              @update:value="onBoolUpdate(param, $event)"
-            />
-            <n-select
-              v-else-if="inputKind(param) === 'select'"
-              :value="formSelectValue(param)"
-              :options="selectOptions(param)"
-              size="small"
-              @update:value="onSelectUpdate(param, $event)"
-            />
+              <NInputNumber
+                v-else-if="param.type === 'number'"
+                :value="formNumberValue(param)"
+                :show-button="false"
+                class="w-full"
+                @update:value="onNumberUpdate(param, $event)"
+              />
+
+              <NSwitch
+                v-else-if="param.type === 'boolean'"
+                :value="formBoolValue(param)"
+                @update:value="onBoolUpdate(param, $event)"
+              />
+
+              <NSelect
+                v-else-if="param.type === 'select'"
+                :value="formSelectValue(param)"
+                :options="selectOptions(param)"
+                @update:value="onSelectUpdate(param, $event)"
+              />
+            </NFormItem>
           </div>
-        </div>
+        </NForm>
       </div>
 
       <div
         v-else-if="activeMode === 'cli'"
         class="space-y-3"
       >
-        <n-input
+        <NInput
           :value="tabRawArgs()"
           type="textarea"
           placeholder="直接输入命令行参数，例如 -input &quot;/path/to/data&quot; -workers 4"
           :autosize="{ minRows: 4, maxRows: 10 }"
-          size="small"
-          @update:value="onRawArgsUpdate"
+          class="font-mono"
         />
-        <p class="text-[11px] text-slate-500">
+        <NText
+          depth="3"
+          class="text-[11px]"
+        >
           命令行模式支持直接输入 CLI 参数字符串，适合复杂 flag 组合或高级调试场景。
-        </p>
+        </NText>
       </div>
 
       <div v-else-if="activeMode === 'docs'">
-        <div class="rounded-lg border border-dracula-soft bg-[#0d0e14] p-4">
-          <div class="mb-3 flex items-center gap-2 text-xs text-slate-500">
-            <span class="rounded bg-dracula-soft px-1.5 py-0.5 text-[10px] uppercase">📖 使用说明</span>
-            <span
+        <div class="rounded-lg border border-dracula-soft bg-dracula-panel p-4">
+          <div class="mb-3 flex items-center gap-x-2">
+            <NTag
+              size="tiny"
+              :bordered="false"
+              type="info"
+            >
+              使用说明
+            </NTag>
+            <NText
               v-if="tool.docs.usage"
-              class="text-dracula-green/50"
-            >已从旧版迁移</span>
+              depth="3"
+              class="text-[10px]"
+            >
+              已从旧版迁移
+            </NText>
           </div>
           <template v-if="tool.docs.usage">
-            <pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-slate-300">{{
-                tool.docs.usage
-            }}</pre>
+            <pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-slate-300">{{ tool.docs.usage }}</pre>
           </template>
           <div
             v-else
-            class="rounded-md bg-black/30 p-3"
+            class="rounded-md bg-black/20 p-3"
           >
-            <p class="m-0 text-sm leading-relaxed text-slate-300">
+            <NText
+              depth="2"
+              class="text-sm leading-relaxed"
+            >
               {{ tool.docs.summary || tool.description }}
-            </p>
+            </NText>
           </div>
         </div>
 
-        <div class="mt-4 space-y-3 rounded-lg border border-dracula-soft bg-black/10 p-4">
-          <div>
-            <span class="text-[10px] uppercase tracking-wide text-slate-500">参数列表</span>
-            <div class="mt-2 space-y-1">
-              <div
-                v-for="param in tool.params"
-                :key="param.key"
-                class="flex items-baseline gap-2 text-xs"
+        <div class="mt-4 rounded-lg border border-dracula-soft bg-dracula-panel p-4">
+          <NText
+            depth="3"
+            class="text-[10px] uppercase tracking-wide"
+          >
+            参数列表
+          </NText>
+          <div class="mt-2 space-y-1.5">
+            <div
+              v-for="param in tool.params"
+              :key="param.key"
+              class="flex items-baseline gap-x-2 text-xs"
+            >
+              <code class="shrink-0 text-dracula-cyan font-mono">{{ param.argKey || param.key }}</code>
+              <NText depth="2">
+                {{ param.label }}
+              </NText>
+              <NTag
+                v-if="param.required"
+                size="tiny"
+                :bordered="false"
+                type="error"
+                class="shrink-0"
               >
-                <code class="shrink-0 text-dracula-cyan">{{ param.argKey || param.key }}</code>
-                <span class="text-slate-400">{{ param.label }}</span>
-                <span
-                  v-if="param.required"
-                  class="text-dracula-red"
-                >*必填</span>
-                <span
-                  v-else
-                  class="text-slate-600"
-                >可选</span>
-                <span class="ml-auto text-[10px] text-slate-600">{{ param.type }}</span>
-              </div>
+                必填
+              </NTag>
+              <NTag
+                v-else
+                size="tiny"
+                :bordered="false"
+                class="shrink-0 opacity-50"
+              >
+                可选
+              </NTag>
+              <NText
+                depth="3"
+                class="ml-auto text-[10px]"
+              >
+                {{ param.type }}
+              </NText>
             </div>
           </div>
         </div>
@@ -270,22 +290,31 @@ function tabRawArgs(): string {
 
     <div
       v-if="activeMode !== 'docs'"
-      class="mt-4 rounded-lg border border-dracula-soft bg-black/10 p-3"
+      class="mt-4 rounded-lg border border-dracula-soft bg-dracula-panel p-3"
     >
-      <span class="text-[10px] uppercase tracking-wider text-slate-500">CLI 参数预览</span>
-      <code class="mt-1.5 block break-all text-sm leading-relaxed text-dracula-yellow">
+      <div class="flex items-center justify-between">
+        <NText
+          depth="3"
+          class="text-[10px] uppercase tracking-wider"
+        >
+          CLI 参数预览
+        </NText>
+        <NButton
+          text
+          size="tiny"
+          @click="copyCli"
+        >
+          <template #icon>
+            <NIcon
+              :component="Copy"
+              size="12"
+            />
+          </template>
+        </NButton>
+      </div>
+      <code class="mt-1.5 block break-all font-mono text-sm leading-relaxed text-dracula-yellow">
         {{ tabRawArgs() || '(无参数)' }}
       </code>
-    </div>
-
-    <div class="mt-4">
-      <n-button
-        type="success"
-        :disabled="!canSubmit"
-        @click="emit('execute')"
-      >
-        ▶ 开始本地执行
-      </n-button>
     </div>
   </div>
 </template>

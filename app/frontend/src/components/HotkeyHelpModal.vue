@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton, NText, NTag } from 'naive-ui'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
@@ -20,22 +21,13 @@ const groups: ShortcutGroup[] = [
     ],
   },
   {
-    title: '侧边栏',
-    color: 'text-dracula-yellow',
-    items: [
-      { key: '🔧', desc: '工具列表视图' },
-      { key: '🔗', desc: 'SSH 连接管理视图' },
-      { key: 'Ctrl 拖拽分隔条', desc: '调整侧边栏宽度' },
-    ],
-  },
-  {
     title: '工作区',
     color: 'text-dracula-green',
     items: [
-      { key: '▶ 本地运行', desc: '执行当前工具' },
-      { key: '🔗 远程执行', desc: '选择SSH服务器执行' },
-      { key: '⏹ 停止', desc: '取消运行中的任务' },
-      { key: 'Ctrl 拖拽分隔条', desc: '调整上下分栏高度' },
+      { key: '本地运行', desc: '执行当前工具' },
+      { key: '远程执行', desc: '选择SSH服务器执行' },
+      { key: '停止', desc: '取消运行中的任务' },
+      { key: '拖拽分隔条', desc: '调整上下分栏高度' },
     ],
   },
   {
@@ -43,24 +35,15 @@ const groups: ShortcutGroup[] = [
     color: 'text-dracula-cyan',
     items: [
       { key: '↑/↓', desc: '翻阅命令历史' },
-      { key: '←/→', desc: '在历史条目间切换' },
     ],
   },
   {
     title: '终端日志',
-    color: 'text-dracula-purple',
+    color: 'text-dracula-pink',
     items: [
       { key: '清空', desc: '清空当前日志' },
       { key: '复制', desc: '复制日志到剪贴板' },
       { key: '导出', desc: '导出日志为 .log 文件' },
-    ],
-  },
-  {
-    title: '设置',
-    color: 'text-slate-400',
-    items: [
-      { key: '⚙️ 设置', desc: '打开系统首选项' },
-      { key: '🔍 搜索', desc: '顶部搜索按钮或 Ctrl+P' },
     ],
   },
 ]
@@ -70,47 +53,67 @@ const groups: ShortcutGroup[] = [
   <Teleport to="body">
     <div
       v-if="workspace.showHotkeyHelp"
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[10vh]"
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[10vh] backdrop-blur-sm transition-opacity duration-200"
       @click="workspace.showHotkeyHelp = false"
     >
-      <div
-        class="w-full max-w-2xl rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
-        @click.stop
+      <Transition
+        name="fade-scale"
+        appear
       >
-        <div class="flex items-center justify-between border-b border-dracula-soft px-5 py-3">
-          <span class="text-sm font-semibold text-white">⌨️ 快捷键帮助</span>
-          <button
-            class="rounded px-2 py-1 text-xs text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-            @click="workspace.showHotkeyHelp = false"
-          >
-            ESC 关闭
-          </button>
-        </div>
-        <div class="grid grid-cols-2 gap-4 p-5">
-          <div
-            v-for="group in groups"
-            :key="group.title"
-            class="min-w-0"
-          >
-            <div
-              class="mb-2 text-[10px] font-semibold uppercase tracking-wider"
-              :class="group.color"
+        <div
+          class="w-full max-w-xl rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
+          @click.stop
+        >
+          <div class="flex items-center justify-between border-b border-dracula-soft px-5 py-3">
+            <NText class="text-sm font-semibold">
+              快捷键帮助
+            </NText>
+            <NButton
+              text
+              size="tiny"
+              @click="workspace.showHotkeyHelp = false"
             >
-              {{ group.title }}
-            </div>
-            <div class="space-y-1">
-              <div
-                v-for="item in group.items"
-                :key="item.key"
-                class="flex items-baseline gap-2 text-xs"
+              ESC 关闭
+            </NButton>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 p-5">
+            <div
+              v-for="group in groups"
+              :key="group.title"
+              class="min-w-0"
+            >
+              <NText
+                :class="group.color"
+                class="mb-2 block text-[11px] font-semibold uppercase tracking-wider"
               >
-                <code class="shrink-0 rounded bg-black/30 px-1.5 py-0.5 text-[10px] text-slate-200">{{ item.key }}</code>
-                <span class="truncate text-slate-400">{{ item.desc }}</span>
+                {{ group.title }}
+              </NText>
+              <div class="space-y-1.5">
+                <div
+                  v-for="item in group.items"
+                  :key="item.key"
+                  class="flex items-baseline gap-x-2"
+                >
+                  <NTag
+                    size="tiny"
+                    :bordered="false"
+                    class="shrink-0 font-mono text-[10px]"
+                  >
+                    {{ item.key }}
+                  </NTag>
+                  <NText
+                    depth="3"
+                    class="truncate text-xs"
+                  >
+                    {{ item.desc }}
+                  </NText>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </Transition>
     </div>
   </Teleport>
 </template>

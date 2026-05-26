@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
+import {
+  NAlert,
+  NButton,
+  NForm,
+  NFormItem,
+  NIcon,
+  NInput,
+  NInputNumber,
+  NRadioGroup,
+  NRadio,
+  NText,
+} from 'naive-ui'
+import { Save, PlayCircle, Trash, Eye, EyeOff } from '@vicons/ionicons5'
+import { useMessage } from 'naive-ui'
 import type { SSHConnection } from '@/types/workbench'
 import {
   DeleteSSHConnection, GetSSHConnection, SaveSSHConnection,
@@ -117,29 +130,41 @@ async function handleDelete() {
 </script>
 
 <template>
-  <div v-if="!loading" class="flex flex-1 flex-col overflow-hidden">
-    <div
-      class="shrink-0 overflow-y-auto border-b border-dracula-soft p-4"
-    >
+  <div
+    v-if="!loading"
+    class="flex flex-1 flex-col overflow-hidden"
+  >
+    <div class="shrink-0 overflow-y-auto border-b border-dracula-soft p-4">
       <div class="mx-auto flex max-w-xl flex-wrap items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2 text-xs text-slate-500">
-            <span>SSH 连接</span>
+          <div class="flex items-center gap-x-2">
+            <NText
+              depth="3"
+              class="text-xs"
+            >
+              SSH 连接
+            </NText>
             <span class="h-1 w-1 rounded-full bg-dracula-cyan" />
-            <span>{{ isNew ? '新建' : '编辑' }}</span>
+            <NText
+              depth="3"
+              class="text-xs"
+            >
+              {{ isNew ? '新建' : '编辑' }}
+            </NText>
           </div>
-          <h2 class="m-0 mt-1 text-lg font-semibold text-white">
+          <h2 class="m-0 mt-1 text-lg font-semibold text-dracula-text">
             {{ title }}
           </h2>
-          <p
+          <NText
             v-if="!isNew && form.host"
-            class="mt-1 text-sm text-slate-400"
+            depth="2"
+            class="mt-1 text-sm"
           >
             {{ form.user }}@{{ form.host }}:{{ form.port }}
-          </p>
+          </NText>
         </div>
 
-        <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <div class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5">
           <NButton
             type="primary"
             size="small"
@@ -147,6 +172,9 @@ async function handleDelete() {
             :loading="saving"
             @click="handleSave"
           >
+            <template #icon>
+              <NIcon :component="Save" />
+            </template>
             {{ isNew ? '保存连接' : '保存修改' }}
           </NButton>
           <NButton
@@ -155,7 +183,10 @@ async function handleDelete() {
             :loading="testing"
             @click="handleTest"
           >
-            🔍 测试连接
+            <template #icon>
+              <NIcon :component="PlayCircle" />
+            </template>
+            测试连接
           </NButton>
           <NButton
             v-if="!isNew"
@@ -164,136 +195,132 @@ async function handleDelete() {
             secondary
             @click="handleDelete"
           >
-            🗑 删除
+            <template #icon>
+              <NIcon :component="Trash" />
+            </template>
+            删除
           </NButton>
         </div>
       </div>
 
-      <div class="mx-auto mt-6 max-w-xl space-y-4">
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-400">连接名称</label>
-          <input
-            v-model="form.name"
-            type="text"
-            placeholder="例如：实验室服务器"
-            class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+      <div class="mx-auto mt-6 max-w-xl">
+        <NForm
+          label-placement="top"
+          label-align="left"
+          size="small"
+        >
+          <NFormItem
+            label="连接名称"
+            required
           >
-        </div>
+            <NInput
+              v-model:value="form.name"
+              placeholder="例如：实验室服务器"
+            />
+          </NFormItem>
 
-        <div class="flex gap-3">
-          <div class="flex-1">
-            <label class="mb-1 block text-xs font-medium text-slate-400">主机地址</label>
-            <input
-              v-model="form.host"
-              type="text"
-              placeholder="192.168.1.100"
-              class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+          <div class="flex gap-x-3">
+            <NFormItem
+              label="主机地址"
+              required
+              class="flex-1"
             >
-          </div>
-          <div style="width: 100px">
-            <label class="mb-1 block text-xs font-medium text-slate-400">端口</label>
-            <input
-              v-model.number="form.port"
-              type="number"
-              min="1"
-              max="65535"
-              class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+              <NInput
+                v-model:value="form.host"
+                placeholder="192.168.1.100"
+              />
+            </NFormItem>
+            <NFormItem
+              label="端口"
+              class="w-24"
             >
+              <NInputNumber
+                v-model:value="form.port"
+                :min="1"
+                :max="65535"
+              />
+            </NFormItem>
           </div>
-        </div>
 
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-400">用户名</label>
-          <input
-            v-model="form.user"
-            type="text"
-            placeholder="root"
-            class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+          <NFormItem
+            label="用户名"
+            required
           >
-        </div>
+            <NInput
+              v-model:value="form.user"
+              placeholder="root"
+            />
+          </NFormItem>
 
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-400">认证方式</label>
-          <div
-            class="flex max-w-xs rounded-md border border-dracula-soft bg-black/30 p-0.5"
+          <NFormItem label="认证方式">
+            <NRadioGroup
+              v-model:value="form.authMethod"
+              name="authMethod"
+            >
+              <NRadio value="password">
+                密码
+              </NRadio>
+              <NRadio value="key">
+                密钥
+              </NRadio>
+            </NRadioGroup>
+          </NFormItem>
+
+          <NFormItem
+            v-if="form.authMethod === 'password'"
+            label="密码"
           >
-            <button
-              class="flex-1 rounded px-3 py-1.5 text-xs transition"
-              :class="form.authMethod === 'password'
-                ? 'bg-dracula-cyan/20 text-dracula-cyan'
-                : 'text-slate-500 hover:text-slate-300'"
-              @click="form.authMethod = 'password'"
-            >
-              密码
-            </button>
-            <button
-              class="flex-1 rounded px-3 py-1.5 text-xs transition"
-              :class="form.authMethod === 'key'
-                ? 'bg-dracula-cyan/20 text-dracula-cyan'
-                : 'text-slate-500 hover:text-slate-300'"
-              @click="form.authMethod = 'key'"
-            >
-              密钥
-            </button>
-          </div>
-        </div>
-
-        <div v-if="form.authMethod === 'password'">
-          <label class="mb-1 block text-xs font-medium text-slate-400">密码</label>
-          <div class="relative max-w-sm">
-            <input
-              v-model="form.password"
+            <NInput
+              v-model:value="form.password"
               :type="showPassword ? 'text' : 'password'"
               placeholder="输入 SSH 密码"
-              class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 pr-10 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+              show-password-on="click"
             >
-            <button
-              class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-xs text-slate-500 transition hover:text-slate-300"
-              @click="showPassword = !showPassword"
-            >
-              {{ showPassword ? '🙈' : '👁' }}
-            </button>
-          </div>
-        </div>
+              <template #password-visible-icon>
+                <NIcon :component="EyeOff" />
+              </template>
+              <template #password-invisible-icon>
+                <NIcon :component="Eye" />
+              </template>
+            </NInput>
+          </NFormItem>
 
-        <div v-else>
-          <label class="mb-1 block text-xs font-medium text-slate-400">密钥路径</label>
-          <input
-            v-model="form.keyPath"
-            type="text"
-            placeholder="/home/user/.ssh/id_rsa"
-            class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
+          <NFormItem
+            v-else
+            label="密钥路径"
           >
-        </div>
+            <NInput
+              v-model:value="form.keyPath"
+              placeholder="/home/user/.ssh/id_rsa"
+            />
+          </NFormItem>
 
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-400">备注（可选）</label>
-          <input
-            v-model="form.description"
-            type="text"
-            placeholder="描述这个连接的用途"
-            class="w-full rounded-md border border-dracula-soft bg-black/30 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-dracula-cyan/50"
-          >
-        </div>
+          <NFormItem label="备注">
+            <NInput
+              v-model:value="form.description"
+              placeholder="描述这个连接的用途"
+            />
+          </NFormItem>
+        </NForm>
 
-        <div
+        <NAlert
           v-if="testResult"
-          class="rounded-lg border p-3 text-sm"
-          :class="testResult.success
-            ? 'border-dracula-green/30 bg-dracula-green/5 text-dracula-green'
-            : 'border-dracula-red/30 bg-dracula-red/5 text-dracula-red'"
+          :type="testResult.success ? 'success' : 'error'"
+          class="mt-4"
         >
           {{ testResult.message }}
-        </div>
+        </NAlert>
       </div>
     </div>
 
     <div class="flex min-h-0 flex-1 items-center justify-center">
-      <div class="text-center text-xs text-slate-600">
-        <div class="mb-2 text-lg">
-          🖥
-        </div>
-        测试连接通过后即可在工具执行时选择此服务器
+      <div class="text-center">
+        <NText
+          depth="3"
+          class="text-xs"
+        >
+          测试连接通过后即可在工具执行时选择此服务器
+        </NText>
       </div>
     </div>
   </div>
@@ -302,6 +329,11 @@ async function handleDelete() {
     v-else
     class="flex flex-1 items-center justify-center"
   >
-    <span class="text-sm text-slate-500">加载中...</span>
+    <NText
+      depth="3"
+      class="text-sm"
+    >
+      加载中...
+    </NText>
   </div>
 </template>

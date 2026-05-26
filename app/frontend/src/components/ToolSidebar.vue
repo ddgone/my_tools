@@ -1,14 +1,39 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { NDropdown, NScrollbar, NTag, useMessage } from 'naive-ui'
+import { computed, ref, watch, h } from 'vue'
+import {
+  NButton,
+  NCollapse,
+  NCollapseItem,
+  NDropdown,
+  NIcon,
+  NInput,
+  NList,
+  NListItem,
+  NScrollbar,
+  NTag,
+  NTree,
+  useMessage,
+  type TreeOption,
+} from 'naive-ui'
+import {
+  Search,
+  Add,
+  ServerOutline,
+  EllipsisHorizontal,
+  Star as StarIcon,
+  CodeSlash,
+  LogoPython,
+} from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
+import type { ActivityBarView } from './ActivityBar.vue'
 
 const props = defineProps<{
   width: number
+  activeView: ActivityBarView
 }>()
 
 const emit = defineEmits<{
@@ -22,9 +47,6 @@ const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
 
 const searchQuery = ref('')
-const collapsedCategories = ref(new Set<string>())
-const sidebarView = ref<'tools' | 'ssh' | 'history' | 'export'>('tools')
-
 const sshConnections = ref<SSHConnection[]>([])
 
 async function loadSSHConnections() {
@@ -72,21 +94,22 @@ function copyHost(conn: SSHConnection) {
   message.success('已复制: ' + text)
 }
 
-watch(sidebarView, (view) => {
+watch(() => props.activeView, (view) => {
   if (view === 'ssh') {
     loadSSHConnections()
   }
-})
+}, { immediate: true })
+
+const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 
 const filteredTools = computed(() => {
-  const tools = workbench.bootstrap?.tools ?? []
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return tools
-  return tools.filter(
-      (t) =>
-          t.name.toLowerCase().includes(query) ||
-          t.description.toLowerCase().includes(query) ||
-          t.category.toLowerCase().includes(query),
+  if (!query) return allTools.value
+  return allTools.value.filter(
+    (t) =>
+      t.name.toLowerCase().includes(query) ||
+      t.description.toLowerCase().includes(query) ||
+      t.category.toLowerCase().includes(query),
   )
 })
 
@@ -101,27 +124,18 @@ const groupedTools = computed(() => {
 })
 
 const favoriteTools = computed(() => {
-  const tools = workbench.bootstrap?.tools ?? []
-  return workspace.favorites.map((id) => tools.find((t) => t.id === id)).filter(Boolean) as ToolManifest[]
+  return workspace.favorites.map((id) => allTools.value.find((t) => t.id === id)).filter(Boolean) as ToolManifest[]
 })
 
 const recentToolList = computed(() => {
-  const tools = workbench.bootstrap?.tools ?? []
   return workspace.recentTools
-      .map((r) => {
-        const tool = tools.find((t) => t.id === r.toolId)
-        if (!tool) return null
-        return { tool, args: r.args }
-      })
-      .filter(Boolean) as { tool: ToolManifest; args: string }[]
+    .map((r) => {
+      const tool = allTools.value.find((t) => t.id === r.toolId)
+      if (!tool) return null
+      return { tool, args: r.args }
+    })
+    .filter(Boolean) as { tool: ToolManifest; args: string }[]
 })
-
-function toggleCategory(category: string) {
-  const c = new Set(collapsedCategories.value)
-  if (c.has(category)) c.delete(category)
-  else c.add(category)
-  collapsedCategories.value = c
-}
 
 function isToolRunning(toolId: string) {
   return execution.tasks.some((t) => t.toolId === toolId && t.status === 'running')
@@ -139,13 +153,67 @@ function kindTagType(kind: string) {
   return kind === 'python' ? 'success' : 'info'
 }
 
+function kindIcon(kind: string) {
+  return kind === 'python' ? LogoPython : CodeSlash
+}
+
+const treeData = computed<TreeOption[]>(() => {
+  return groupedTools.value.map((group) => ({
+    key: group.category,
+    label: group.category,
+    children: group.tools.map((tool) => ({
+      key: tool.id,
+      label: tool.name,
+      isLeaf: true,
+      tool: tool,
+    })),
+  }))
+})
+
+function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
+  const tool = option.tool
+  if (!tool) {
+    return h('span', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-500' }, option.label as string)
+  }
+  return h('div', { class: 'flex items-center gap-x-2 w-full' }, [
+    h('span', {
+      class: `h-2 w-2 shrink-0 rounded-full ${isToolRunning(tool.id) ? 'bg-dracula-green' : 'border border-slate-700'}`,
+    }),
+    h('span', { class: 'truncate text-sm' }, tool.name),
+    h(NTag, {
+      bordered: false,
+      size: 'tiny',
+      type: kindTagType(tool.kind) as any,
+      class: 'ml-auto shrink-0',
+    }, { default: () => tool.kind }),
+  ])
+}
+
+const selectedKeys = ref<string[]>([])
+
+watch(() => workspace.activeTab()?.toolId, (toolId) => {
+  if (toolId) {
+    selectedKeys.value = [toolId]
+  }
+})
+
+function handleTreeSelect(keys: string[]) {
+  if (keys.length === 0) return
+  const toolId = keys[0]
+  const tool = allTools.value.find((t) => t.id === toolId)
+  if (tool) {
+    selectTool(tool)
+  }
+  selectedKeys.value = keys
+}
+
 function sshDropdownOptions(_conn: SSHConnection) {
   return [
-    { label: '✏️ 编辑', key: 'edit' },
-    { label: '📋 复制地址', key: 'copy' },
-    { label: '🔍 检查连通性', key: 'test' },
+    { label: '编辑', key: 'edit' },
+    { label: '复制地址', key: 'copy' },
+    { label: '检查连通性', key: 'test' },
     { type: 'divider' as const, key: 'd1' },
-    { label: '🗑 删除', key: 'delete' },
+    { label: '删除', key: 'delete' },
   ]
 }
 
@@ -167,276 +235,287 @@ function handleSSHMenuSelect(key: string, conn: SSHConnection) {
 }
 
 defineExpose({
-  sidebarView,
   loadSSHConnections,
 })
-
-const sidebarViews = [
-  { key: 'tools' as const, icon: '🔧', label: '工具列表' },
-  { key: 'ssh' as const, icon: '🔗', label: 'SSH 服务器' },
-  { key: 'history' as const, icon: '📋', label: '任务历史' },
-  { key: 'export' as const, icon: '📦', label: '导出中心' },
-]
 </script>
 
 <template>
   <aside
-    class="flex shrink-0 flex-col border-r border-dracula-soft bg-[#1a1b26]"
+    class="flex shrink-0 flex-col border-r border-dracula-soft bg-dracula-panel"
     :style="{ width: props.width + 'px' }"
   >
-    <div class="border-b border-dracula-soft p-3">
-      <div class="relative">
-        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">🔍</span>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索工具... (Ctrl+F 收藏)"
-          class="w-full rounded-md border border-dracula-soft bg-black/30 py-1.5 pl-8 pr-3 text-xs text-slate-300 placeholder-slate-600 outline-none transition focus:border-dracula-cyan/50"
-        >
-      </div>
+    <div
+      v-if="activeView === 'tools' || activeView === 'favorites'"
+      class="p-3"
+    >
+      <NInput
+        v-model:value="searchQuery"
+        placeholder="搜索工具..."
+        clearable
+        round
+        size="small"
+      >
+        <template #prefix>
+          <NIcon :component="Search" />
+        </template>
+      </NInput>
     </div>
 
     <NScrollbar class="flex-1">
-      <div
-        v-if="sidebarView === 'tools'"
-        class="space-y-1 p-2"
+      <Transition
+        name="slide"
+        mode="out-in"
       >
         <div
-          v-if="favoriteTools.length > 0"
-          class="mb-2 border-b border-dracula-soft pb-2"
+          v-if="activeView === 'tools'"
+          key="tools"
+          class="space-y-1 p-2"
         >
-          <button
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-dracula-pink transition hover:text-dracula-pink/70"
-            @click="toggleCategory('__favorites__')"
+          <NCollapse
+            v-if="favoriteTools.length > 0"
+            :default-expanded-names="['favorites']"
           >
-            <span
-              class="text-[10px] transition-transform"
-              :class="{ 'rotate-90': !collapsedCategories.has('__favorites__') }"
-            >▶</span>
-            ❤️ 收藏夹
-            <span class="ml-auto text-[10px] text-slate-600">{{ favoriteTools.length }}</span>
-          </button>
+            <NCollapseItem name="favorites">
+              <template #header>
+                <span class="text-xs font-semibold uppercase tracking-wider text-dracula-pink">
+                  收藏夹 · {{ favoriteTools.length }}
+                </span>
+              </template>
+              <div class="-mx-1 space-y-0.5">
+                <div
+                  v-for="tool in favoriteTools"
+                  :key="tool.id"
+                  class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-1.5 text-left transition"
+                  :class="isToolActive(tool.id) ? 'bg-dracula-pink/10 text-dracula-pink' : 'text-slate-300 hover:bg-white/5'"
+                  @click="selectTool(tool)"
+                >
+                  <span
+                    v-if="isToolRunning(tool.id)"
+                    class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
+                  />
+                  <span
+                    v-else
+                    class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
+                  />
+                  <span class="truncate text-sm">{{ tool.name }}</span>
+                  <NTag
+                    :bordered="false"
+                    size="tiny"
+                    :type="kindTagType(tool.kind) as any"
+                    class="ml-auto shrink-0"
+                  >
+                    {{ tool.kind }}
+                  </NTag>
+                </div>
+              </div>
+            </NCollapseItem>
+          </NCollapse>
+
+          <NCollapse
+            v-if="recentToolList.length > 0"
+            :default-expanded-names="['recent']"
+          >
+            <NCollapseItem name="recent">
+              <template #header>
+                <span class="text-xs font-semibold uppercase tracking-wider text-dracula-yellow">
+                  最近使用 · {{ recentToolList.length }}
+                </span>
+              </template>
+              <div class="-mx-1 space-y-0.5">
+                <div
+                  v-for="entry in recentToolList"
+                  :key="entry.tool.id"
+                  class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-1.5 text-left transition"
+                  :class="isToolActive(entry.tool.id) ? 'bg-dracula-yellow/10 text-dracula-yellow' : 'text-slate-300 hover:bg-white/5'"
+                  @click="selectTool(entry.tool)"
+                >
+                  <span
+                    v-if="isToolRunning(entry.tool.id)"
+                    class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
+                  />
+                  <span
+                    v-else
+                    class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
+                  />
+                  <span class="truncate text-sm">
+                    {{ entry.tool.name }}
+                    <span class="ml-1 text-[10px] text-slate-600">{{ entry.args }}</span>
+                  </span>
+                  <NTag
+                    :bordered="false"
+                    size="tiny"
+                    :type="kindTagType(entry.tool.kind) as any"
+                    class="ml-auto shrink-0"
+                  >
+                    {{ entry.tool.kind }}
+                  </NTag>
+                </div>
+              </div>
+            </NCollapseItem>
+          </NCollapse>
+
+          <div class="border-t border-dracula-soft pt-2">
+            <NTree
+              :data="treeData"
+              :pattern="searchQuery"
+              :render-label="renderNodeLabel"
+              :selected-keys="selectedKeys"
+              :expanded-keys="groupedTools.map((g) => g.category)"
+              block-line
+              selectable
+              class="n-tree-custom"
+              @update:selected-keys="handleTreeSelect"
+            />
+          </div>
+        </div>
+
+        <div
+          v-else-if="activeView === 'favorites'"
+          key="favorites"
+          class="p-2"
+        >
           <div
-            v-if="!collapsedCategories.has('__favorites__')"
-            class="ml-3 space-y-0.5"
+            v-if="favoriteTools.length === 0"
+            class="flex flex-col items-center justify-center py-12 text-center"
           >
-            <button
+            <NIcon
+              :component="StarIcon"
+              size="32"
+              color="#44475a"
+            />
+            <p class="mt-2 text-xs text-slate-500">
+              暂无收藏的工具
+            </p>
+            <p class="mt-1 text-[10px] text-slate-600">
+              使用 Ctrl+F 收藏工具
+            </p>
+          </div>
+          <div
+            v-else
+            class="space-y-0.5"
+          >
+            <div
               v-for="tool in favoriteTools"
               :key="tool.id"
-              class="group flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition"
+              class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-2 text-left transition"
               :class="isToolActive(tool.id) ? 'bg-dracula-pink/10 text-dracula-pink' : 'text-slate-300 hover:bg-white/5'"
               @click="selectTool(tool)"
             >
-              <span
-                v-if="isToolRunning(tool.id)"
-                class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
-                title="正在运行"
+              <NIcon
+                :component="kindIcon(tool.kind)"
+                size="16"
+                :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
               />
-              <span
-                v-else
-                class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
-              />
-              <span class="truncate">{{ tool.name }}</span>
-              <n-tag
-                :bordered="false"
-                size="tiny"
-                :type="kindTagType(tool.kind)"
-                class="ml-auto shrink-0"
-              >
-                {{ tool.kind }}
-              </n-tag>
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-if="recentToolList.length > 0"
-          class="mb-2 border-b border-dracula-soft pb-2"
-        >
-          <button
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-dracula-yellow transition hover:text-dracula-yellow/70"
-            @click="toggleCategory('__recent__')"
-          >
-            <span
-              class="text-[10px] transition-transform"
-              :class="{ 'rotate-90': !collapsedCategories.has('__recent__') }"
-            >▶</span>
-            ⭐ 最近使用
-            <span class="ml-auto text-[10px] text-slate-600">{{ recentToolList.length }}</span>
-          </button>
-          <div
-            v-if="!collapsedCategories.has('__recent__')"
-            class="ml-3 space-y-0.5"
-          >
-            <button
-              v-for="entry in recentToolList"
-              :key="entry.tool.id"
-              class="group flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition"
-              :class="isToolActive(entry.tool.id) ? 'bg-dracula-yellow/10 text-dracula-yellow' : 'text-slate-300 hover:bg-white/5'"
-              @click="selectTool(entry.tool)"
-            >
-              <span
-                v-if="isToolRunning(entry.tool.id)"
-                class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
-              />
-              <span
-                v-else
-                class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
-              />
-              <span class="truncate">
-                {{ entry.tool.name }}
-                <span class="ml-1 text-[10px] text-slate-600">{{ entry.args }}</span>
-              </span>
-              <n-tag
-                :bordered="false"
-                size="tiny"
-                :type="kindTagType(entry.tool.kind)"
-                class="ml-auto shrink-0"
-              >
-                {{ entry.tool.kind }}
-              </n-tag>
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-for="group in groupedTools"
-          :key="group.category"
-        >
-          <button
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 transition hover:text-slate-300"
-            @click="toggleCategory(group.category)"
-          >
-            <span
-              class="text-[10px] transition-transform"
-              :class="{ 'rotate-90': !collapsedCategories.has(group.category) }"
-            >▶</span>
-            {{ group.category }}
-            <span class="ml-auto text-[10px] text-slate-600">{{ group.tools.length }}</span>
-          </button>
-          <div
-            v-if="!collapsedCategories.has(group.category)"
-            class="mb-2 ml-3 space-y-0.5"
-          >
-            <button
-              v-for="tool in group.tools"
-              :key="tool.id"
-              class="group flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition"
-              :class="isToolActive(tool.id) ? 'bg-dracula-cyan/10 text-dracula-cyan' : 'text-slate-300 hover:bg-white/5'"
-              @click="selectTool(tool)"
-            >
-              <span
-                v-if="isToolRunning(tool.id)"
-                class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
-                title="正在运行"
-              />
-              <span
-                v-else
-                class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
-              />
-              <span class="truncate">{{ tool.name }}</span>
-              <n-tag
-                :bordered="false"
-                size="tiny"
-                :type="kindTagType(tool.kind)"
-                class="ml-auto shrink-0"
-              >
-                {{ tool.kind }}
-              </n-tag>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-else-if="sidebarView === 'ssh'"
-        class="flex h-full flex-col"
-      >
-        <div class="flex items-center justify-between px-3 py-2">
-          <span class="text-xs font-medium text-slate-300">SSH 连接</span>
-          <button
-            class="rounded px-2 py-0.5 text-[11px] text-dracula-cyan transition hover:bg-dracula-cyan/10"
-            @click="createConnection()"
-          >
-            + 新建
-          </button>
-        </div>
-
-        <div
-          v-if="sshConnections.length === 0"
-          class="flex flex-1 items-center justify-center p-4"
-        >
-          <div class="text-center">
-            <p class="text-xs text-slate-500">
-              暂无 SSH 连接
-            </p>
-            <button
-              class="mt-3 rounded-md border border-dracula-soft px-3 py-1.5 text-xs text-dracula-cyan transition hover:bg-dracula-cyan/10"
-              @click="createConnection()"
-            >
-              + 新建第一个连接
-            </button>
-          </div>
-        </div>
-
-        <div class="space-y-1 p-2">
-          <button
-            v-for="conn in sshConnections"
-            :key="conn.id"
-            class="group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-white/5"
-            @click="selectConnection(conn)"
-          >
-            <span class="text-base">🖥</span>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-slate-200">
-                {{ conn.name }}
-              </div>
-              <div class="truncate text-[10px] text-slate-500">
-                {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm">
+                  {{ tool.name }}
+                </div>
+                <div class="truncate text-[10px] text-slate-500">
+                  {{ tool.category }} · {{ tool.description }}
+                </div>
               </div>
             </div>
-            <NDropdown
-              trigger="click"
-              :options="sshDropdownOptions(conn)"
-              @select="(key: string) => handleSSHMenuSelect(key, conn)"
-            >
-              <button
-                class="shrink-0 rounded p-1 text-slate-600 opacity-0 transition hover:bg-white/10 hover:text-slate-300 group-hover:opacity-100"
-                @click.stop
-              >
-                ···
-              </button>
-            </NDropdown>
-          </button>
-        </div>
-      </div>
-
-      <div
-        v-else
-        class="flex h-full items-center justify-center p-4 text-center"
-      >
-        <div class="text-xs text-slate-500">
-          <div class="mb-2 text-lg">
-            🚧
           </div>
-          {{ sidebarView === 'history' ? '任务历史' : '导出中心' }}
-          <br>
-          <span class="text-slate-600">即将推出</span>
         </div>
-      </div>
-    </NScrollbar>
 
-    <div class="flex items-center justify-around border-t border-dracula-soft px-3 py-2">
-      <button
-        v-for="view in sidebarViews"
-        :key="view.key"
-        class="rounded p-1.5 text-xs transition"
-        :class="sidebarView === view.key ? 'text-dracula-cyan' : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'"
-        :title="view.label"
-        @click="sidebarView = view.key"
-      >
-        {{ view.icon }}
-      </button>
-    </div>
+        <div
+          v-else-if="activeView === 'ssh'"
+          key="ssh"
+          class="flex h-full flex-col"
+        >
+          <div class="flex items-center justify-between px-3 py-2">
+            <span class="text-xs font-medium text-slate-300">SSH 连接</span>
+            <NButton
+              text
+              size="tiny"
+              type="primary"
+              @click="createConnection()"
+            >
+              <template #icon>
+                <NIcon :component="Add" />
+              </template>
+              新建
+            </NButton>
+          </div>
+
+          <div
+            v-if="sshConnections.length === 0"
+            class="flex flex-1 items-center justify-center p-4"
+          >
+            <div class="text-center">
+              <NIcon
+                :component="ServerOutline"
+                size="28"
+                color="#44475a"
+              />
+              <p class="mt-2 text-xs text-slate-500">
+                暂无 SSH 连接
+              </p>
+              <NButton
+                size="tiny"
+                class="mt-3"
+                @click="createConnection()"
+              >
+                新建第一个连接
+              </NButton>
+            </div>
+          </div>
+
+          <NList
+            v-else
+            hoverable
+            clickable
+            class="flex-1"
+          >
+            <NListItem
+              v-for="conn in sshConnections"
+              :key="conn.id"
+              @click="selectConnection(conn)"
+            >
+              <template #prefix>
+                <NIcon
+                  :component="ServerOutline"
+                  size="16"
+                  color="#8be9fd"
+                />
+              </template>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-slate-200">
+                  {{ conn.name }}
+                </div>
+                <div class="truncate text-[10px] text-slate-500">
+                  {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+                </div>
+              </div>
+              <template #suffix>
+                <NDropdown
+                  trigger="click"
+                  :options="sshDropdownOptions(conn)"
+                  @select="(key: string) => handleSSHMenuSelect(key, conn)"
+                >
+                  <NButton
+                    text
+                    size="tiny"
+                    class="opacity-0 group-hover:opacity-100"
+                    @click.stop
+                  >
+                    <template #icon>
+                      <NIcon :component="EllipsisHorizontal" />
+                    </template>
+                  </NButton>
+                </NDropdown>
+              </template>
+            </NListItem>
+          </NList>
+        </div>
+      </Transition>
+    </NScrollbar>
   </aside>
 </template>
+
+<style>
+.n-tree-custom .n-tree-node-content {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+</style>

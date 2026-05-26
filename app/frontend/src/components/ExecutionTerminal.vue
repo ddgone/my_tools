@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { NButton, NIcon, NScrollbar, NText, NTooltip } from 'naive-ui'
+import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { OpenSaveFileDialog } from '../../wailsjs/go/main/App'
 
@@ -8,43 +10,74 @@ const props = defineProps<{
 }>()
 
 const execution = useExecutionStore()
-const logContainerRef = ref<HTMLElement | null>(null)
+const terminalRef = ref<InstanceType<typeof NScrollbar> | null>(null)
+const autoScroll = ref(true)
 
 const logs = computed(() => execution.logsForTask(props.taskId))
 
 const activeTask = computed(() =>
-    props.taskId ? execution.recentTasks.find((t) => t.id === props.taskId) ?? null : null,
+  props.taskId ? execution.recentTasks.find((t) => t.id === props.taskId) ?? null : null,
 )
 
 function statusLabel(status?: string) {
   switch (status) {
-    case 'running':
-      return '运行中'
-    case 'success':
-      return '已完成'
-    case 'error':
-      return '失败'
-    case 'canceled':
-      return '已取消'
-    default:
-      return '等待中'
+    case 'running': return '运行中'
+    case 'success': return '已完成'
+    case 'error': return '失败'
+    case 'canceled': return '已取消'
+    default: return '等待中'
   }
 }
 
-function statusColor(status?: string) {
-  switch (status) {
-    case 'running':
-      return 'text-dracula-yellow'
-    case 'success':
-      return 'text-dracula-green'
-    case 'error':
-      return 'text-dracula-red'
-    case 'canceled':
-      return 'text-slate-500'
-    default:
-      return 'text-slate-400'
-  }
+interface LogSegment {
+  text: string
+  color?: string
 }
+
+function parseAnsi(text: string): LogSegment[] {
+  const segments: LogSegment[] = []
+  let lastIndex = 0
+  let currentColor: string | undefined
+
+  const esc = String.fromCharCode(27)
+  const re = new RegExp(`${esc}\\[(\\d+)m`, 'g')
+  const matchAll = text.matchAll(re)
+  for (const m of matchAll) {
+    if (m.index! > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, m.index!), color: currentColor })
+    }
+    const code = parseInt(m[1], 10)
+    switch (code) {
+      case 0: currentColor = undefined; break
+      case 31: currentColor = '#ff5555'; break
+      case 32: currentColor = '#50fa7b'; break
+      case 33: currentColor = '#f1fa8c'; break
+      case 34: currentColor = '#8be9fd'; break
+      case 35: currentColor = '#ff79c6'; break
+      case 36: currentColor = '#8be9fd'; break
+      case 37: currentColor = '#f8f8f2'; break
+      default: break
+    }
+    lastIndex = m.index! + m[0].length
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex), color: currentColor })
+  }
+
+  if (segments.length === 0) {
+    segments.push({ text })
+  }
+
+  return segments
+}
+
+const parsedLines = computed(() => {
+  return logs.value.map((line, i) => ({
+    lineNumber: i + 1,
+    segments: parseAnsi(line),
+  }))
+})
 
 function clearLogs() {
   if (props.taskId) {
@@ -80,101 +113,142 @@ async function exportLogs() {
   }
 }
 
-function logClass(line: string): string {
-  const lower = line.toLowerCase()
-  if (lower.includes('error') || lower.includes('失败') || lower.includes('panic')) return 'text-dracula-red'
-  if (lower.includes('warn') || lower.includes('警告')) return 'text-dracula-yellow'
-  if (lower.includes('success') || lower.includes('完成') || lower.includes('ok')) return 'text-dracula-green'
-  return 'text-slate-300'
-}
-
 watch(
-    () => logs.value.length,
-    async () => {
-      await nextTick()
-      if (logContainerRef.value) {
-        logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
+  () => logs.value.length,
+  async () => {
+    if (!autoScroll.value) return
+    await nextTick()
+    if (terminalRef.value) {
+      const el = terminalRef.value.$el.querySelector('.n-scrollbar-container')
+      if (el) {
+        el.scrollTop = el.scrollHeight
       }
-    },
+    }
+  },
 )
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0a0b10]">
-    <div class="flex shrink-0 items-center justify-between border-b border-t border-dracula-soft px-4 py-1.5">
-      <div class="flex items-center gap-3">
-        <span class="text-xs font-medium text-slate-300">执行日志</span>
-        <span
-          v-if="activeTask"
-          class="text-xs"
-          :class="statusColor(activeTask.status)"
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden shell-bg rounded-b-lg border-t border-dracula-soft">
+    <div class="flex shrink-0 items-center justify-between bg-dracula-panel/30 px-3 py-1.5">
+      <div class="flex items-center gap-x-1.5">
+        <span class="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+        <span class="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+        <span class="h-2.5 w-2.5 rounded-full bg-green-500/70" />
+        <NText
+          depth="3"
+          class="ml-3 text-[11px]"
         >
-          ● {{ statusLabel(activeTask.status) }}
-        </span>
-        <span
-          v-if="activeTask?.exitMessage"
-          class="text-xs text-slate-500"
-        >
-          {{ activeTask.exitMessage }}
-        </span>
+          TERMINAL
+        </NText>
+        <template v-if="activeTask">
+          <span class="text-[10px] text-slate-600">·</span>
+          <NText
+            :depth="3"
+            class="text-[11px]"
+          >
+            {{ statusLabel(activeTask.status) }}
+          </NText>
+        </template>
         <span
           v-if="logs.length > 0"
           class="text-[10px] text-slate-600"
         >
-          {{ logs.length }} 行
+          · {{ logs.length }} 行
         </span>
       </div>
-      <div class="flex items-center gap-1">
-        <button
-          class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-300 disabled:opacity-30"
-          :disabled="logs.length === 0"
-          @click="clearLogs"
-        >
-          🗑 清空
-        </button>
-        <button
-          class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-300 disabled:opacity-30"
-          :disabled="logs.length === 0"
-          @click="copyLogs"
-        >
-          📋 复制
-        </button>
-        <button
-          class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-300 disabled:opacity-30"
-          :disabled="logs.length === 0"
-          @click="exportLogs"
-        >
-          💾 导出
-        </button>
+      <div class="flex items-center gap-x-1">
+        <NTooltip placement="top">
+          <template #trigger>
+            <NButton
+              text
+              size="tiny"
+              :disabled="logs.length === 0"
+              @click="clearLogs"
+            >
+              <template #icon>
+                <NIcon
+                  :component="Trash"
+                  size="14"
+                />
+              </template>
+            </NButton>
+          </template>
+          清空日志
+        </NTooltip>
+        <NTooltip placement="top">
+          <template #trigger>
+            <NButton
+              text
+              size="tiny"
+              :disabled="logs.length === 0"
+              @click="copyLogs"
+            >
+              <template #icon>
+                <NIcon
+                  :component="Copy"
+                  size="14"
+                />
+              </template>
+            </NButton>
+          </template>
+          复制日志
+        </NTooltip>
+        <NTooltip placement="top">
+          <template #trigger>
+            <NButton
+              text
+              size="tiny"
+              :disabled="logs.length === 0"
+              @click="exportLogs"
+            >
+              <template #icon>
+                <NIcon
+                  :component="Download"
+                  size="14"
+                />
+              </template>
+            </NButton>
+          </template>
+          导出日志
+        </NTooltip>
       </div>
     </div>
 
-    <div
-      ref="logContainerRef"
-      class="min-h-0 flex-1 overflow-auto p-2 font-mono text-[11px] leading-[1.7]"
+    <NScrollbar
+      ref="terminalRef"
+      class="flex-1"
     >
-      <div
-        v-if="logs.length === 0"
-        class="flex h-full items-center justify-center"
-      >
-        <p class="text-xs text-slate-600">
-          {{ activeTask && activeTask.status === 'running' ? '等待日志输出...' : '点击上方"开始本地执行"后，这里将实时显示输出日志' }}
-        </p>
+      <div class="p-3 font-mono text-sm leading-relaxed">
+        <template v-if="logs.length === 0">
+          <div class="flex items-center gap-x-2 shell-text">
+            <span class="cursor-blink" />
+            <NText
+              depth="3"
+              class="text-xs"
+            >
+              {{ activeTask && activeTask.status === 'running' ? '等待日志输出...' : '点击上方执行按钮后，这里将实时显示输出日志' }}
+            </NText>
+          </div>
+        </template>
+        <div
+          v-for="line in parsedLines"
+          :key="line.lineNumber"
+          class="flex"
+          :class="autoScroll ? '' : ''"
+        >
+          <span class="mr-3 w-10 shrink-0 select-none text-right text-dracula-soft/30">
+            {{ String(line.lineNumber).padStart(3, '0') }}
+          </span>
+          <span class="min-w-0 whitespace-pre-wrap break-all shell-text">
+            <span
+              v-for="(seg, i) in line.segments"
+              :key="i"
+              :style="seg.color ? { color: seg.color } : {}"
+            >{{ seg.text }}</span>
+          </span>
+        </div>
       </div>
-      <div
-        v-for="(line, index) in logs"
-        :key="index"
-        class="flex gap-3 whitespace-pre-wrap break-all"
-      >
-        <span
-          class="select-none text-[10px] text-slate-700"
-          style="flex: 0 0 2.5rem; text-align: right"
-        >{{ index + 1 }}</span>
-        <span
-          class="min-w-0"
-          :class="logClass(line)"
-        >{{ line }}</span>
-      </div>
-    </div>
+    </NScrollbar>
   </div>
 </template>
