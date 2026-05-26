@@ -185,6 +185,22 @@ body {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
+.wails-drag {
+  --wails-draggable: drag;
+  user-select: none;
+}
+
+.wails-no-drag {
+  --wails-draggable: no-drag;
+  user-select: auto;
+}
+
+.titlebar-surface {
+  background:
+    linear-gradient(180deg, rgba(30, 31, 41, 0.94) 0%, rgba(30, 31, 41, 0.86) 100%);
+  backdrop-filter: blur(12px);
+}
+
 .cursor-blink::after {
   content: '\258D';
   animation: blink 1s step-end infinite;
