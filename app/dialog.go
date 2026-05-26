@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -64,4 +65,13 @@ func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
 	}
 
 	return strings.TrimSpace(file), nil
+}
+
+func (a *App) SaveTextFile(path string, content string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("保存路径不能为空")
+	}
+
+	return os.WriteFile(path, []byte(content), 0644)
 }

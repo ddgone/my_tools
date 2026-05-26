@@ -95,6 +95,12 @@ function tabRawArgs(): string {
   return activeTab.value?.rawArgs ?? ''
 }
 
+function onRawArgsUpdate(value: string) {
+  const tab = activeTab.value
+  if (!tab) return
+  tab.rawArgs = value
+}
+
 async function copyCli() {
   await navigator.clipboard.writeText(tabRawArgs())
   message.success('已复制到剪贴板')
@@ -199,6 +205,7 @@ async function copyCli() {
           placeholder="直接输入命令行参数，例如 -input &quot;/path/to/data&quot; -workers 4"
           :autosize="{ minRows: 4, maxRows: 10 }"
           class="font-mono"
+          @update:value="onRawArgsUpdate"
         />
         <NText
           depth="3"

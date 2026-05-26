@@ -74,6 +74,7 @@ function createTabState(
   lastArgs?: string,
   lastPythonEnv?: string,
   lastFormModel?: Record<string, string | number | boolean | null>,
+  defaultPythonPath = 'python',
 ): ToolTabState {
   let formModel: Record<string, string | number | boolean | null>
 
@@ -105,7 +106,7 @@ function createTabState(
     toolId: tool.id,
     parameterMode: lastArgs ? 'raw' : 'structured',
     rawArgs,
-    pythonEnv: lastPythonEnv || 'python',
+    pythonEnv: lastPythonEnv || defaultPythonPath,
     formModel,
     openedAt: Date.now(),
   }
@@ -270,7 +271,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const lastPythonEnv = lastEntry?.pythonEnv
     const lastFormModel = lastEntry?.formModel
 
-    const tab = createTabState(tool, lastArgs, lastPythonEnv, lastFormModel)
+    const tab = createTabState(tool, lastArgs, lastPythonEnv, lastFormModel, settings.value.defaultPythonPath)
     openTabs.value.push(tab)
     activeTabIndex.value = openTabs.value.length - 1
     activeSSHTabIndex.value = -1

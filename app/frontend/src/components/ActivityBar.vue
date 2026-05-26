@@ -34,9 +34,13 @@ const topItems: { key: ActivityBarView | 'tasks' | 'export'; icon: typeof Apps; 
   { key: 'export', icon: CloudUpload, label: '导出中心（开发中）' },
 ]
 
+function isComingSoon(key: ActivityBarView | 'tasks' | 'export'): boolean {
+  return key === 'tasks' || key === 'export'
+}
+
 function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
-  if (key === 'tasks' || key === 'export') return
-  toggleView(key)
+  if (isComingSoon(key)) return
+  toggleView(key as ActivityBarView)
 }
 </script>
 
@@ -58,7 +62,11 @@ function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
               quaternary
               size="small"
               class="h-10 w-10"
-              :class="activeView === item.key ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text'"
+              :disabled="isComingSoon(item.key)"
+              :class="[
+                activeView === item.key ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text',
+                isComingSoon(item.key) ? 'cursor-not-allowed opacity-35 hover:text-dracula-soft' : '',
+              ]"
               @click="handleItemClick(item.key)"
             >
               <template #icon>

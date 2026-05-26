@@ -38,6 +38,10 @@ export function SaveSSHConnection(arg1) {
   return window['go']['main']['App']['SaveSSHConnection'](arg1);
 }
 
+export function SaveTextFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveTextFile'](arg1, arg2);
+}
+
 export function StartLocalExecution(arg1) {
   return window['go']['main']['App']['StartLocalExecution'](arg1);
 }

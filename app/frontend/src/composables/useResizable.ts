@@ -58,6 +58,7 @@ export function useResizable(options: ResizableOptions): {
     e.preventDefault()
     dragging.value = true
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    document.body.style.cursor = options.axis === 'x' ? 'col-resize' : 'row-resize'
     document.body.style.userSelect = 'none'
   }
 

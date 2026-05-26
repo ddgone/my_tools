@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { NButton, NIcon, NScrollbar, NText, NTooltip } from 'naive-ui'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { NButton, NIcon, NScrollbar, NText, NTooltip, useMessage } from 'naive-ui'
 import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
-import { OpenSaveFileDialog } from '../../wailsjs/go/main/App'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
 
 const props = defineProps<{
   taskId: string
 }>()
 
 const execution = useExecutionStore()
+const workspace = useWorkspaceStore()
+const message = useMessage()
 const terminalRef = ref<InstanceType<typeof NScrollbar> | null>(null)
 const autoScroll = ref(true)
+let detachScrollListener: (() => void) | null = null
 
 const logs = computed(() => execution.logsForTask(props.taskId))
 
@@ -83,6 +87,7 @@ function clearLogs() {
   if (props.taskId) {
     execution.logs[props.taskId] = []
   }
+  autoScroll.value = true
 }
 
 async function copyLogs() {
@@ -99,17 +104,52 @@ async function exportLogs() {
   if (!text.trim()) return
 
   try {
-    await OpenSaveFileDialog({
+    const filePath = await OpenSaveFileDialog({
       title: '导出日志',
       filterName: '日志文件',
       filterGlob: '*.log',
       directory: false,
     })
-    await navigator.clipboard.writeText(text)
+    if (!filePath) return
+    await SaveTextFile(filePath, text)
+    message.success('日志已导出')
   } catch {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch { /* ignore */ }
+    message.error('日志导出失败')
+  }
+}
+
+function getScrollbarContainer(): HTMLElement | null {
+  return terminalRef.value?.$el.querySelector('.n-scrollbar-container') ?? null
+}
+
+async function scrollToBottom() {
+  await nextTick()
+  const el = getScrollbarContainer()
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+}
+
+function syncAutoScrollState() {
+  const el = getScrollbarContainer()
+  if (!el) return
+  const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+  autoScroll.value = distanceToBottom <= 24
+}
+
+async function bindScrollListener() {
+  await nextTick()
+  detachScrollListener?.()
+  const el = getScrollbarContainer()
+  if (!el) return
+  const handleScroll = () => syncAutoScrollState()
+  el.addEventListener('scroll', handleScroll, { passive: true })
+  detachScrollListener = () => el.removeEventListener('scroll', handleScroll)
+}
+
+async function toggleAutoScroll() {
+  autoScroll.value = !autoScroll.value
+  if (autoScroll.value) {
+    await scrollToBottom()
   }
 }
 
@@ -117,15 +157,19 @@ watch(
   () => logs.value.length,
   async () => {
     if (!autoScroll.value) return
-    await nextTick()
-    if (terminalRef.value) {
-      const el = terminalRef.value.$el.querySelector('.n-scrollbar-container')
-      if (el) {
-        el.scrollTop = el.scrollHeight
-      }
-    }
+    await scrollToBottom()
   },
 )
+
+watch(() => props.taskId, async () => {
+  autoScroll.value = true
+  await bindScrollListener()
+  await scrollToBottom()
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  detachScrollListener?.()
+})
 </script>
 
 <template>
@@ -212,6 +256,19 @@ watch(
           </template>
           导出日志
         </NTooltip>
+        <NTooltip placement="top">
+          <template #trigger>
+            <NButton
+              text
+              size="tiny"
+              :type="autoScroll ? 'primary' : 'default'"
+              @click="toggleAutoScroll"
+            >
+              跟随
+            </NButton>
+          </template>
+          {{ autoScroll ? '已开启自动跟随输出' : '已暂停自动跟随输出' }}
+        </NTooltip>
       </div>
     </div>
 
@@ -240,7 +297,10 @@ watch(
           <span class="mr-3 w-10 shrink-0 select-none text-right text-dracula-soft/30">
             {{ String(line.lineNumber).padStart(3, '0') }}
           </span>
-          <span class="min-w-0 whitespace-pre-wrap break-all shell-text">
+          <span
+            class="min-w-0 shell-text"
+            :class="workspace.settings.autoWordWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'"
+          >
             <span
               v-for="(seg, i) in line.segments"
               :key="i"

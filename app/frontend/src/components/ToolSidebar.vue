@@ -168,6 +168,17 @@ function collectAllKeys(nodes: TreeOption[]): string[] {
   return keys
 }
 
+function collectBranchKeys(nodes: TreeOption[]): string[] {
+  const keys: string[] = []
+  for (const node of nodes) {
+    if (node.children && node.children.length > 0) {
+      keys.push(node.key as string)
+      keys.push(...collectBranchKeys(node.children as TreeOption[]))
+    }
+  }
+  return keys
+}
+
 const favoriteTools = computed(() => {
   return workspace.favorites.map((id) => allTools.value.find((t) => t.id === id)).filter(Boolean) as ToolManifest[]
 })
@@ -230,8 +241,10 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
 const selectedKeys = ref<string[]>([])
 const expandedKeys = ref<string[]>([])
 
-watch(treeData, (data) => {
-  expandedKeys.value = collectAllKeys(data)
+watch([treeData, () => workspace.settings.autoExpandAll, searchQuery], ([data, autoExpandAll, query]) => {
+  expandedKeys.value = autoExpandAll || query.trim()
+    ? collectAllKeys(data)
+    : collectBranchKeys(data)
 }, { immediate: true })
 
 watch(() => workspace.activeTab()?.toolId, (toolId) => {
@@ -354,6 +367,7 @@ defineExpose({
               size="small"
               :bordered="true"
               hoverable
+              class="ui-surface-hover"
               :content-style="{ padding: '8px 10px' }"
               :style="isToolActive(tool.id) ? { borderColor: 'rgba(255,121,198,0.45)', backgroundColor: 'rgba(255,121,198,0.06)' } : {}"
               @click="selectTool(tool)"
@@ -411,6 +425,7 @@ defineExpose({
               size="small"
               :bordered="true"
               hoverable
+              class="ui-surface-hover"
               :content-style="{ padding: '8px 10px' }"
               :style="isToolActive(entry.tool.id) ? { borderColor: 'rgba(241,250,140,0.45)', backgroundColor: 'rgba(241,250,140,0.06)' } : {}"
               @click="selectTool(entry.tool)"
@@ -490,6 +505,7 @@ defineExpose({
               size="small"
               :bordered="true"
               hoverable
+              class="ui-surface-hover"
               :content-style="{ padding: '8px 10px' }"
               @click="selectConnection(conn)"
             >

@@ -21,6 +21,8 @@ export function OpenSaveFileDialog(arg1:main.FileDialogRequest):Promise<string>;
 
 export function SaveSSHConnection(arg1:ssh.Connection):Promise<void>;
 
+export function SaveTextFile(arg1:string,arg2:string):Promise<void>;
+
 export function StartLocalExecution(arg1:main.ExecutionRequest):Promise<main.ExecutionTask>;
 
 export function StartRemoteExecution(arg1:main.RemoteExecRequest):Promise<main.ExecutionTask>;

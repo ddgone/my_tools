@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -23,6 +23,7 @@ const workspace = useWorkspaceStore()
 
 const launching = ref(false)
 const searchInput = ref('')
+const activeSearchIndex = ref(0)
 
 const showSearchModal = computed({
   get: () => workspace.showSearch,
@@ -123,7 +124,9 @@ async function handleFileDialog(param: ParameterSpec) {
   const tab = activeToolTabComputed.value
   if (!tab) return
 
-  const isSave = param.key.toLowerCase().includes('output') || param.key.toLowerCase().includes('save')
+  const key = param.key.toLowerCase()
+  const label = param.label.toLowerCase()
+  const isSave = key.includes('output') || key.includes('save') || label.includes('输出') || label.includes('保存')
   let result: string
 
   if (isSave) {
@@ -134,7 +137,7 @@ async function handleFileDialog(param: ParameterSpec) {
       directory: false,
     })
   } else {
-    const isDir = param.key.toLowerCase().includes('dir') || param.key.toLowerCase().includes('input')
+    const isDir = key.includes('dir') || key.includes('folder') || label.includes('目录') || label.includes('文件夹')
     result = await OpenFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',
@@ -157,6 +160,7 @@ function onPythonEnvUpdate(value: string) {
 
 function openSearch() {
   searchInput.value = ''
+  activeSearchIndex.value = 0
   showSearchModal.value = true
 }
 
@@ -170,6 +174,19 @@ function selectSearchResult(toolId: string) {
     workspace.openTool(tool)
   }
   closeSearch()
+}
+
+function moveSearchSelection(step: number) {
+  if (searchResults.value.length === 0) return
+  const nextIndex = activeSearchIndex.value + step
+  activeSearchIndex.value = (nextIndex + searchResults.value.length) % searchResults.value.length
+}
+
+function selectActiveSearchResult() {
+  const tool = searchResults.value[activeSearchIndex.value]
+  if (tool) {
+    selectSearchResult(tool.id)
+  }
 }
 
 function handleSSHSaved() {
@@ -187,6 +204,23 @@ function kindIcon(kind: string) {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (showSearchModal.value) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveSearchSelection(1)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveSearchSelection(-1)
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      selectActiveSearchResult()
+      return
+    }
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
     e.preventDefault()
     openSearch()
@@ -214,6 +248,20 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
 })
+
+watch(searchInput, () => {
+  activeSearchIndex.value = 0
+})
+
+watch(searchResults, (results) => {
+  if (results.length === 0) {
+    activeSearchIndex.value = 0
+    return
+  }
+  if (activeSearchIndex.value >= results.length) {
+    activeSearchIndex.value = results.length - 1
+  }
+})
 </script>
 
 <template>
@@ -223,7 +271,7 @@ onUnmounted(() => {
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
-          class="group flex shrink-0 items-center gap-1.5 border-r border-white/15 px-3 py-2 text-sm transition"
+          class="ui-interactive group flex shrink-0 items-center gap-1.5 border-r border-white/15 px-3 py-2 text-sm"
           :class="
             (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
               (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
@@ -245,7 +293,7 @@ onUnmounted(() => {
             {{ item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label }}
           </span>
           <span
-            class="ml-1 flex h-4 w-4 items-center justify-center rounded text-xs opacity-0 transition group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
+            class="ui-interactive ml-1 flex h-4 w-4 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
             @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
         </button>
@@ -377,8 +425,11 @@ onUnmounted(() => {
                 clickable
               >
                 <NListItem
-                  v-for="tool in searchResults"
+                  v-for="(tool, index) in searchResults"
                   :key="tool.id"
+                  class="ui-interactive"
+                  :class="index === activeSearchIndex ? 'bg-dracula-cyan/10' : ''"
+                  @mouseenter="activeSearchIndex = index"
                   @click="selectSearchResult(tool.id)"
                 >
                   <template #prefix>
@@ -413,6 +464,9 @@ onUnmounted(() => {
                 </NText>
               </div>
             </NScrollbar>
+            <div class="border-t border-white/10 px-4 py-2 text-[11px] text-slate-500">
+              ↑↓ 切换 · Enter 打开 · Esc 关闭
+            </div>
           </div>
         </div>
       </Transition>
