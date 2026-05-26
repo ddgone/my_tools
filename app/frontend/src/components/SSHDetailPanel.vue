@@ -134,7 +134,7 @@ async function handleDelete() {
     v-if="!loading"
     class="flex flex-1 flex-col overflow-hidden"
   >
-    <div class="shrink-0 overflow-y-auto border-b border-dracula-soft p-4">
+    <div class="shrink-0 border-b border-white/15 px-4 py-3">
       <div class="mx-auto flex max-w-xl flex-wrap items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-x-2">
@@ -202,8 +202,10 @@ async function handleDelete() {
           </NButton>
         </div>
       </div>
+    </div>
 
-      <div class="mx-auto mt-6 max-w-xl">
+    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div class="mx-auto max-w-xl">
         <NForm
           label-placement="top"
           label-align="left"
@@ -313,7 +315,7 @@ async function handleDelete() {
       </div>
     </div>
 
-    <div class="flex min-h-0 flex-1 items-center justify-center">
+    <div class="shrink-0 border-t border-white/15 py-3">
       <div class="text-center">
         <NText
           depth="3"

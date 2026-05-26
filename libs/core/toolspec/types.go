@@ -1,5 +1,42 @@
 package toolspec
 
+import (
+	"encoding/json"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+type CategoryPath []string
+
+func (c *CategoryPath) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err == nil {
+		parts := strings.Split(s, ">")
+		result := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if trimmed := strings.TrimSpace(p); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		*c = result
+		return nil
+	}
+	var arr []string
+	if err := value.Decode(&arr); err != nil {
+		return err
+	}
+	*c = arr
+	return nil
+}
+
+func (c CategoryPath) MarshalJSON() ([]byte, error) {
+	if c == nil {
+		return json.Marshal([]string{})
+	}
+	return json.Marshal([]string(c))
+}
+
 type ToolKind string
 
 const (
@@ -86,7 +123,7 @@ type ToolManifest struct {
 	ID          string          `yaml:"id" json:"id"`
 	Name        string          `yaml:"name" json:"name"`
 	Kind        ToolKind        `yaml:"kind" json:"kind"`
-	Category    string          `yaml:"category" json:"category"`
+	Category    CategoryPath    `yaml:"category" json:"category"`
 	Icon        string          `yaml:"icon" json:"icon"`
 	Description string          `yaml:"description" json:"description"`
 	Docs        ToolDocs        `yaml:"docs" json:"docs"`

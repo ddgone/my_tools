@@ -125,7 +125,7 @@ async function copyCli() {
       />
     </NTabs>
 
-    <div class="mt-4">
+    <div class="mt-4 rounded-lg border border-white/15 p-4">
       <div v-if="activeMode === 'form'">
         <NForm
           label-placement="top"
@@ -209,7 +209,7 @@ async function copyCli() {
       </div>
 
       <div v-else-if="activeMode === 'docs'">
-        <div class="rounded-lg border border-dracula-soft bg-dracula-panel p-4">
+        <div class="rounded-lg border border-white/15 bg-dracula-panel p-4">
           <div class="mb-3 flex items-center gap-x-2">
             <NTag
               size="tiny"
@@ -242,7 +242,7 @@ async function copyCli() {
           </div>
         </div>
 
-        <div class="mt-4 rounded-lg border border-dracula-soft bg-dracula-panel p-4">
+        <div class="mt-4 rounded-lg border border-white/15 bg-dracula-panel p-4">
           <NText
             depth="3"
             class="text-[10px] uppercase tracking-wide"
@@ -290,7 +290,7 @@ async function copyCli() {
 
     <div
       v-if="activeMode !== 'docs'"
-      class="mt-4 rounded-lg border border-dracula-soft bg-dracula-panel p-3"
+      class="mt-4 rounded-lg border border-white/15 bg-dracula-panel p-3"
     >
       <div class="flex items-center justify-between">
         <NText

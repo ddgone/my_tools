@@ -36,10 +36,10 @@ function resetAll() {
         appear
       >
         <div
-          class="w-full max-w-md rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
+          class="w-full max-w-md rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-dracula-soft px-5 py-3">
+          <div class="flex items-center justify-between border-b border-white/15 px-5 py-3">
             <NText class="text-sm font-semibold">
               系统首选项
             </NText>
@@ -121,7 +121,7 @@ function resetAll() {
             </NFormItem>
           </NForm>
 
-          <div class="flex items-center justify-between border-t border-dracula-soft px-5 py-3">
+          <div class="flex items-center justify-between border-t border-white/15 px-5 py-3">
             <NPopconfirm @positive-click="resetAll">
               <template #trigger>
                 <NButton

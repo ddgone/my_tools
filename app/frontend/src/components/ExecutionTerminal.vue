@@ -129,7 +129,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden shell-bg rounded-b-lg border-t border-dracula-soft">
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden shell-bg rounded-b-lg border-t border-white/15">
     <div class="flex shrink-0 items-center justify-between bg-dracula-panel/30 px-3 py-1.5">
       <div class="flex items-center gap-x-1.5">
         <span class="h-2.5 w-2.5 rounded-full bg-red-500/70" />

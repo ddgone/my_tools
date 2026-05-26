@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { NInput, NIcon, NScrollbar, NText, NTag } from 'naive-ui'
+import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -55,7 +55,7 @@ const searchResults = computed(() => {
     (t) =>
       t.name.toLowerCase().includes(q) ||
       t.description.toLowerCase().includes(q) ||
-      t.category.toLowerCase().includes(q),
+      t.category.some((c) => c.toLowerCase().includes(q)),
   )
 })
 
@@ -218,12 +218,12 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-1 flex-col overflow-hidden">
-    <div class="flex shrink-0 items-center border-b border-dracula-soft bg-[#1a1b26]">
+    <div class="flex shrink-0 items-center border-b border-white/15 bg-[#1a1b26]">
       <div class="flex flex-1 overflow-x-auto">
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
-          class="group flex shrink-0 items-center gap-1.5 border-r border-dracula-soft px-3 py-2 text-sm transition"
+          class="group flex shrink-0 items-center gap-1.5 border-r border-white/15 px-3 py-2 text-sm transition"
           :class="
             (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
               (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
@@ -255,7 +255,7 @@ onUnmounted(() => {
     <template v-if="workspace.activeTabType === 'tool' && workspace.activeToolTab">
       <div class="flex flex-1 flex-col overflow-hidden">
         <div
-          class="shrink-0 overflow-y-auto border-b border-dracula-soft p-4"
+          class="shrink-0 overflow-y-auto border-b border-white/15 p-4"
           :style="{ height: topHeight + 'px' }"
         >
           <ToolDetailPanel
@@ -271,6 +271,7 @@ onUnmounted(() => {
           />
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
+            class="mt-4 border-t border-white/8 pt-4"
             @execute="handleExecute"
             @file-dialog="handleFileDialog"
           />
@@ -278,7 +279,7 @@ onUnmounted(() => {
 
         <div
           v-bind="hDividerProps"
-          class="group relative shrink-0 bg-dracula-soft"
+          class="group relative shrink-0 bg-white/10"
           style="height: 1px; width: 100%"
         >
           <div class="absolute inset-x-0 -top-1 -bottom-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
@@ -353,7 +354,7 @@ onUnmounted(() => {
           @click="closeSearch"
         >
           <div
-            class="w-full max-w-lg rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
+            class="w-full max-w-lg rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
             @click.stop
           >
             <div class="p-4">
@@ -370,18 +371,23 @@ onUnmounted(() => {
               </NInput>
             </div>
             <NScrollbar style="max-height: 320px">
-              <div class="px-2 pb-2">
-                <div
+              <NList
+                v-if="searchResults.length > 0"
+                hoverable
+                clickable
+              >
+                <NListItem
                   v-for="tool in searchResults"
                   :key="tool.id"
-                  class="flex cursor-pointer items-center gap-x-3 rounded-lg px-3 py-2.5 transition hover:bg-white/5"
                   @click="selectSearchResult(tool.id)"
                 >
-                  <NIcon
-                    :component="kindIcon(tool.kind)"
-                    size="18"
-                    :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
-                  />
+                  <template #prefix>
+                    <NIcon
+                      :component="kindIcon(tool.kind)"
+                      size="18"
+                      :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                    />
+                  </template>
                   <div class="min-w-0 flex-1">
                     <NText class="text-sm">
                       {{ tool.name }}
@@ -390,21 +396,21 @@ onUnmounted(() => {
                       depth="3"
                       class="truncate text-xs"
                     >
-                      {{ tool.category }} · {{ tool.description }}
+                      {{ tool.category.join(' > ') }} · {{ tool.description }}
                     </NText>
                   </div>
-                </div>
-                <div
-                  v-if="searchResults.length === 0"
-                  class="py-8 text-center"
+                </NListItem>
+              </NList>
+              <div
+                v-else
+                class="py-8 text-center"
+              >
+                <NText
+                  depth="3"
+                  class="text-sm"
                 >
-                  <NText
-                    depth="3"
-                    class="text-sm"
-                  >
-                    未找到匹配的工具
-                  </NText>
-                </div>
+                  未找到匹配的工具
+                </NText>
               </div>
             </NScrollbar>
           </div>

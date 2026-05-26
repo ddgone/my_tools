@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"fire-salamander-desktop/internal/ssh"
@@ -56,10 +57,12 @@ func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
 		tools = append(tools, tool)
 	}
 	sort.Slice(tools, func(i, j int) bool {
-		if tools[i].Category == tools[j].Category {
+		ci := strings.Join(tools[i].Category, " > ")
+		cj := strings.Join(tools[j].Category, " > ")
+		if ci == cj {
 			return tools[i].Name < tools[j].Name
 		}
-		return tools[i].Category < tools[j].Category
+		return ci < cj
 	})
 
 	return &WorkbenchBootstrap{

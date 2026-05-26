@@ -22,7 +22,8 @@ const themeOverrides: GlobalThemeOverrides = {
     textColor1: '#f8f8f2',
     textColor2: '#cfd3df',
     textColor3: '#a0a6ba',
-    borderColor: '#44475a',
+    borderColor: 'rgba(255,255,255,0.20)',
+    dividerColor: 'rgba(255,255,255,0.20)',
     borderRadius: '6px',
     borderRadiusSmall: '4px',
     fontFamily: "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
@@ -35,9 +36,20 @@ const themeOverrides: GlobalThemeOverrides = {
   },
   Input: {
     borderRadius: '6px',
+    borderHover: 'rgba(255,255,255,0.30)',
+    borderFocus: '#8be9fd',
+    boxShadowFocus: '0 0 0 2px rgba(139,233,253,0.15)',
   },
   Tag: {
     borderRadius: '4px',
+  },
+  Form: {
+    blankHeightSmall: '14px',
+    blankHeightMedium: '20px',
+    blankHeightLarge: '28px',
+    feedbackHeightSmall: '16px',
+    feedbackHeightMedium: '20px',
+    feedbackHeightLarge: '24px',
   },
 }
 </script>

@@ -41,7 +41,7 @@ export interface ToolManifest {
   id: string
   name: string
   kind: string
-  category: string
+  category: string[]
   icon: string
   description: string
   docs: ToolDocs

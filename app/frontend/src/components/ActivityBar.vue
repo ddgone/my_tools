@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { NButton, NIcon, NTooltip } from 'naive-ui'
-import { Apps, ServerOutline, Star, Settings } from '@vicons/ionicons5'
+import { Apps, ServerOutline, Star, TimeOutline, List, CloudUpload, Settings } from '@vicons/ionicons5'
 
-export type ActivityBarView = 'tools' | 'ssh' | 'favorites'
+export type ActivityBarView = 'tools' | 'ssh' | 'favorites' | 'recent'
 
 const props = defineProps<{
   activeView: ActivityBarView | null
@@ -25,19 +25,27 @@ function openSettings() {
   emit('openSettings')
 }
 
-const topItems: { key: ActivityBarView; icon: typeof Apps; label: string }[] = [
+const topItems: { key: ActivityBarView | 'tasks' | 'export'; icon: typeof Apps; label: string }[] = [
   { key: 'tools', icon: Apps, label: '工具浏览器' },
   { key: 'ssh', icon: ServerOutline, label: 'SSH 连接管理' },
   { key: 'favorites', icon: Star, label: '收藏夹' },
+  { key: 'recent', icon: TimeOutline, label: '最近使用' },
+  { key: 'tasks', icon: List, label: '任务中心（开发中）' },
+  { key: 'export', icon: CloudUpload, label: '导出中心（开发中）' },
 ]
+
+function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
+  if (key === 'tasks' || key === 'export') return
+  toggleView(key)
+}
 </script>
 
 <template>
-  <div class="flex w-12 shrink-0 flex-col border-r border-dracula-soft bg-dracula-panel">
+  <div class="flex w-12 shrink-0 flex-col border-r border-white/15 bg-dracula-panel">
     <div class="flex flex-1 flex-col gap-y-0.5 py-2">
       <NTooltip
         v-for="item in topItems"
-        :key="item.key"
+        :key="item.label"
         placement="right"
       >
         <template #trigger>
@@ -51,7 +59,7 @@ const topItems: { key: ActivityBarView; icon: typeof Apps; label: string }[] = [
               size="small"
               class="h-10 w-10"
               :class="activeView === item.key ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text'"
-              @click="toggleView(item.key)"
+              @click="handleItemClick(item.key)"
             >
               <template #icon>
                 <NIcon

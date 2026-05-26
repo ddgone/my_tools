@@ -61,10 +61,10 @@ const groups: ShortcutGroup[] = [
         appear
       >
         <div
-          class="w-full max-w-xl rounded-xl border border-dracula-soft bg-dracula-panel shadow-2xl"
+          class="w-full max-w-xl rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-dracula-soft px-5 py-3">
+          <div class="flex items-center justify-between border-b border-white/15 px-5 py-3">
             <NText class="text-sm font-semibold">
               快捷键帮助
             </NText>

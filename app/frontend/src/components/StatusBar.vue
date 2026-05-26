@@ -10,7 +10,7 @@ const activeTaskCount = computed(() => execution.tasks.filter((t) => t.status ==
 </script>
 
 <template>
-  <footer class="flex h-7 shrink-0 items-center justify-between border-t border-dracula-soft bg-dracula-panel/50 px-3 backdrop-blur-sm">
+  <footer class="flex h-7 shrink-0 items-center justify-between border-t border-white/15 bg-dracula-panel/50 px-3 backdrop-blur-sm">
     <div class="flex items-center gap-x-1.5">
       <NIcon
         :component="CheckmarkCircle"

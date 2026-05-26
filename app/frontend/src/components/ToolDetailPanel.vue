@@ -49,7 +49,7 @@ watch(remotePopoverVisible, (visible) => {
             depth="3"
             class="text-xs"
           >
-            {{ tool.category }}
+            {{ tool.category.join(' > ') }}
           </NText>
           <span class="text-dracula-soft text-xs">·</span>
           <NTag
@@ -122,7 +122,7 @@ watch(remotePopoverVisible, (visible) => {
               远程执行
             </NButton>
           </template>
-          <div class="min-w-[220px] rounded-lg border border-dracula-soft bg-dracula-panel p-1.5">
+          <div class="min-w-[220px] rounded-lg border border-white/15 bg-dracula-panel p-1.5">
             <NText
               depth="3"
               class="block px-2 pb-1.5 text-[10px] uppercase"

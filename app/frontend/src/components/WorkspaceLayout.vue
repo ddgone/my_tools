@@ -76,7 +76,7 @@ onMounted(async () => {
         <div
           v-if="activityBarActiveView !== null"
           v-bind="dividerProps"
-          class="group relative shrink-0 bg-dracula-soft"
+          class="group relative shrink-0 bg-white/10"
           style="width: 1px"
         >
           <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />

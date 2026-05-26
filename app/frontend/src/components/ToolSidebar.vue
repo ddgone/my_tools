@@ -2,13 +2,10 @@
 import { computed, ref, watch, h } from 'vue'
 import {
   NButton,
-  NCollapse,
-  NCollapseItem,
+  NCard,
   NDropdown,
   NIcon,
   NInput,
-  NList,
-  NListItem,
   NScrollbar,
   NTag,
   NTree,
@@ -21,6 +18,7 @@ import {
   ServerOutline,
   EllipsisHorizontal,
   Star as StarIcon,
+  TimeOutline,
   CodeSlash,
   LogoPython,
 } from '@vicons/ionicons5'
@@ -102,6 +100,9 @@ watch(() => props.activeView, (view) => {
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 
+const categoryPathStr = (tool: ToolManifest) =>
+  tool.category.length > 0 ? tool.category.join(' > ') : '未分类'
+
 const filteredTools = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return allTools.value
@@ -109,19 +110,63 @@ const filteredTools = computed(() => {
     (t) =>
       t.name.toLowerCase().includes(query) ||
       t.description.toLowerCase().includes(query) ||
-      t.category.toLowerCase().includes(query),
+      t.category.some((c: string) => c.toLowerCase().includes(query)),
   )
 })
 
-const groupedTools = computed(() => {
-  const groups = new Map<string, ToolManifest[]>()
-  for (const tool of filteredTools.value) {
-    const current = groups.get(tool.category) ?? []
-    current.push(tool)
-    groups.set(tool.category, current)
+function buildCategoryTree(tools: ToolManifest[]): TreeOption[] {
+  const root: TreeOption[] = []
+
+  for (const tool of tools) {
+    const path = tool.category.length > 0 ? tool.category : ['未分类']
+    insertIntoTree(root, path, tool, 0)
   }
-  return Array.from(groups.entries()).map(([category, tools]) => ({ category, tools }))
+
+  return root
+}
+
+function insertIntoTree(nodes: TreeOption[], path: string[], tool: ToolManifest, depth: number) {
+  if (depth >= path.length) return
+
+  const name = path[depth]
+  let node = nodes.find((n) => n.label === name)
+
+  if (!node) {
+    node = {
+      key: path.slice(0, depth + 1).join(' > '),
+      label: name,
+      children: [],
+    }
+    nodes.push(node)
+  }
+
+  if (depth === path.length - 1) {
+    const toolNode: TreeOption & { tool?: ToolManifest } = {
+      key: tool.id,
+      label: tool.name,
+      isLeaf: true,
+      tool,
+    }
+    ;(node.children as TreeOption[]).push(toolNode)
+  } else {
+    insertIntoTree(node.children as TreeOption[], path, tool, depth + 1)
+  }
+}
+
+const treeData = computed<TreeOption[]>(() => {
+  return buildCategoryTree(filteredTools.value)
 })
+
+function collectAllKeys(nodes: TreeOption[]): string[] {
+  const keys: string[] = []
+  for (const node of nodes) {
+    keys.push(node.key as string)
+    if (node.children) {
+      keys.push(...collectAllKeys(node.children as TreeOption[]))
+    }
+  }
+  return keys
+}
 
 const favoriteTools = computed(() => {
   return workspace.favorites.map((id) => allTools.value.find((t) => t.id === id)).filter(Boolean) as ToolManifest[]
@@ -157,25 +202,18 @@ function kindIcon(kind: string) {
   return kind === 'python' ? LogoPython : CodeSlash
 }
 
-const treeData = computed<TreeOption[]>(() => {
-  return groupedTools.value.map((group) => ({
-    key: group.category,
-    label: group.category,
-    children: group.tools.map((tool) => ({
-      key: tool.id,
-      label: tool.name,
-      isLeaf: true,
-      tool: tool,
-    })),
-  }))
-})
-
 function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   const tool = option.tool
   if (!tool) {
     return h('span', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-500' }, option.label as string)
   }
-  return h('div', { class: 'flex items-center gap-x-2 w-full' }, [
+  return h('div', {
+    class: 'flex items-center gap-x-2 w-full',
+    onClick: (e: MouseEvent) => {
+      e.stopPropagation()
+      selectTool(tool)
+    },
+  }, [
     h('span', {
       class: `h-2 w-2 shrink-0 rounded-full ${isToolRunning(tool.id) ? 'bg-dracula-green' : 'border border-slate-700'}`,
     }),
@@ -190,6 +228,11 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
 }
 
 const selectedKeys = ref<string[]>([])
+const expandedKeys = ref<string[]>([])
+
+watch(treeData, (data) => {
+  expandedKeys.value = collectAllKeys(data)
+}, { immediate: true })
 
 watch(() => workspace.activeTab()?.toolId, (toolId) => {
   if (toolId) {
@@ -197,13 +240,8 @@ watch(() => workspace.activeTab()?.toolId, (toolId) => {
   }
 })
 
-function handleTreeSelect(keys: string[]) {
+function handleTreeSelect(keys: string[], _option: Array<TreeOption | null>) {
   if (keys.length === 0) return
-  const toolId = keys[0]
-  const tool = allTools.value.find((t) => t.id === toolId)
-  if (tool) {
-    selectTool(tool)
-  }
   selectedKeys.value = keys
 }
 
@@ -241,18 +279,17 @@ defineExpose({
 
 <template>
   <aside
-    class="flex shrink-0 flex-col border-r border-dracula-soft bg-dracula-panel"
+    class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
     :style="{ width: props.width + 'px' }"
   >
     <div
-      v-if="activeView === 'tools' || activeView === 'favorites'"
+      v-if="activeView === 'tools'"
       class="p-3"
     >
       <NInput
         v-model:value="searchQuery"
         placeholder="搜索工具..."
         clearable
-        round
         size="small"
       >
         <template #prefix>
@@ -269,104 +306,21 @@ defineExpose({
         <div
           v-if="activeView === 'tools'"
           key="tools"
-          class="space-y-1 p-2"
+          class="p-2"
         >
-          <NCollapse
-            v-if="favoriteTools.length > 0"
-            :default-expanded-names="['favorites']"
-          >
-            <NCollapseItem name="favorites">
-              <template #header>
-                <span class="text-xs font-semibold uppercase tracking-wider text-dracula-pink">
-                  收藏夹 · {{ favoriteTools.length }}
-                </span>
-              </template>
-              <div class="-mx-1 space-y-0.5">
-                <div
-                  v-for="tool in favoriteTools"
-                  :key="tool.id"
-                  class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-1.5 text-left transition"
-                  :class="isToolActive(tool.id) ? 'bg-dracula-pink/10 text-dracula-pink' : 'text-slate-300 hover:bg-white/5'"
-                  @click="selectTool(tool)"
-                >
-                  <span
-                    v-if="isToolRunning(tool.id)"
-                    class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
-                  />
-                  <span
-                    v-else
-                    class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
-                  />
-                  <span class="truncate text-sm">{{ tool.name }}</span>
-                  <NTag
-                    :bordered="false"
-                    size="tiny"
-                    :type="kindTagType(tool.kind) as any"
-                    class="ml-auto shrink-0"
-                  >
-                    {{ tool.kind }}
-                  </NTag>
-                </div>
-              </div>
-            </NCollapseItem>
-          </NCollapse>
-
-          <NCollapse
-            v-if="recentToolList.length > 0"
-            :default-expanded-names="['recent']"
-          >
-            <NCollapseItem name="recent">
-              <template #header>
-                <span class="text-xs font-semibold uppercase tracking-wider text-dracula-yellow">
-                  最近使用 · {{ recentToolList.length }}
-                </span>
-              </template>
-              <div class="-mx-1 space-y-0.5">
-                <div
-                  v-for="entry in recentToolList"
-                  :key="entry.tool.id"
-                  class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-1.5 text-left transition"
-                  :class="isToolActive(entry.tool.id) ? 'bg-dracula-yellow/10 text-dracula-yellow' : 'text-slate-300 hover:bg-white/5'"
-                  @click="selectTool(entry.tool)"
-                >
-                  <span
-                    v-if="isToolRunning(entry.tool.id)"
-                    class="h-2 w-2 shrink-0 rounded-full bg-dracula-green"
-                  />
-                  <span
-                    v-else
-                    class="h-2 w-2 shrink-0 rounded-full border border-slate-700"
-                  />
-                  <span class="truncate text-sm">
-                    {{ entry.tool.name }}
-                    <span class="ml-1 text-[10px] text-slate-600">{{ entry.args }}</span>
-                  </span>
-                  <NTag
-                    :bordered="false"
-                    size="tiny"
-                    :type="kindTagType(entry.tool.kind) as any"
-                    class="ml-auto shrink-0"
-                  >
-                    {{ entry.tool.kind }}
-                  </NTag>
-                </div>
-              </div>
-            </NCollapseItem>
-          </NCollapse>
-
-          <div class="border-t border-dracula-soft pt-2">
-            <NTree
-              :data="treeData"
-              :pattern="searchQuery"
-              :render-label="renderNodeLabel"
-              :selected-keys="selectedKeys"
-              :expanded-keys="groupedTools.map((g) => g.category)"
-              block-line
-              selectable
-              class="n-tree-custom"
-              @update:selected-keys="handleTreeSelect"
-            />
-          </div>
+          <NTree
+            v-model:expanded-keys="expandedKeys"
+            :data="treeData"
+            :pattern="searchQuery"
+            :selected-keys="selectedKeys"
+            :render-label="renderNodeLabel"
+            :indent="8"
+            show-line
+            block-line
+            selectable
+            class="category-tree"
+            @update:selected-keys="handleTreeSelect"
+          />
         </div>
 
         <div
@@ -392,29 +346,94 @@ defineExpose({
           </div>
           <div
             v-else
-            class="space-y-0.5"
+            class="space-y-1"
           >
-            <div
+            <NCard
               v-for="tool in favoriteTools"
               :key="tool.id"
-              class="group flex cursor-pointer items-center gap-x-2 rounded-md px-3 py-2 text-left transition"
-              :class="isToolActive(tool.id) ? 'bg-dracula-pink/10 text-dracula-pink' : 'text-slate-300 hover:bg-white/5'"
+              size="small"
+              :bordered="true"
+              hoverable
+              :content-style="{ padding: '8px 10px' }"
+              :style="isToolActive(tool.id) ? { borderColor: 'rgba(255,121,198,0.45)', backgroundColor: 'rgba(255,121,198,0.06)' } : {}"
               @click="selectTool(tool)"
             >
-              <NIcon
-                :component="kindIcon(tool.kind)"
-                size="16"
-                :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
-              />
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm">
-                  {{ tool.name }}
-                </div>
-                <div class="truncate text-[10px] text-slate-500">
-                  {{ tool.category }} · {{ tool.description }}
+              <div
+                class="flex items-center gap-x-2 text-left"
+                :class="isToolActive(tool.id) ? 'text-dracula-pink' : 'text-slate-300'"
+              >
+                <NIcon
+                  :component="kindIcon(tool.kind)"
+                  size="16"
+                  :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm">
+                    {{ tool.name }}
+                  </div>
+                  <div class="truncate text-[10px] text-slate-500">
+                    {{ categoryPathStr(tool) }} · {{ tool.description }}
+                  </div>
                 </div>
               </div>
-            </div>
+            </NCard>
+          </div>
+        </div>
+
+        <div
+          v-else-if="activeView === 'recent'"
+          key="recent"
+          class="p-2"
+        >
+          <div
+            v-if="recentToolList.length === 0"
+            class="flex flex-col items-center justify-center py-12 text-center"
+          >
+            <NIcon
+              :component="TimeOutline"
+              size="32"
+              color="#44475a"
+            />
+            <p class="mt-2 text-xs text-slate-500">
+              暂无最近使用
+            </p>
+            <p class="mt-1 text-[10px] text-slate-600">
+              打开工具后自动记录
+            </p>
+          </div>
+          <div
+            v-else
+            class="space-y-1"
+          >
+            <NCard
+              v-for="entry in recentToolList"
+              :key="entry.tool.id"
+              size="small"
+              :bordered="true"
+              hoverable
+              :content-style="{ padding: '8px 10px' }"
+              :style="isToolActive(entry.tool.id) ? { borderColor: 'rgba(241,250,140,0.45)', backgroundColor: 'rgba(241,250,140,0.06)' } : {}"
+              @click="selectTool(entry.tool)"
+            >
+              <div
+                class="flex items-center gap-x-2 text-left"
+                :class="isToolActive(entry.tool.id) ? 'text-dracula-yellow' : 'text-slate-300'"
+              >
+                <NIcon
+                  :component="kindIcon(entry.tool.kind)"
+                  size="16"
+                  :color="entry.tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm">
+                    {{ entry.tool.name }}
+                  </div>
+                  <div class="truncate text-[10px] text-slate-500">
+                    {{ entry.args || '无参数' }}
+                  </div>
+                </div>
+              </div>
+            </NCard>
           </div>
         </div>
 
@@ -461,33 +480,33 @@ defineExpose({
             </div>
           </div>
 
-          <NList
+          <div
             v-else
-            hoverable
-            clickable
-            class="flex-1"
+            class="space-y-1 overflow-y-auto px-2"
           >
-            <NListItem
+            <NCard
               v-for="conn in sshConnections"
               :key="conn.id"
+              size="small"
+              :bordered="true"
+              hoverable
+              :content-style="{ padding: '8px 10px' }"
               @click="selectConnection(conn)"
             >
-              <template #prefix>
+              <div class="flex items-center gap-x-2 text-left text-slate-300">
                 <NIcon
                   :component="ServerOutline"
                   size="16"
                   color="#8be9fd"
                 />
-              </template>
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-200">
-                  {{ conn.name }}
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-medium text-slate-200">
+                    {{ conn.name }}
+                  </div>
+                  <div class="truncate text-[10px] text-slate-500">
+                    {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+                  </div>
                 </div>
-                <div class="truncate text-[10px] text-slate-500">
-                  {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
-                </div>
-              </div>
-              <template #suffix>
                 <NDropdown
                   trigger="click"
                   :options="sshDropdownOptions(conn)"
@@ -496,7 +515,6 @@ defineExpose({
                   <NButton
                     text
                     size="tiny"
-                    class="opacity-0 group-hover:opacity-100"
                     @click.stop
                   >
                     <template #icon>
@@ -504,9 +522,9 @@ defineExpose({
                     </template>
                   </NButton>
                 </NDropdown>
-              </template>
-            </NListItem>
-          </NList>
+              </div>
+            </NCard>
+          </div>
         </div>
       </Transition>
     </NScrollbar>
@@ -514,7 +532,12 @@ defineExpose({
 </template>
 
 <style>
-.n-tree-custom .n-tree-node-content {
+.category-tree {
+  --n-line-color: rgba(255,255,255,0.10);
+  --n-line-offset-top: 4px;
+  --n-line-offset-bottom: 4px;
+}
+.category-tree .n-tree-node-content {
   padding-top: 2px;
   padding-bottom: 2px;
 }

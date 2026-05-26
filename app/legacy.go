@@ -118,7 +118,7 @@ func buildToolManifests(legacy map[string]*legacyTool) (map[string]toolspec.Tool
 				ID:          id,
 				Name:        legacyTool.tool.Name(),
 				Kind:        kind,
-				Category:    legacyTool.tool.Category(),
+				Category:    parseCategory(legacyTool.tool.Category()),
 				Icon:        string(kind),
 				Description: deriveSummary(legacyTool.usage, legacyTool.tool.Name()),
 				Docs: toolspec.ToolDocs{
@@ -131,8 +131,8 @@ func buildToolManifests(legacy map[string]*legacyTool) (map[string]toolspec.Tool
 		if manifest.Name == "" {
 			manifest.Name = legacyTool.tool.Name()
 		}
-		if manifest.Category == "" {
-			manifest.Category = legacyTool.tool.Category()
+		if len(manifest.Category) == 0 {
+			manifest.Category = parseCategory(legacyTool.tool.Category())
 		}
 		if manifest.Docs.Usage == "" {
 			manifest.Docs.Usage = legacyTool.usage
@@ -148,6 +148,20 @@ func buildToolManifests(legacy map[string]*legacyTool) (map[string]toolspec.Tool
 	}
 
 	return manifests, nil
+}
+
+func parseCategory(raw string) toolspec.CategoryPath {
+	parts := strings.Split(raw, ">")
+	result := make(toolspec.CategoryPath, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return toolspec.CategoryPath{"未分类"}
+	}
+	return result
 }
 
 var (
