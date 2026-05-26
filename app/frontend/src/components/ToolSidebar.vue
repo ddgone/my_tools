@@ -194,7 +194,7 @@ function selectTool(tool: ToolManifest) {
   workspace.openTool(tool)
 }
 
-function kindTagType(kind: string) {
+function kindTagType(kind: string): 'success' | 'info' {
   return kind === 'python' ? 'success' : 'info'
 }
 
@@ -221,7 +221,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     h(NTag, {
       bordered: false,
       size: 'tiny',
-      type: kindTagType(tool.kind) as any,
+      type: kindTagType(tool.kind),
       class: 'ml-auto shrink-0',
     }, { default: () => tool.kind }),
   ])
