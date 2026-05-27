@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, h } from 'vue'
+import { computed, ref, watch, h, nextTick } from 'vue'
 import {
   NButton,
   NCard,
@@ -28,6 +28,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
+import { ANIM } from '@/utils/animation'
+import gsap from 'gsap'
+import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 
 const props = defineProps<{
   width: number
@@ -43,6 +46,8 @@ const message = useMessage()
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
+
+const { tooltipText, tooltipX, tooltipY, tooltipShow, onEnter: onTooltipEnter, onLeave: onTooltipLeave } = useTruncationTooltip({ placement: 'right' })
 
 const searchQuery = ref('')
 const sshConnections = ref<SSHConnection[]>([])
@@ -216,7 +221,19 @@ function kindIcon(kind: string) {
 function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   const tool = option.tool
   if (!tool) {
-    return h('span', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-500' }, option.label as string)
+    return h('span', {
+      class: 'text-sm font-semibold uppercase tracking-wider text-slate-400 cursor-pointer',
+      onClick: (e: MouseEvent) => {
+        e.stopPropagation()
+        const key = option.key as string
+        const idx = expandedKeys.value.indexOf(key)
+        if (idx >= 0) {
+          expandedKeys.value.splice(idx, 1)
+        } else {
+          expandedKeys.value.push(key)
+        }
+      },
+    }, option.label as string)
   }
   return h('div', {
     class: 'flex items-center gap-x-2 w-full',
@@ -226,20 +243,50 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     },
   }, [
     h('span', {
-      class: `h-2 w-2 shrink-0 rounded-full ${isToolRunning(tool.id) ? 'bg-dracula-green' : 'border border-slate-700'}`,
+      class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-dracula-green shadow-[0_0_6px_rgba(80,250,123,0.4)]' : 'border border-slate-600'}`,
     }),
-    h('span', { class: 'truncate text-sm' }, tool.name),
+    h('span', {
+      class: 'truncate text-sm text-slate-200',
+      onMouseenter: (e: MouseEvent) => onTooltipEnter(e, tool.name),
+      onMouseleave: onTooltipLeave,
+    }, tool.name),
     h(NTag, {
       bordered: false,
       size: 'tiny',
       type: kindTagType(tool.kind),
       class: 'ml-auto shrink-0',
-    }, { default: () => tool.kind }),
+    }, {
+      icon: () => h(NIcon, {
+        component: kindIcon(tool.kind),
+        size: 10,
+      }),
+      default: () => tool.kind === 'python' ? 'py' : 'go',
+    }),
   ])
 }
 
 const selectedKeys = ref<string[]>([])
 const expandedKeys = ref<string[]>([])
+
+const treeRef = ref<InstanceType<typeof NTree> | null>(null)
+
+function handleExpandKeys(keys: string[]) {
+  const prev = new Set(expandedKeys.value)
+  expandedKeys.value = keys
+  animateTreeNodes(prev)
+}
+
+async function animateTreeNodes(_prevKeys: Set<string>) {
+  await nextTick()
+  const treeEl = treeRef.value?.$el as HTMLElement | undefined
+  if (!treeEl) return
+  const nodes = treeEl.querySelectorAll<HTMLElement>('.n-tree-node-children > .n-tree-node')
+  if (nodes.length === 0) return
+  gsap.fromTo(nodes,
+    { opacity: 0, y: -6 },
+    { opacity: 1, y: 0, duration: ANIM.duration.normal, stagger: 0.025, ease: ANIM.ease.out, overwrite: 'auto' },
+  )
+}
 
 watch([treeData, () => workspace.settings.autoExpandAll, searchQuery], ([data, autoExpandAll, query]) => {
   expandedKeys.value = autoExpandAll || query.trim()
@@ -250,7 +297,17 @@ watch([treeData, () => workspace.settings.autoExpandAll, searchQuery], ([data, a
 watch(() => workspace.activeTab()?.toolId, (toolId) => {
   if (toolId) {
     selectedKeys.value = [toolId]
+  } else {
+    selectedKeys.value = []
   }
+})
+
+watch(selectedKeys, () => {
+  nextTick(() => {
+    const treeEl = treeRef.value?.$el as HTMLElement | undefined
+    if (!treeEl) return
+    treeEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+  })
 })
 
 function handleTreeSelect(keys: string[], _option: Array<TreeOption | null>) {
@@ -295,22 +352,6 @@ defineExpose({
     class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
     :style="{ width: props.width + 'px' }"
   >
-    <div
-      v-if="activeView === 'tools'"
-      class="p-3"
-    >
-      <NInput
-        v-model:value="searchQuery"
-        placeholder="搜索工具..."
-        clearable
-        size="small"
-      >
-        <template #prefix>
-          <NIcon :component="Search" />
-        </template>
-      </NInput>
-    </div>
-
     <NScrollbar class="flex-1">
       <Transition
         name="slide"
@@ -319,21 +360,36 @@ defineExpose({
         <div
           v-if="activeView === 'tools'"
           key="tools"
-          class="p-2"
         >
-          <NTree
-            v-model:expanded-keys="expandedKeys"
-            :data="treeData"
-            :pattern="searchQuery"
-            :selected-keys="selectedKeys"
-            :render-label="renderNodeLabel"
-            :indent="8"
-            show-line
-            block-line
-            selectable
-            class="category-tree"
-            @update:selected-keys="handleTreeSelect"
-          />
+          <div class="p-3">
+            <NInput
+              v-model:value="searchQuery"
+              placeholder="搜索工具..."
+              clearable
+              size="small"
+            >
+              <template #prefix>
+                <NIcon :component="Search" />
+              </template>
+            </NInput>
+          </div>
+          <div class="p-2">
+            <NTree
+              ref="treeRef"
+              :expanded-keys="expandedKeys"
+              :data="treeData"
+              :pattern="searchQuery"
+              :selected-keys="selectedKeys"
+              :render-label="renderNodeLabel"
+              :indent="8"
+              show-line
+              block-line
+              selectable
+              class="category-tree"
+              @update:selected-keys="handleTreeSelect"
+              @update:expanded-keys="handleExpandKeys"
+            />
+          </div>
         </div>
 
         <div
@@ -545,10 +601,22 @@ defineExpose({
       </Transition>
     </NScrollbar>
   </aside>
+
+  <Teleport to="body">
+    <div
+      v-if="tooltipShow"
+      class="pointer-events-none fixed z-[100] -translate-y-1/2 rounded-md bg-[#faf8f5] px-2.5 py-1.5 text-xs text-[#1a1a2e] shadow-lg shadow-black/20"
+      :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
+    >
+      <div class="absolute -left-1 top-1/2 -translate-y-1/2 h-2 w-2 rotate-45 bg-[#faf8f5]" />
+      {{ tooltipText }}
+    </div>
+  </Teleport>
 </template>
 
 <style>
 .category-tree {
+  --n-node-color-active: rgba(139, 233, 253, 0.14);
   --n-line-color: rgba(255,255,255,0.10);
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
@@ -556,5 +624,36 @@ defineExpose({
 .category-tree .n-tree-node-content {
   padding-top: 2px;
   padding-bottom: 2px;
+}
+.category-tree .n-tree-node-switcher {
+  width: 26px;
+  height: 26px;
+  margin-right: -2px;
+}
+.category-tree .n-tree-node-switcher__icon {
+  width: 16px;
+  height: 16px;
+}
+.category-tree .n-tree-node-switcher svg {
+  fill: none !important;
+  stroke: rgba(255,255,255,0.4);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.category-tree .n-tree-node-switcher:hover svg {
+  stroke: rgba(255,255,255,0.7);
+}
+.category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
+  stroke: rgba(139, 233, 253, 0.55);
+}
+.category-tree .n-tree-node--selected .n-tree-node-indent {
+  opacity: 0.3;
+}
+.category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type {
+  opacity: 1;
+}
+.category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
+  stroke: rgba(139, 233, 253, 0.55) !important;
 }
 </style>

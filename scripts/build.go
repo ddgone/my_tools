@@ -131,6 +131,8 @@ func main() {
 
 	writeDefaultConfig(runtimeDir)
 
+	copyAssets(filepath.Join(rootDir, "app", "assets"), filepath.Join(hostDir, "assets"))
+
 	fmt.Println("\n====================================")
 	fmt.Printf("✅ 产物: %s\n", hostDir)
 	entries, _ := os.ReadDir(hostDir)
@@ -195,4 +197,26 @@ func writeDefaultConfig(runtimeDir string) {
 		return
 	}
 	os.WriteFile(appConfig, []byte(defaultConfigJSON), 0644)
+}
+
+func copyAssets(srcDir, dstDir string) {
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		return
+	}
+	os.RemoveAll(dstDir)
+	os.MkdirAll(dstDir, 0755)
+
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		src := filepath.Join(srcDir, e.Name())
+		dst := filepath.Join(dstDir, e.Name())
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		os.WriteFile(dst, data, 0644)
+	}
 }

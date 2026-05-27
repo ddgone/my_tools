@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import gsap from 'gsap'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
+import { ANIM } from '@/utils/animation'
 import type { SSHConnection } from '@/types/workbench'
 import AppHeader from './AppHeader.vue'
 import ActivityBar from './ActivityBar.vue'
@@ -29,6 +31,7 @@ const { size: sidebarWidth, dividerProps } = useResizable({
 })
 
 const sidebarRef = ref<InstanceType<typeof ToolSidebar> | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
 
 function handleSelectConnection(conn: SSHConnection) {
   workspace.openSSHEdit(conn.id, conn.name)
@@ -50,11 +53,30 @@ function handleOpenSettings() {
 
 onMounted(async () => {
   await Promise.all([workbench.loadBootstrap(), execution.hydrate()])
+  if (rootRef.value) {
+    gsap.fromTo(rootRef.value, { opacity: 0 }, { opacity: 1, duration: ANIM.duration.reveal, ease: ANIM.ease.out })
+  }
 })
+
+function onSidebarEnter(el: Element, done: () => void) {
+  gsap.fromTo(el,
+    { x: -sidebarWidth.value, opacity: 0 },
+    { x: 0, opacity: 1, duration: ANIM.duration.normal, ease: ANIM.ease.out, onComplete: done },
+  )
+}
+
+function onSidebarLeave(el: Element, done: () => void) {
+  gsap.to(el,
+    { x: -sidebarWidth.value, opacity: 0, duration: ANIM.duration.fast, ease: ANIM.ease.inOut, onComplete: done },
+  )
+}
 </script>
 
 <template>
-  <div class="flex h-screen flex-col overflow-hidden bg-dracula-bg text-dracula-text">
+  <div
+    ref="rootRef"
+    class="flex h-screen flex-col overflow-hidden bg-dracula-bg text-dracula-text"
+  >
     <AppHeader />
     <div class="flex flex-1 overflow-hidden">
       <ActivityBar
@@ -62,24 +84,28 @@ onMounted(async () => {
         @update:active-view="activityBarActiveView = $event"
         @open-settings="handleOpenSettings"
       />
-      <Transition name="slide">
-        <ToolSidebar
-          v-if="activityBarActiveView !== null"
-          ref="sidebarRef"
-          :width="sidebarWidth"
-          :active-view="activityBarActiveView"
-          @select-connection="handleSelectConnection"
-          @create-connection="handleCreateConnection"
-        />
-      </Transition>
-      <Transition name="slide">
+      <Transition
+        @enter="onSidebarEnter"
+        @leave="onSidebarLeave"
+      >
         <div
           v-if="activityBarActiveView !== null"
-          v-bind="dividerProps"
-          class="group relative shrink-0 bg-white/10"
-          style="width: 1px"
+          class="flex shrink-0"
         >
-          <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
+          <ToolSidebar
+            ref="sidebarRef"
+            :width="sidebarWidth"
+            :active-view="activityBarActiveView"
+            @select-connection="handleSelectConnection"
+            @create-connection="handleCreateConnection"
+          />
+          <div
+            v-bind="dividerProps"
+            class="group relative shrink-0 bg-white/10"
+            style="width: 1px"
+          >
+            <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
+          </div>
         </div>
       </Transition>
       <WorkspaceTabs @refresh-ssh-list="handleRefreshSSHList" />

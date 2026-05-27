@@ -325,3 +325,9 @@ async function copyCli() {
     </div>
   </div>
 </template>
+
+<style scoped>
+:deep(.n-tabs-bar) {
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+</style>

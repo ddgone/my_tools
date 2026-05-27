@@ -140,6 +140,7 @@ onUnmounted(() => {
 
       <template v-if="isWindows">
         <button
+          v-press
           class="wails-no-drag ui-interactive ml-2 flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-white/6 hover:text-dracula-text"
           type="button"
           aria-label="最小化"
@@ -151,6 +152,7 @@ onUnmounted(() => {
           />
         </button>
         <button
+          v-press
           class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-white/6 hover:text-dracula-text"
           type="button"
           :aria-label="isMaximised ? '还原窗口' : '最大化窗口'"
@@ -162,6 +164,7 @@ onUnmounted(() => {
           />
         </button>
         <button
+          v-press
           class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-red-500/90 hover:text-white"
           type="button"
           aria-label="关闭窗口"

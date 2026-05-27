@@ -54,16 +54,16 @@ watch(remotePopoverVisible, (visible) => {
           <span class="text-dracula-soft text-xs">·</span>
           <NTag
             size="tiny"
-            :bordered="true"
+            :bordered="false"
             :type="tool.kind === 'python' ? 'success' : 'info'"
           >
             <template #icon>
               <NIcon
                 :component="tool.kind === 'python' ? LogoPython : CodeSlash"
-                size="12"
+                size="10"
               />
             </template>
-            {{ tool.kind }}
+            {{ tool.kind === 'python' ? 'py' : 'go' }}
           </NTag>
         </div>
         <h2 class="m-0 mt-1 text-lg font-semibold text-dracula-text">
@@ -79,6 +79,7 @@ watch(remotePopoverVisible, (visible) => {
 
       <div class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5">
         <NButton
+          v-press
           type="success"
           size="small"
           :disabled="isRunning || isLaunching"
@@ -93,6 +94,7 @@ watch(remotePopoverVisible, (visible) => {
 
         <NButton
           v-if="isRunning"
+          v-press
           type="error"
           size="small"
           @click="emit('cancel')"
@@ -111,10 +113,12 @@ watch(remotePopoverVisible, (visible) => {
         >
           <template #trigger>
             <NButton
+              v-press
               type="info"
               size="small"
               :disabled="isRunning"
-              secondary
+              :secondary="!remotePopoverVisible"
+              :class="remotePopoverVisible ? 'ring-2 ring-dracula-cyan/40 shadow-lg shadow-dracula-cyan/20' : ''"
             >
               <template #icon>
                 <NIcon :component="Globe" />
@@ -162,6 +166,7 @@ watch(remotePopoverVisible, (visible) => {
         </NPopover>
 
         <NButton
+          v-press
           size="small"
           disabled
           secondary
@@ -180,9 +185,9 @@ watch(remotePopoverVisible, (visible) => {
     >
       <NText
         depth="3"
-        class="text-[11px] uppercase tracking-wide"
+        class="shrink-0 text-[11px] uppercase tracking-wide"
       >
-        Python 解释器
+        Python 环境
       </NText>
       <NInput
         :value="tab.pythonEnv"

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython } from '@vicons/ionicons5'
+import { Search, ServerOutline, CodeSlash, LogoPython, Star } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
+import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 import { OpenFileDialog, OpenSaveFileDialog } from '../../wailsjs/go/main/App'
 import type { ParameterSpec } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
@@ -24,6 +25,59 @@ const workspace = useWorkspaceStore()
 const launching = ref(false)
 const searchInput = ref('')
 const activeSearchIndex = ref(0)
+const contentRef = ref<HTMLElement | null>(null)
+const tabBarRef = ref<HTMLElement | null>(null)
+
+const { tooltipText, tooltipX, tooltipY, tooltipShow, onEnter: onTooltipEnter, onLeave: onTooltipLeave } = useTruncationTooltip({ placement: 'bottom' })
+
+const tabKey = computed(() => {
+  if (workspace.activeTabType === 'tool')
+    return `tool-${workspace.activeTabIndex}`
+  if (workspace.activeTabType === 'ssh')
+    return `ssh-${workspace.activeSSHTabIndex}`
+  return 'empty'
+})
+
+const indicatorLeft = ref('0px')
+const indicatorWidth = ref('0px')
+const indicatorShow = ref(false)
+
+function syncIndicator() {
+  const bar = tabBarRef.value
+  if (!bar || workspace.unifiedTabs.length === 0) {
+    indicatorShow.value = false
+    return
+  }
+  const buttons = bar.querySelectorAll<HTMLElement>('button')
+  const idx = workspace.unifiedTabs.findIndex(t => {
+    if (workspace.activeTabType === 'tool') return t.type === 'tool' && t.arrayIndex === workspace.activeTabIndex
+    if (workspace.activeTabType === 'ssh') return t.type === 'ssh' && t.arrayIndex === workspace.activeSSHTabIndex
+    return false
+  })
+  if (idx < 0 || idx >= buttons.length) {
+    indicatorShow.value = false
+    return
+  }
+  const barRect = bar.getBoundingClientRect()
+  const btnRect = buttons[idx].getBoundingClientRect()
+  indicatorLeft.value = `${btnRect.left - barRect.left}px`
+  indicatorWidth.value = `${btnRect.width}px`
+  indicatorShow.value = true
+}
+
+watch(tabKey, () => nextTick(syncIndicator))
+watch(() => workspace.unifiedTabs.length, () => nextTick(syncIndicator))
+onMounted(() => {
+  nextTick(syncIndicator)
+  const observer = new ResizeObserver(() => nextTick(syncIndicator))
+  if (tabBarRef.value) observer.observe(tabBarRef.value)
+  ;(window as any).__tabIndicatorObserver = observer
+})
+
+onUnmounted(() => {
+  const observer = (window as any).__tabIndicatorObserver
+  if (observer) observer.disconnect()
+})
 
 const showSearchModal = computed({
   get: () => workspace.showSearch,
@@ -265,13 +319,20 @@ watch(searchResults, (results) => {
 </script>
 
 <template>
-  <div class="flex flex-1 flex-col overflow-hidden">
-    <div class="flex shrink-0 items-center border-b border-white/15 bg-[#1a1b26]">
-      <div class="flex flex-1 overflow-x-auto">
+  <div
+    ref="contentRef"
+    class="flex flex-1 flex-col overflow-hidden"
+  >
+    <div
+      ref="tabBarRef"
+      class="relative flex shrink-0 items-end border-b border-white/15 bg-[#1a1b26]"
+    >
+      <div class="flex flex-1 items-end overflow-hidden">
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
-          class="ui-interactive group flex shrink-0 items-center gap-1.5 border-r border-white/15 px-3 py-2 text-sm"
+          v-press
+          class="ui-interactive group flex min-w-0 items-center gap-1 border-r border-white/15 px-2.5 py-1.5"
           :class="
             (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
               (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
@@ -283,21 +344,60 @@ watch(searchResults, (results) => {
           <NIcon
             v-if="item.type === 'ssh'"
             :component="ServerOutline"
-            size="14"
+            size="12"
+            color="#8be9fd"
+            class="shrink-0"
           />
+          <NTag
+            v-if="item.type === 'tool'"
+            :bordered="false"
+            size="tiny"
+            :type="toolById(item.label)?.kind === 'python' ? 'success' : 'info'"
+            class="shrink-0"
+          >
+            <template #icon>
+              <NIcon
+                :component="toolById(item.label)?.kind === 'python' ? LogoPython : CodeSlash"
+                size="10"
+              />
+            </template>
+            {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
+          </NTag>
           <span
             v-if="item.type === 'tool' && isTabRunning(item.label)"
-            class="h-1.5 w-1.5 rounded-full bg-dracula-green"
+            class="h-1.5 w-1.5 shrink-0 rounded-full bg-dracula-green"
           />
-          <span class="max-w-[160px] truncate">
+          <span
+            class="truncate text-xs"
+            :data-fullname="item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label"
+            @mouseenter="(e: MouseEvent) => onTooltipEnter(e, item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label)"
+            @mouseleave="onTooltipLeave"
+          >
             {{ item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label }}
           </span>
+          <NIcon
+            v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
+            :component="Star"
+            size="10"
+            color="#f1fa8c"
+            class="shrink-0 opacity-70"
+          />
           <span
-            class="ui-interactive ml-1 flex h-4 w-4 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
+            v-press
+            class="ui-interactive ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
+            @pointerdown.stop
             @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
         </button>
       </div>
+      <div
+        class="absolute bottom-0 h-0.5 rounded-t-sm bg-dracula-cyan transition-[left,width,opacity] duration-200 ease-out"
+        :style="{
+          left: indicatorLeft,
+          width: indicatorWidth,
+          opacity: indicatorShow ? 1 : 0,
+        }"
+      />
     </div>
 
     <template v-if="workspace.activeTabType === 'tool' && workspace.activeToolTab">
@@ -317,9 +417,13 @@ watch(searchResults, (results) => {
             @update:python-env="onPythonEnvUpdate"
             @remote-execute="handleRemoteExecute"
           />
+          <div
+            class="mx-4 mt-3 h-px"
+            style="background: linear-gradient(to right, transparent, rgba(255,255,255,0.14), transparent)"
+          />
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
-            class="mt-4 border-t border-white/8 pt-4"
+            class="mt-3"
             @execute="handleExecute"
             @file-dialog="handleFileDialog"
           />
@@ -392,17 +496,23 @@ watch(searchResults, (results) => {
     </div>
 
     <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showSearchModal"
+          class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          @click="closeSearch"
+        />
+      </Transition>
       <Transition
         name="fade-scale"
         appear
       >
         <div
           v-if="showSearchModal"
-          class="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[15vh] backdrop-blur-sm"
-          @click="closeSearch"
+          class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] pointer-events-none"
         >
           <div
-            class="w-full max-w-lg rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
+            class="pointer-events-auto w-full max-w-lg rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
             @click.stop
           >
             <div class="p-4">
@@ -427,6 +537,7 @@ watch(searchResults, (results) => {
                 <NListItem
                   v-for="(tool, index) in searchResults"
                   :key="tool.id"
+                  v-press
                   class="ui-interactive"
                   :class="index === activeSearchIndex ? 'bg-dracula-cyan/10' : ''"
                   @mouseenter="activeSearchIndex = index"
@@ -470,6 +581,17 @@ watch(searchResults, (results) => {
           </div>
         </div>
       </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="tooltipShow"
+        class="pointer-events-none fixed z-[100] -translate-x-1/2 rounded-md bg-[#faf8f5] px-2.5 py-1.5 text-xs text-[#1a1a2e] shadow-lg shadow-black/20"
+        :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
+      >
+        <div class="absolute -top-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-[#faf8f5]" />
+        {{ tooltipText }}
+      </div>
     </Teleport>
   </div>
 </template>

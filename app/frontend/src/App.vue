@@ -69,6 +69,7 @@ const themeOverrides: GlobalThemeOverrides = {
   <n-config-provider
     :theme="darkTheme"
     :theme-overrides="themeOverrides"
+    :transition-disabled="true"
   >
     <n-notification-provider>
       <n-message-provider>

@@ -5,6 +5,8 @@ import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
+import gsap from 'gsap'
+import { ANIM } from '@/utils/animation'
 
 const props = defineProps<{
   taskId: string
@@ -126,7 +128,12 @@ async function scrollToBottom() {
   await nextTick()
   const el = getScrollbarContainer()
   if (!el) return
-  el.scrollTop = el.scrollHeight
+  gsap.to(el, {
+    scrollTop: el.scrollHeight,
+    duration: ANIM.duration.slow,
+    ease: ANIM.ease.out,
+    overwrite: 'auto',
+  })
 }
 
 function syncAutoScrollState() {

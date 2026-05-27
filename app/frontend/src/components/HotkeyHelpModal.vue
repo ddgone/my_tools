@@ -51,17 +51,23 @@ const groups: ShortcutGroup[] = [
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="workspace.showHotkeyHelp"
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[10vh] backdrop-blur-sm transition-opacity duration-200"
-      @click="workspace.showHotkeyHelp = false"
+    <Transition name="fade">
+      <div
+        v-if="workspace.showHotkeyHelp"
+        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        @click="workspace.showHotkeyHelp = false"
+      />
+    </Transition>
+    <Transition
+      name="fade-scale"
+      appear
     >
-      <Transition
-        name="fade-scale"
-        appear
+      <div
+        v-if="workspace.showHotkeyHelp"
+        class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pointer-events-none"
       >
         <div
-          class="w-full max-w-xl rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
+          class="pointer-events-auto w-full max-w-xl rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
           @click.stop
         >
           <div class="flex items-center justify-between border-b border-white/15 px-5 py-3">
@@ -113,7 +119,7 @@ const groups: ShortcutGroup[] = [
             </div>
           </div>
         </div>
-      </Transition>
-    </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>

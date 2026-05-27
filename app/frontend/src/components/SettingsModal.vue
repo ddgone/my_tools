@@ -26,17 +26,23 @@ function resetAll() {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="workspace.showSettings"
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[8vh] backdrop-blur-sm transition-opacity duration-200"
-      @click="workspace.showSettings = false"
+    <Transition name="fade">
+      <div
+        v-if="workspace.showSettings"
+        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        @click="workspace.showSettings = false"
+      />
+    </Transition>
+    <Transition
+      name="fade-scale"
+      appear
     >
-      <Transition
-        name="fade-scale"
-        appear
+      <div
+        v-if="workspace.showSettings"
+        class="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] pointer-events-none"
       >
         <div
-          class="w-full max-w-md rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
+          class="pointer-events-auto w-full max-w-md rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
           @click.stop
         >
           <div class="flex items-center justify-between border-b border-white/15 px-5 py-3">
@@ -63,7 +69,7 @@ function resetAll() {
               <NSelect
                 :value="workspace.settings.recentToolsCount"
                 :options="[{ label: '3', value: 3 }, { label: '5', value: 5 }, { label: '10', value: 10 }]"
-                @update:value="(v) => workspace.settings.recentToolsCount = v"
+                @update:value="(v: number) => workspace.settings.recentToolsCount = v"
               />
             </NFormItem>
 
@@ -71,7 +77,7 @@ function resetAll() {
               <NSelect
                 :value="workspace.settings.historyRetention"
                 :options="[{ label: '20', value: 20 }, { label: '50', value: 50 }, { label: '100', value: 100 }, { label: '200', value: 200 }]"
-                @update:value="(v) => workspace.settings.historyRetention = v"
+                @update:value="(v: number) => workspace.settings.historyRetention = v"
               />
             </NFormItem>
 
@@ -79,7 +85,7 @@ function resetAll() {
               <NInput
                 :value="workspace.settings.logExportDir"
                 placeholder="my_tools_logs"
-                @update:value="(v) => workspace.settings.logExportDir = v"
+                @update:value="(v: string) => workspace.settings.logExportDir = v"
               />
             </NFormItem>
 
@@ -87,28 +93,28 @@ function resetAll() {
               <NInput
                 :value="workspace.settings.defaultPythonPath"
                 placeholder="python"
-                @update:value="(v) => workspace.settings.defaultPythonPath = v"
+                @update:value="(v: string) => workspace.settings.defaultPythonPath = v"
               />
             </NFormItem>
 
             <NFormItem label="退出前确认">
               <NSwitch
                 :value="workspace.settings.confirmExit"
-                @update:value="(v) => workspace.settings.confirmExit = v"
+                @update:value="(v: boolean) => workspace.settings.confirmExit = v"
               />
             </NFormItem>
 
             <NFormItem label="终端输出自动换行">
               <NSwitch
                 :value="workspace.settings.autoWordWrap"
-                @update:value="(v) => workspace.settings.autoWordWrap = v"
+                @update:value="(v: boolean) => workspace.settings.autoWordWrap = v"
               />
             </NFormItem>
 
             <NFormItem label="启动时展开所有分类">
               <NSwitch
                 :value="workspace.settings.autoExpandAll"
-                @update:value="(v) => workspace.settings.autoExpandAll = v"
+                @update:value="(v: boolean) => workspace.settings.autoExpandAll = v"
               />
             </NFormItem>
 
@@ -149,7 +155,7 @@ function resetAll() {
             </NButton>
           </div>
         </div>
-      </Transition>
-    </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
