@@ -13,16 +13,3 @@ export const ANIM = {
   },
 }
 
-export const REVEAL_FROM = {
-  opacity: 0,
-  scale: 0.97,
-  duration: ANIM.duration.reveal,
-  ease: ANIM.ease.out,
-}
-
-export const TAB_SWITCH_FROM = {
-  opacity: 0,
-  y: 8,
-  duration: ANIM.duration.normal,
-  ease: ANIM.ease.out,
-}
