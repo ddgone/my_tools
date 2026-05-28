@@ -1,0 +1,124 @@
+package main
+
+import (
+	"context"
+	"fmt"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+const (
+	defaultWindowWidth  = 1280
+	defaultWindowHeight = 800
+	minVisibleWidth     = 80
+	minVisibleHeight    = 60
+)
+
+type windowFrame struct {
+	X      int
+	Y      int
+	Width  int
+	Height int
+}
+
+func (f windowFrame) valid() bool {
+	return f.Width > 0 && f.Height > 0
+}
+
+func frameFromState(state WindowState) windowFrame {
+	return windowFrame{
+		X:      state.X,
+		Y:      state.Y,
+		Width:  state.Width,
+		Height: state.Height,
+	}
+}
+
+func (a *App) domReady(ctx context.Context) {
+	a.ctx = ctx
+	a.restoreSavedWindowState()
+}
+
+func (a *App) beforeClose(ctx context.Context) bool {
+	a.ctx = ctx
+	_ = a.persistCurrentWindowState()
+	return false
+}
+
+func (a *App) currentWindowState() (WindowState, error) {
+	if a.ctx == nil {
+		return WindowState{}, fmt.Errorf("应用尚未初始化")
+	}
+
+	frame, err := nativeWindowFrame(a.ctx)
+	if err != nil {
+		width, height := wailsruntime.WindowGetSize(a.ctx)
+		x, y := wailsruntime.WindowGetPosition(a.ctx)
+		frame = windowFrame{X: x, Y: y, Width: width, Height: height}
+	}
+
+	fullscreen := wailsruntime.WindowIsFullscreen(a.ctx)
+	maximised := false
+	if !fullscreen {
+		maximised = wailsruntime.WindowIsMaximised(a.ctx)
+	}
+
+	return WindowState{
+		Width:      frame.Width,
+		Height:     frame.Height,
+		X:          frame.X,
+		Y:          frame.Y,
+		Maximised:  maximised,
+		Fullscreen: fullscreen,
+	}, nil
+}
+
+func (a *App) persistCurrentWindowState() error {
+	current, err := a.currentWindowState()
+	if err != nil {
+		return err
+	}
+
+	next := a.loadWindowConfig()
+	if !current.Maximised && !current.Fullscreen && current.Width > 0 && current.Height > 0 {
+		next.Width = current.Width
+		next.Height = current.Height
+		next.X = current.X
+		next.Y = current.Y
+	}
+
+	next.Maximised = current.Maximised
+	next.Fullscreen = current.Fullscreen
+	return a.writeWindowConfig(next)
+}
+
+func (a *App) restoreSavedWindowState() {
+	if a.ctx == nil {
+		return
+	}
+
+	saved := a.loadWindowConfig()
+	frame := frameFromState(saved)
+	if !frame.valid() {
+		frame.Width = defaultWindowWidth
+		frame.Height = defaultWindowHeight
+	}
+
+	if frame.valid() && isWindowRectVisible(frame.X, frame.Y, frame.Width, frame.Height) {
+		if err := nativeSetWindowFrame(a.ctx, frame); err != nil {
+			wailsruntime.WindowSetSize(a.ctx, frame.Width, frame.Height)
+			wailsruntime.WindowSetPosition(a.ctx, frame.X, frame.Y)
+		}
+	} else {
+		wailsruntime.WindowSetSize(a.ctx, frame.Width, frame.Height)
+		wailsruntime.WindowCenter(a.ctx)
+	}
+
+	if saved.Fullscreen {
+		wailsruntime.WindowFullscreen(a.ctx)
+		return
+	}
+	if saved.Maximised {
+		wailsruntime.WindowMaximise(a.ctx)
+	}
+}

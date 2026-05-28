@@ -5,7 +5,21 @@ import { Close, CopyOutline, HelpCircle, Remove, Search, SquareOutline } from '@
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { Quit, WindowIsMaximised, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime/runtime'
+import { Quit, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime/runtime'
+import { GetCurrentWindowState, PersistCurrentWindowState } from '../../wailsjs/go/main/App'
+
+interface WindowSnapshot {
+  width: number
+  height: number
+  x: number
+  y: number
+  maximised: boolean
+  fullscreen: boolean
+}
+
+const STARTUP_COOLDOWN_MS = 2000
+const SAVE_DEBOUNCE_MS = 400
+const POLL_INTERVAL_MS = 750
 
 const execution = useExecutionStore()
 const workbench = useWorkbenchStore()
@@ -19,12 +33,81 @@ const isMac = computed(() => platform.value === 'darwin')
 const appTitle = computed(() => workbench.bootstrap?.appTitle ?? '火蜥蜴工具箱 Desktop')
 const brandTitle = computed(() => appTitle.value.replace(/\s+Desktop$/, ''))
 
-async function refreshWindowState() {
-  if (!isWindows.value) return
+let trackingEnabled = false
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let startupTimer: ReturnType<typeof setTimeout> | null = null
+let lastObservedKey = ''
+let lastPersistedKey = ''
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function snapshotKey(snapshot: WindowSnapshot) {
+  return [
+    snapshot.width,
+    snapshot.height,
+    snapshot.x,
+    snapshot.y,
+    snapshot.maximised ? 1 : 0,
+    snapshot.fullscreen ? 1 : 0,
+  ].join(':')
+}
+
+function applyWindowMode(snapshot: WindowSnapshot) {
+  isMaximised.value = snapshot.maximised
+}
+
+async function readWindowSnapshot() {
   try {
-    isMaximised.value = await WindowIsMaximised()
+    const snapshot = await GetCurrentWindowState()
+    applyWindowMode(snapshot)
+    return snapshot
   } catch {
     isMaximised.value = false
+    return null
+  }
+}
+
+async function persistWindowStateNow() {
+  const snapshot = await readWindowSnapshot()
+  if (!snapshot) return
+
+  const currentKey = snapshotKey(snapshot)
+  lastObservedKey = currentKey
+  if (currentKey === lastPersistedKey) return
+
+  try {
+    await PersistCurrentWindowState()
+    lastPersistedKey = currentKey
+  } catch {
+    // Ignore transient shutdown / OS window manager races.
+  }
+}
+
+function scheduleSaveWindowState() {
+  if (!trackingEnabled) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    void persistWindowStateNow()
+  }, SAVE_DEBOUNCE_MS)
+}
+
+async function syncWindowState() {
+  const snapshot = await readWindowSnapshot()
+  if (!snapshot) return
+
+  const currentKey = snapshotKey(snapshot)
+  if (!trackingEnabled) {
+    lastObservedKey = currentKey
+    return
+  }
+
+  if (currentKey !== lastObservedKey) {
+    lastObservedKey = currentKey
+    scheduleSaveWindowState()
   }
 }
 
@@ -42,12 +125,12 @@ function minimiseWindow() {
 
 async function toggleMaximise() {
   WindowToggleMaximise()
-  window.setTimeout(() => {
-    void refreshWindowState()
-  }, 40)
+  await delay(150)
+  void syncWindowState()
 }
 
-function closeWindow() {
+async function closeWindow() {
+  await persistWindowStateNow()
   Quit()
 }
 
@@ -57,16 +140,26 @@ function handleTitlebarDoubleClick() {
 }
 
 function handleWindowResize() {
-  void refreshWindowState()
+  scheduleSaveWindowState()
 }
 
 onMounted(() => {
-  void refreshWindowState()
+  void syncWindowState()
   window.addEventListener('resize', handleWindowResize)
+  pollTimer = window.setInterval(() => {
+    void syncWindowState()
+  }, POLL_INTERVAL_MS)
+  startupTimer = window.setTimeout(() => {
+    trackingEnabled = true
+    void syncWindowState()
+  }, STARTUP_COOLDOWN_MS)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
+  if (saveTimer) clearTimeout(saveTimer)
+  if (pollTimer) clearInterval(pollTimer)
+  if (startupTimer) clearTimeout(startupTimer)
 })
 </script>
 

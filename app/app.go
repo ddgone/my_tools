@@ -2,13 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
-	"fire-salamander-desktop/internal/ssh"
+	"fire-salamander-desktop/internal/runtimeenv"
+
 	"my_tools/libs/core/toolspec"
+
+	"fire-salamander-desktop/internal/ssh"
 )
 
 type App struct {
@@ -19,6 +26,15 @@ type App struct {
 	tasks     map[string]*ExecutionTask
 	cancels   map[string]context.CancelFunc
 	sshStore  *ssh.Store
+}
+
+type WindowState struct {
+	Width      int  `json:"width"`
+	Height     int  `json:"height"`
+	X          int  `json:"x"`
+	Y          int  `json:"y"`
+	Maximised  bool `json:"maximised"`
+	Fullscreen bool `json:"fullscreen"`
 }
 
 func NewApp() *App {
@@ -35,6 +51,78 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	_ = a.ensureTooling()
 	_ = a.sshStore.LoadConfig()
+}
+
+func (a *App) GetWindowConfig() WindowState {
+	return a.loadWindowConfig()
+}
+
+func (a *App) SaveWindowState(state WindowState) error {
+	return a.writeWindowConfig(state)
+}
+
+func (a *App) GetCurrentWindowState() (WindowState, error) {
+	return a.currentWindowState()
+}
+
+func (a *App) PersistCurrentWindowState() error {
+	return a.persistCurrentWindowState()
+}
+
+func (a *App) IsWindowRectVisible(x, y, width, height int) bool {
+	return isWindowRectVisible(x, y, width, height)
+}
+
+func (a *App) loadWindowConfig() WindowState {
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
+	}
+	data, err := os.ReadFile(filepath.Join(layout.ConfigDir(), "app.json"))
+	if err != nil {
+		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
+	}
+	var cfg struct {
+		Window WindowState `json:"window"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
+	}
+	return cfg.Window
+}
+
+func (a *App) writeWindowConfig(state WindowState) error {
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		return fmt.Errorf("解析运行时目录失败: %w", err)
+	}
+	configPath := filepath.Join(layout.ConfigDir(), "app.json")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	windowData, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("序列化窗口状态失败: %w", err)
+	}
+	cfg["window"] = windowData
+
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("格式化配置文件失败: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, out, 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+	return nil
 }
 
 type WorkbenchBootstrap struct {

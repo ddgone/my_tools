@@ -184,6 +184,14 @@ const defaultConfigJSON = `{
   "ui": {
     "theme": "dracula",
     "verboseShortcuts": false
+  },
+  "window": {
+    "width": 0,
+    "height": 0,
+    "x": -1,
+    "y": -1,
+    "maximised": false,
+    "fullscreen": false
   }
 }
 `

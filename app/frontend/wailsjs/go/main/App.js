@@ -10,12 +10,24 @@ export function DeleteSSHConnection(arg1) {
   return window['go']['main']['App']['DeleteSSHConnection'](arg1);
 }
 
+export function GetCurrentWindowState() {
+  return window['go']['main']['App']['GetCurrentWindowState']();
+}
+
 export function GetSSHConnection(arg1) {
   return window['go']['main']['App']['GetSSHConnection'](arg1);
 }
 
+export function GetWindowConfig() {
+  return window['go']['main']['App']['GetWindowConfig']();
+}
+
 export function GetWorkbenchBootstrap() {
   return window['go']['main']['App']['GetWorkbenchBootstrap']();
+}
+
+export function IsWindowRectVisible(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['IsWindowRectVisible'](arg1, arg2, arg3, arg4);
 }
 
 export function ListSSHConnections() {
@@ -34,12 +46,20 @@ export function OpenSaveFileDialog(arg1) {
   return window['go']['main']['App']['OpenSaveFileDialog'](arg1);
 }
 
+export function PersistCurrentWindowState() {
+  return window['go']['main']['App']['PersistCurrentWindowState']();
+}
+
 export function SaveSSHConnection(arg1) {
   return window['go']['main']['App']['SaveSSHConnection'](arg1);
 }
 
 export function SaveTextFile(arg1, arg2) {
   return window['go']['main']['App']['SaveTextFile'](arg1, arg2);
+}
+
+export function SaveWindowState(arg1) {
+  return window['go']['main']['App']['SaveWindowState'](arg1);
 }
 
 export function StartLocalExecution(arg1) {

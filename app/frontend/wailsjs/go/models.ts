@@ -84,6 +84,28 @@ export namespace main {
 	        this.pythonEnv = source["pythonEnv"];
 	    }
 	}
+	export class WindowState {
+	    width: number;
+	    height: number;
+	    x: number;
+	    y: number;
+	    maximised: boolean;
+	    fullscreen: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.maximised = source["maximised"];
+	        this.fullscreen = source["fullscreen"];
+	    }
+	}
 	export class WorkbenchBootstrap {
 	    appTitle: string;
 	    platform: string;
