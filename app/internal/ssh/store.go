@@ -12,16 +12,18 @@ import (
 )
 
 type Connection struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	User        string `json:"user"`
-	AuthMethod  string `json:"authMethod"`
-	Password    string `json:"password,omitempty"`
-	KeyPath     string `json:"keyPath,omitempty"`
-	Description string `json:"description"`
-	LastUsedAt  int64  `json:"lastUsedAt,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	User               string `json:"user"`
+	AuthMethod         string `json:"authMethod"`
+	Password           string `json:"password,omitempty"`
+	KeyPath            string `json:"keyPath,omitempty"`
+	Description        string `json:"description"`
+	HostKeyFingerprint string `json:"hostKeyFingerprint,omitempty"`
+	HostKeyAlgorithm   string `json:"hostKeyAlgorithm,omitempty"`
+	LastUsedAt         int64  `json:"lastUsedAt,omitempty"`
 }
 
 type Store struct {
@@ -93,12 +95,14 @@ func (s *Store) List() []*Connection {
 		cp := *conn
 		cp.Password = ""
 		cp.KeyPath = ""
+		cp.HostKeyFingerprint = ""
+		cp.HostKeyAlgorithm = ""
 		result = append(result, &cp)
 	}
 	return result
 }
 
-func (s *Store) Save(conn Connection) error {
+func (s *Store) Save(conn Connection) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -111,7 +115,7 @@ func (s *Store) Save(conn Connection) error {
 	}
 
 	s.connections[conn.ID] = &conn
-	return s.saveLocked()
+	return conn.ID, s.saveLocked()
 }
 
 func (s *Store) Update(id string, conn Connection) error {

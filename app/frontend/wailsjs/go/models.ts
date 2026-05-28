@@ -163,6 +163,8 @@ export namespace ssh {
 	    password?: string;
 	    keyPath?: string;
 	    description: string;
+	    hostKeyFingerprint?: string;
+	    hostKeyAlgorithm?: string;
 	    lastUsedAt?: number;
 	
 	    static createFrom(source: any = {}) {
@@ -180,12 +182,15 @@ export namespace ssh {
 	        this.password = source["password"];
 	        this.keyPath = source["keyPath"];
 	        this.description = source["description"];
+	        this.hostKeyFingerprint = source["hostKeyFingerprint"];
+	        this.hostKeyAlgorithm = source["hostKeyAlgorithm"];
 	        this.lastUsedAt = source["lastUsedAt"];
 	    }
 	}
 	export class TestResult {
 	    success: boolean;
 	    message: string;
+	    acceptedFingerprint?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TestResult(source);
@@ -195,6 +200,7 @@ export namespace ssh {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.success = source["success"];
 	        this.message = source["message"];
+	        this.acceptedFingerprint = source["acceptedFingerprint"];
 	    }
 	}
 

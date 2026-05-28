@@ -37,8 +37,12 @@ function handleSelectConnection(conn: SSHConnection) {
   workspace.openSSHEdit(conn.id, conn.name)
 }
 
-function handleCreateConnection() {
-  workspace.openSSHNew()
+function handleCreateConnection(savedCount: number) {
+  workspace.openSSHNew(savedCount)
+}
+
+function handleDeleteConnection(id: string) {
+  workspace.closeSSHTabByConnectionId(id)
 }
 
 async function handleRefreshSSHList() {
@@ -98,6 +102,7 @@ function onSidebarLeave(el: Element, done: () => void) {
             :active-view="activityBarActiveView"
             @select-connection="handleSelectConnection"
             @create-connection="handleCreateConnection"
+            @delete-connection="handleDeleteConnection"
           />
           <div
             v-bind="dividerProps"

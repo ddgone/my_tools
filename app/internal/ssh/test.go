@@ -8,15 +8,21 @@ import (
 )
 
 type TestResult struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success             bool   `json:"success"`
+	Message             string `json:"message"`
+	AcceptedFingerprint string `json:"acceptedFingerprint,omitempty"`
 }
 
-func TestConnection(host string, port int, user, password string) TestResult {
+func TestConnection(host string, port int, user, password, keyPath string, verifier *HostKeyVerifier) TestResult {
+	methods, err := BuildAuthMethods(password, keyPath)
+	if err != nil {
+		return TestResult{Success: false, Message: err.Error()}
+	}
+
 	config := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Auth:            methods,
+		HostKeyCallback: verifier.Callback(),
 		Timeout:         10 * time.Second,
 	}
 
@@ -31,7 +37,8 @@ func TestConnection(host string, port int, user, password string) TestResult {
 	defer client.Close()
 
 	return TestResult{
-		Success: true,
-		Message: fmt.Sprintf("连接成功 (%s@%s)", user, addr),
+		Success:             true,
+		Message:             fmt.Sprintf("连接成功 (%s@%s)", user, addr),
+		AcceptedFingerprint: verifier.Accepted,
 	}
 }

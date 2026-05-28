@@ -144,7 +144,9 @@ export interface SSHTabState {
   openedAt: number
 }
 
-let sshTabCounter = 0
+function formatNewSSHLabel(savedCount: number): string {
+  return savedCount <= 0 ? '新建连接' : `新建连接 ${savedCount + 1}`
+}
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const openTabs = ref<ToolTabState[]>([])
@@ -348,20 +350,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
 
-  function openSSHNew() {
-    sshTabCounter++
-    const label = `新建连接 ${sshTabCounter}`
+  function openSSHNew(savedCount: number) {
     const existing = sshTabs.value.findIndex((t) => t.isNew && !t.connectionId)
     if (existing >= 0) {
       activeSSHTabIndex.value = existing
+      activeTabIndex.value = -1
       return
     }
+    const openedAt = Date.now()
     const tab: SSHTabState = {
-      tabId: `ssh_new_${sshTabCounter}`,
+      tabId: `ssh_new_${openedAt}`,
       connectionId: '',
-      label,
+      label: formatNewSSHLabel(savedCount),
       isNew: true,
-      openedAt: Date.now(),
+      openedAt,
     }
     sshTabs.value.push(tab)
     activeSSHTabIndex.value = sshTabs.value.length - 1
@@ -397,6 +399,30 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
     } else if (index < activeSSHTabIndex.value) {
       activeSSHTabIndex.value--
+    }
+  }
+
+  function promoteNewSSHTab(connId: string, label: string) {
+    const idx = activeSSHTabIndex.value
+    if (idx < 0 || idx >= sshTabs.value.length) return
+    const tab = sshTabs.value[idx]
+    if (!tab.isNew) return
+    tab.connectionId = connId
+    tab.label = label
+    tab.isNew = false
+  }
+
+  function closeSSHTabByConnectionId(connId: string) {
+    const idx = sshTabs.value.findIndex((t) => t.connectionId === connId)
+    if (idx >= 0) {
+      closeSSHTab(idx)
+    }
+  }
+
+  function updateActiveSSHTabLabel(label: string) {
+    const tab = activeSSHTab.value
+    if (tab) {
+      tab.label = label
     }
   }
 
@@ -442,6 +468,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openSSHNew,
     openSSHEdit,
     closeSSHTab,
+    promoteNewSSHTab,
+    closeSSHTabByConnectionId,
+    updateActiveSSHTabLabel,
     recordUsage,
     toggleFavorite,
     isFavorite,

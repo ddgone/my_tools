@@ -219,8 +219,16 @@ func (a *App) GetSSHConnection(id string) (*ssh.Connection, error) {
 	return a.sshStore.GetCredentials(id)
 }
 
-func (a *App) SaveSSHConnection(conn ssh.Connection) error {
-	return a.sshStore.Save(conn)
+func (a *App) SaveSSHConnection(conn ssh.Connection) (ssh.Connection, error) {
+	id, err := a.sshStore.Save(conn)
+	if err != nil {
+		return ssh.Connection{}, err
+	}
+	saved, err := a.sshStore.GetCredentials(id)
+	if err != nil {
+		return ssh.Connection{}, err
+	}
+	return *saved, nil
 }
 
 func (a *App) DeleteSSHConnection(id string) error {
@@ -239,12 +247,24 @@ func (a *App) TestSSHConnection(id string) ssh.TestResult {
 	if creds.Password == "" && creds.KeyPath == "" {
 		return ssh.TestResult{Success: false, Message: "连接缺少认证凭据"}
 	}
-	return ssh.TestConnection(creds.Host, creds.Port, creds.User, creds.Password)
+	verifier := ssh.NewHostKeyVerifier(creds.HostKeyFingerprint)
+	result := ssh.TestConnection(creds.Host, creds.Port, creds.User, creds.Password, creds.KeyPath, verifier)
+	if result.Success && verifier.Accepted != "" && creds.HostKeyFingerprint != verifier.Accepted {
+		creds.HostKeyFingerprint = verifier.Accepted
+		if err := a.sshStore.Update(id, *creds); err != nil {
+			result.Message += " (注意: 主机指纹保存失败)"
+		}
+	}
+	return result
 }
 
-func (a *App) TestSSHConnectionRaw(host string, port int, user, password string) ssh.TestResult {
+func (a *App) TestSSHConnectionRaw(host string, port int, user, password, keyPath string) ssh.TestResult {
 	if host == "" || user == "" {
 		return ssh.TestResult{Success: false, Message: "主机地址和用户名不能为空"}
 	}
-	return ssh.TestConnection(host, port, user, password)
+	if password == "" && keyPath == "" {
+		return ssh.TestResult{Success: false, Message: "必须提供密码或密钥路径"}
+	}
+	verifier := ssh.NewHostKeyVerifier("")
+	return ssh.TestConnection(host, port, user, password, keyPath, verifier)
 }

@@ -273,17 +273,19 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 		defer writer.Flush()
 
 		execErr := executeRemotely(runCtx, writer, remoteExecParams{
-			host:        target.Host,
-			port:        target.Port,
-			user:        target.User,
-			password:    realConn.Password,
-			toolID:      req.ToolID,
-			taskID:      task.ID,
-			toolName:    task.ToolName,
-			kind:        string(manifest.Kind),
-			args:        req.Args,
-			pythonEnv:   req.PythonEnv,
-			sourceEntry: manifest.Source.Entry,
+			host:               target.Host,
+			port:               target.Port,
+			user:               target.User,
+			password:           realConn.Password,
+			keyPath:            realConn.KeyPath,
+			hostKeyFingerprint: realConn.HostKeyFingerprint,
+			toolID:             req.ToolID,
+			taskID:             task.ID,
+			toolName:           task.ToolName,
+			kind:               string(manifest.Kind),
+			args:               req.Args,
+			pythonEnv:          req.PythonEnv,
+			sourceEntry:        manifest.Source.Entry,
 		})
 
 		a.mu.Lock()
@@ -310,6 +312,8 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 
 type remoteExecParams struct {
 	host, user, password string
+	keyPath              string
+	hostKeyFingerprint   string
 	port                 int
 	toolID, kind, args   string
 	taskID, toolName     string
@@ -320,7 +324,8 @@ type remoteExecParams struct {
 func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) error {
 	fmt.Fprintf(writer, "[远程] 正在连接 %s@%s:%d ...\n", params.user, params.host, params.port)
 
-	executor, err := runtime.DialRemote(params.host, params.port, params.user, params.password)
+	verifier := ssh.NewHostKeyVerifier(params.hostKeyFingerprint)
+	executor, err := runtime.DialRemote(params.host, params.port, params.user, params.password, params.keyPath, verifier.Callback())
 	if err != nil {
 		return fmt.Errorf("SSH连接失败: %w", err)
 	}

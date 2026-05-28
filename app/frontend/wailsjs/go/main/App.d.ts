@@ -27,7 +27,7 @@ export function OpenSaveFileDialog(arg1:main.FileDialogRequest):Promise<string>;
 
 export function PersistCurrentWindowState():Promise<void>;
 
-export function SaveSSHConnection(arg1:ssh.Connection):Promise<void>;
+export function SaveSSHConnection(arg1:ssh.Connection):Promise<ssh.Connection>;
 
 export function SaveTextFile(arg1:string,arg2:string):Promise<void>;
 
@@ -39,6 +39,6 @@ export function StartRemoteExecution(arg1:main.RemoteExecRequest):Promise<main.E
 
 export function TestSSHConnection(arg1:string):Promise<ssh.TestResult>;
 
-export function TestSSHConnectionRaw(arg1:string,arg2:number,arg3:string,arg4:string):Promise<ssh.TestResult>;
+export function TestSSHConnectionRaw(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string):Promise<ssh.TestResult>;
 
 export function UpdateSSHConnection(arg1:string,arg2:ssh.Connection):Promise<void>;

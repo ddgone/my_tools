@@ -16,11 +16,30 @@ type RemoteExecutor struct {
 	SSHClient *ssh.Client
 }
 
-func DialRemote(host string, port int, user, password string) (*RemoteExecutor, error) {
+func DialRemote(host string, port int, user, password, keyPath string, hostKeyCallback ssh.HostKeyCallback) (*RemoteExecutor, error) {
+	authMethods := []ssh.AuthMethod{}
+	if keyPath != "" {
+		key, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取私钥失败 (%s): %w", keyPath, err)
+		}
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("解析私钥失败 (%s): %w", keyPath, err)
+		}
+		authMethods = append(authMethods, ssh.PublicKeys(signer))
+	}
+	if password != "" {
+		authMethods = append(authMethods, ssh.Password(password))
+	}
+	if len(authMethods) == 0 {
+		return nil, fmt.Errorf("未提供认证凭据（密码或密钥）")
+	}
+
 	config := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Auth:            authMethods,
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         10 * time.Second,
 	}
 
@@ -110,7 +129,7 @@ func (r *RemoteExecutor) Execute(ctx context.Context, cmd string, out io.Writer)
 }
 
 func RunOneShot(host string, port int, user, password, cmd string, out io.Writer) error {
-	executor, err := DialRemote(host, port, user, password)
+	executor, err := DialRemote(host, port, user, password, "", ssh.InsecureIgnoreHostKey())
 	if err != nil {
 		return err
 	}

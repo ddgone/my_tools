@@ -17,7 +17,7 @@ import { useMessage } from 'naive-ui'
 import type { SSHConnection } from '@/types/workbench'
 import {
   DeleteSSHConnection, GetSSHConnection, SaveSSHConnection,
-  TestSSHConnection, TestSSHConnectionRaw, UpdateSSHConnection,
+  TestSSHConnectionRaw, UpdateSSHConnection,
 } from '../../wailsjs/go/main/App'
 
 const message = useMessage()
@@ -29,7 +29,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  saved: []
+  saved: [label: string]
+  savedOne: [conn: SSHConnection]
+  deleted: []
 }>()
 
 const showPassword = ref(false)
@@ -37,6 +39,7 @@ const testing = ref(false)
 const saving = ref(false)
 const loading = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
+const skipNextLoad = ref(false)
 
 const form = ref<SSHConnection>({
   id: '',
@@ -57,7 +60,8 @@ const canSave = computed(() =>
 )
 
 const canTest = computed(() =>
-  form.value.host.trim() !== '' && form.value.port > 0 && (form.value.password?.trim() ?? '') !== '',
+  form.value.host.trim() !== '' && form.value.port > 0
+  && ((form.value.password?.trim() ?? '') !== '' || (form.value.keyPath?.trim() ?? '') !== ''),
 )
 
 async function loadConnection() {
@@ -73,7 +77,13 @@ async function loadConnection() {
   }
 }
 
-watch(() => props.connectionId, loadConnection)
+watch(() => props.connectionId, (_newId, _oldId) => {
+  if (skipNextLoad.value) {
+    skipNextLoad.value = false
+    return
+  }
+  loadConnection()
+})
 onMounted(loadConnection)
 
 async function handleTest() {
@@ -81,14 +91,9 @@ async function handleTest() {
   testing.value = true
   testResult.value = null
   try {
-    let result: { success: boolean; message: string }
-    if (props.isNew) {
-      result = await TestSSHConnectionRaw(
-        form.value.host, form.value.port, form.value.user, form.value.password || '',
-      )
-    } else {
-      result = await TestSSHConnection(props.connectionId)
-    }
+    const result = await TestSSHConnectionRaw(
+      form.value.host, form.value.port, form.value.user, form.value.password || '', form.value.keyPath || '',
+    )
     testResult.value = result
     message[result.success ? 'success' : 'error'](result.message)
   } catch (e: any) {
@@ -104,13 +109,16 @@ async function handleSave() {
   saving.value = true
   try {
     if (props.isNew) {
-      await SaveSSHConnection(form.value)
+      const savedConn = await SaveSSHConnection(form.value)
+      form.value.id = savedConn.id
+      skipNextLoad.value = true
       message.success('连接已保存')
+      emit('savedOne', savedConn)
     } else {
       await UpdateSSHConnection(props.connectionId, form.value)
       message.success('连接已更新')
+      emit('saved', form.value.name.trim())
     }
-    emit('saved')
   } catch (e: any) {
     message.error(e.toString())
   } finally {
@@ -122,6 +130,7 @@ async function handleDelete() {
   try {
     await DeleteSSHConnection(props.connectionId)
     message.success('连接已删除')
+    emit('deleted')
     emit('close')
   } catch (e: any) {
     message.error(e.toString())

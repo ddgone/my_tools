@@ -8,7 +8,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 import { OpenFileDialog, OpenSaveFileDialog } from '../../wailsjs/go/main/App'
-import type { ParameterSpec } from '@/types/workbench'
+import type { ParameterSpec, SSHConnection } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
@@ -67,6 +67,7 @@ function syncIndicator() {
 
 watch(tabKey, () => nextTick(syncIndicator))
 watch(() => workspace.unifiedTabs.length, () => nextTick(syncIndicator))
+watch(() => workspace.unifiedTabs.map(t => t.label).join('|'), () => nextTick(syncIndicator))
 onMounted(() => {
   nextTick(syncIndicator)
   const observer = new ResizeObserver(() => nextTick(syncIndicator))
@@ -243,7 +244,17 @@ function selectActiveSearchResult() {
   }
 }
 
-function handleSSHSaved() {
+function handleSSHSaved(label: string) {
+  workspace.updateActiveSSHTabLabel(label)
+  emit('refreshSshList')
+}
+
+function handleSSHSavedOne(conn: SSHConnection) {
+  workspace.promoteNewSSHTab(conn.id, conn.name)
+  emit('refreshSshList')
+}
+
+function handleSSHDeleted() {
   emit('refreshSshList')
 }
 
@@ -449,6 +460,8 @@ watch(searchResults, (results) => {
         :is-new="workspace.activeSSHTab.isNew"
         @close="handleSSHClose"
         @saved="handleSSHSaved"
+        @saved-one="handleSSHSavedOne"
+        @deleted="handleSSHDeleted"
       />
     </template>
 

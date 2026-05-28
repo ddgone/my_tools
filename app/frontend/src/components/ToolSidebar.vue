@@ -39,7 +39,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectConnection: [conn: SSHConnection]
-  createConnection: []
+  createConnection: [savedCount: number]
+  deleteConnection: [id: string]
 }>()
 
 const message = useMessage()
@@ -64,6 +65,7 @@ async function handleDeleteSSH(id: string) {
   try {
     await DeleteSSHConnection(id)
     message.success('连接已删除')
+    emit('deleteConnection', id)
     await loadSSHConnections()
   } catch (e: any) {
     message.error(e.toString())
@@ -88,7 +90,7 @@ function selectConnection(conn: SSHConnection) {
 }
 
 function createConnection() {
-  emit('createConnection')
+  emit('createConnection', sshConnections.value.length)
 }
 
 function copyHost(conn: SSHConnection) {

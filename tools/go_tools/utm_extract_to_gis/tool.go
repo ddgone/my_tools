@@ -71,6 +71,29 @@ func findUTMFile(folderPath string) string {
 	return ""
 }
 
+func safeJoinPath(destDir, name string) (string, error) {
+	cleanName := filepath.Clean(name)
+	if cleanName == "." {
+		return filepath.Abs(destDir)
+	}
+	if filepath.IsAbs(cleanName) || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) || cleanName == ".." {
+		return "", fmt.Errorf("非法路径: %s", name)
+	}
+	target := filepath.Join(destDir, cleanName)
+	absDest, err := filepath.Abs(destDir)
+	if err != nil {
+		return "", err
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(absTarget, absDest+string(filepath.Separator)) && absTarget != absDest {
+		return "", fmt.Errorf("路径穿越: %s", name)
+	}
+	return target, nil
+}
+
 func extractTarGz(tarPath, destDir string) error {
 	file, err := os.Open(tarPath)
 	if err != nil {
@@ -95,7 +118,10 @@ func extractTarGz(tarPath, destDir string) error {
 			return err
 		}
 
-		target := filepath.Join(destDir, header.Name)
+		target, err := safeJoinPath(destDir, header.Name)
+		if err != nil {
+			return err
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -163,7 +189,10 @@ func extractUTMFromTarGz(tarPath, destDir string) (string, error) {
 			continue
 		}
 
-		outPath := filepath.Join(destDir, header.Name)
+		outPath, err := safeJoinPath(destDir, header.Name)
+		if err != nil {
+			return "", err
+		}
 		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 			return "", err
 		}
