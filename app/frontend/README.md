@@ -1,8 +1,34 @@
-# Vue 3 + Vite
+﻿# 前端工作台
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs,
-check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+当前前端是火蜥蜴工具箱的单页工作台，不是 Vite 模板示例。
 
-## Recommended IDE Setup
+## 技术栈
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
+- Vue 3
+- TypeScript
+- Pinia
+- Naive UI
+- GSAP
+
+## 关键目录
+
+- `src/App.vue`：前端根组件
+- `src/components/`：工作台组件
+- `src/stores/workspace.ts`：工作台状态管理
+- `src/styles.css`：全局样式入口
+
+## 常用命令
+
+```bash
+npm install
+npm run dev
+npm run lint
+npm run typecheck
+npm run build
+```
+
+## 约束
+
+- 当前前端是单页工作台，不使用 Vue Router。
+- SSH、收藏夹、最近使用、执行终端都挂在同一工作区模型下。
+- 若文档与实现冲突，以 `src/components/` 和 `src/stores/workspace.ts` 的当前代码为准。

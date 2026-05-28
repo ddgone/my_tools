@@ -1,112 +1,78 @@
-# 🦎 火蜥蜴工具箱 (Fire Salamander Tools)
+﻿# 火蜥蜴工具箱
 
-桌面工具平台。一个 IDE/Postman 风格的单页工作台，统一管理 Go/Python 工具的本地执行、远程执行和导出分发。
+火蜥蜴工具箱是一个桌面宿主型工具平台：用一个单页工作台统一承载 Go/Python 工具的本地执行、基础远程执行、日志导出和后续的单工具导出。
 
-基于 **Wails v2 + Vue 3 + Go**。
+## 当前状态
 
-## 项目结构
+- 已接通本地执行链路，前后端事件流、日志面板、参数表单和页签工作区均可用。
+- 已接通基础远程执行链路，包含 SSH 连接管理、远端上传、执行和清理。
+- 工具导出仍处于未闭环状态，UI 中相关入口仍是占位或半成品。
+- 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错和文档真相源漂移。
 
-```
+## 仓库结构
+
+```text
 my_tools/
-├── app/                   # Wails 桌面应用（Go module: fire-salamander-desktop）
-│   ├── frontend/          # Vue 3 + Vite + Naive UI + Tailwind CSS
-│   ├── internal/          # 后端内部包 (ssh/runtime/builder)
+├── app/                   # Wails 桌面宿主
+│   ├── frontend/          # Vue 3 + TypeScript 单页工作台
+│   ├── internal/          # ssh/runtime/builder/runtimeenv 等后端内部包
 │   ├── main.go            # Wails 入口
-│   ├── app.go             # App struct, startup, bootstrap API
-│   ├── execution.go       # 本地/远程执行引擎 + 任务事件
-│   ├── dialog.go          # Wails 原生文件对话框
-│   ├── legacy.go          # 旧工具闭包桥接
-│   ├── go.mod             # Go module
-│   └── wails.json         # Wails 配置
-├── libs/                  # 共享 Go 库
-│   ├── core/toolspec/     # 工具规格核心类型
-│   ├── catalog/builtin/   # 内置工具清单 (YAML manifests)
-│   └── framework/         # 旧工具框架（桥接用）
-├── tools/                 # 工具实现
-│   ├── go_tools/          # Go 原生工具 (3个)
-│   └── python_tools/      # Python 脚本工具
-├── docs/                  # 架构文档 + ADR
-│   ├── ARCHITECTURE.md
-│   ├── PROJECT_OVERVIEW.md
-│   ├── CONTEXT.md
-│   └── adr/ (13篇)
-├── scripts/
-│   └── build.go           # 跨平台构建脚本
-└── go.work                # Go workspace (use . ./app)
+│   ├── app.go             # bootstrap、SSH API、窗口状态
+│   ├── execution.go       # 本地/远程执行编排
+│   └── legacy.go          # 旧工具桥接
+├── libs/                  # 工具规格与内置清单加载器
+├── tools/                 # Go 工具与 Python 工具资产
+├── docs/                  # 当前文档、问题计划、ADR、归档
+├── scripts/               # 构建与打包脚本
+├── build/                 # 构建产物与开发态运行时目录
+└── go.work                # Go workspace
 ```
 
 ## 快速开始
 
+### 安装依赖
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+cd app/frontend && npm install
+```
+
+### 开发模式
+
+```bash
+cd app
+"$(go env GOPATH)/bin/wails" dev
+```
+
 ### 构建桌面应用
 
 ```bash
-# 一键完整构建
 go run scripts/build.go
-
-# 或直接 Wails 构建
-cd app && "$(go env GOPATH)/bin/wails" build -clean
-
-# 开发模式
-cd app && "$(go env GOPATH)/bin/wails" dev
 ```
 
-产物位置：`build/image/host/`（构建脚本）
+## 质量检查
 
-### 构建单平台/全平台
+以下命令已在当前仓库复核通过：
 
 ```bash
-# 仅当前平台
-go run scripts/build.go
-
-# 全平台交叉编译
-go run scripts/build.go -all
+go test ./...
+go vet ./...
+cd app/frontend && npm run lint
+cd app/frontend && npm run typecheck
 ```
 
-## 工具管理
+## 文档导航
 
-### 内置工具（4个）
+- [CONTEXT.md](CONTEXT.md)：领域术语表，只记录项目语言，不记录实现细节。
+- [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：当前产品定位、能力边界和文档索引。
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：当前真实落地架构、模块边界、执行链路和约束。
+- [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)：最新开发环境、启动方式、校验命令和入口文件。
+- [docs/ISSUES_AND_REMEDIATION_PLAN.md](docs/ISSUES_AND_REMEDIATION_PLAN.md)：本轮梳理出的全部问题，以及严格按 1 到 2 个问题拆分的修复步骤。
+- [docs/archive/README.md](docs/archive/README.md)：历史计划、旧版说明和归档原因。
+- [docs/adr/](docs/adr/)：仍有效的架构决策记录。
 
-| 工具 | 类型 | 说明 |
-|------|------|------|
-| utm_extract_to_gis | Go | 点云UTM坐标提取与GIS转换 |
-| geojson_to_shapefile | Go | GeoJSON转Shapefile |
-| pos_trajectory_to_gis | Go | POS轨迹转GIS格式 |
-| restore_pcd_by_mgrs | Python | MGRS坐标还原点云数据 |
+## 文档约定
 
-工具通过 `libs/catalog/builtin/manifests/*.yaml` 定义清单，`libs/catalog/builtin/service.go` 加载。
-
-### 添加自定义工具
-
-**Go 工具**：在 `tools/go_tools/` 下新建目录，实现 `Tool` 接口，在 `app/legacy.go` 中注册。
-
-**Python 工具**：将 `.py` 文件放入 `tools/python_tools/scripts/`，重新编译即可在 `Python 脚本` 分类下看到。
-
-## 前端
-
-前端位于 `app/frontend/`，技术栈：
-- Vue 3 + TypeScript + Pinia + Naive UI + Tailwind CSS
-- 单页工作台（无缝路由跳转）
-- 工具分类树 + 可关闭页签 + 执行终端
-
-### 前端命令
-
-```bash
-cd app/frontend
-npm install          # 安装依赖
-npm run dev          # 启动开发服务器
-npm run lint         # ESLint
-npm run typecheck    # TypeScript 类型检查
-```
-
-## 文档
-
-| 文档 | 内容 |
-|------|------|
-| [CONTEXT.md](CONTEXT.md) | 领域术语表与项目语言 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 当前架构落地情况 |
-| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | 项目全景 |
-| [docs/adr/](docs/adr/) | 架构决策记录 (13篇) |
-
-## 许可证
-
-MIT
+- `README.md` 只做入口和导航，不承载历史方案。
+- `docs/` 下默认只放当前有效文档；阶段性计划、复盘、旧版说明统一进入 `docs/archive/`。
+- 若代码与文档冲突，以代码现状为准，并优先更新 `ARCHITECTURE.md`、`DEVELOPMENT_SETUP.md` 与 `ISSUES_AND_REMEDIATION_PLAN.md`。
