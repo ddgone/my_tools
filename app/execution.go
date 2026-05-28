@@ -291,6 +291,7 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 		a.mu.Lock()
 		defer a.mu.Unlock()
 
+		delete(a.cancels, task.ID)
 		task.EndedAt = time.Now().UnixMilli()
 		switch {
 		case runCtx.Err() != nil:

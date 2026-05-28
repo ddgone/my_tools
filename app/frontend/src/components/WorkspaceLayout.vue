@@ -56,7 +56,11 @@ function handleOpenSettings() {
 }
 
 onMounted(async () => {
-  await Promise.all([workbench.loadBootstrap(), execution.hydrate()])
+  try {
+    await Promise.all([workbench.loadBootstrap(), execution.hydrate()])
+  } catch {
+    // 各个 store 内部已有错误状态记录，此处仅防止未处理拒绝
+  }
   if (rootRef.value) {
     gsap.fromTo(rootRef.value, { opacity: 0 }, { opacity: 1, duration: ANIM.duration.reveal, ease: ANIM.ease.out })
   }

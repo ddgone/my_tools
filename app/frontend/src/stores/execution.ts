@@ -7,6 +7,7 @@ interface ExecutionState {
   tasks: ExecutionTask[]
   logs: Record<string, string[]>
   subscribed: boolean
+  error: string
 }
 
 export const useExecutionStore = defineStore('execution', {
@@ -14,6 +15,7 @@ export const useExecutionStore = defineStore('execution', {
     tasks: [],
     logs: {},
     subscribed: false,
+    error: '',
   }),
   getters: {
     recentTasks(state) {
@@ -44,7 +46,12 @@ export const useExecutionStore = defineStore('execution', {
     },
     async hydrate() {
       this.ensureSubscriptions()
-      this.tasks = await ListTasks()
+      try {
+        this.tasks = await ListTasks()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载任务列表失败'
+        this.tasks = []
+      }
     },
     async startLocalExecution(request: ExecutionRequest) {
       this.ensureSubscriptions()
