@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -22,9 +22,11 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
 import { validateCliArgs } from '@/utils/cliArgs'
+import type { ToolPanelMode } from '@/stores/workspace'
 
 const props = defineProps<{
   tool: ToolManifest | null
+  executionTarget: 'local' | 'remote'
 }>()
 
 const emit = defineEmits<{
@@ -36,12 +38,27 @@ const workspace = useWorkspaceStore()
 const message = useMessage()
 
 const activeTab = computed(() => workspace.activeTab())
+const activeConfig = computed(() => workspace.activeExecutionConfig)
+const isPythonLocal = computed(() => props.executionTarget === 'local' && props.tool?.kind === 'python')
 
-type ParamMode = 'form' | 'cli' | 'docs'
-const activeMode = ref<ParamMode>('form')
+type ParamMode = ToolPanelMode
+const activeMode = computed<ParamMode>({
+  get: () => {
+    const mode = activeConfig.value?.panelMode
+    if (mode === 'remote' && props.executionTarget !== 'remote') {
+      return 'form'
+    }
+    return mode ?? 'form'
+  },
+  set: (value) => {
+    if (workspace.activeTabIndex >= 0) {
+      workspace.setPanelMode(workspace.activeTabIndex, value)
+    }
+  },
+})
 
 watch(
-  () => activeTab.value?.formModel,
+  () => activeConfig.value?.formModel,
   () => {
     if (props.tool && activeTab.value && activeMode.value === 'form') {
       workspace.updateRawArgs(props.tool, activeTab.value)
@@ -55,23 +72,23 @@ function selectOptions(param: ParameterSpec): SelectOption[] {
 }
 
 function onTextUpdate(param: ParameterSpec, value: string) {
-  const tab = activeTab.value
-  if (tab) tab.formModel[param.key] = value
+  const config = activeConfig.value
+  if (config) config.formModel[param.key] = value
 }
 
 function onNumberUpdate(param: ParameterSpec, value: number | null) {
-  const tab = activeTab.value
-  if (tab) tab.formModel[param.key] = value
+  const config = activeConfig.value
+  if (config) config.formModel[param.key] = value
 }
 
 function onBoolUpdate(param: ParameterSpec, value: boolean) {
-  const tab = activeTab.value
-  if (tab) tab.formModel[param.key] = value
+  const config = activeConfig.value
+  if (config) config.formModel[param.key] = value
 }
 
 function onSelectUpdate(param: ParameterSpec, value: string) {
-  const tab = activeTab.value
-  if (tab) tab.formModel[param.key] = value
+  const config = activeConfig.value
+  if (config) config.formModel[param.key] = value
 }
 
 function shouldShowHelpTooltip(param: ParameterSpec): boolean {
@@ -79,27 +96,48 @@ function shouldShowHelpTooltip(param: ParameterSpec): boolean {
 }
 
 function formTextValue(param: ParameterSpec): string | null {
-  const v = activeTab.value?.formModel[param.key]
+  const v = activeConfig.value?.formModel[param.key]
   return v !== undefined && v !== null ? String(v) : null
 }
 
 function formNumberValue(param: ParameterSpec): number | null {
-  const v = activeTab.value?.formModel[param.key]
+  const v = activeConfig.value?.formModel[param.key]
   return typeof v === 'number' ? v : null
 }
 
 function formBoolValue(param: ParameterSpec): boolean {
-  return activeTab.value?.formModel[param.key] === true
+  return activeConfig.value?.formModel[param.key] === true
 }
 
 function formSelectValue(param: ParameterSpec): string | null {
-  const v = activeTab.value?.formModel[param.key]
+  const v = activeConfig.value?.formModel[param.key]
   return v !== undefined && v !== null ? String(v) : null
 }
 
 function tabRawArgs(): string {
-  return activeTab.value?.rawArgs ?? ''
+  return activeConfig.value?.rawArgs ?? ''
 }
+
+const switchStyle = computed(() => ({
+  '--n-rail-color-active': props.executionTarget === 'remote'
+    ? 'rgba(255, 121, 198, 0.5)'
+    : isPythonLocal.value
+      ? 'rgba(80, 250, 123, 0.5)'
+      : 'rgba(139, 233, 253, 0.55)',
+  '--n-button-color': '#f8f8f2',
+}))
+
+const tabsThemeClass = computed(() => {
+  if (props.executionTarget === 'remote') {
+    return 'parameter-panel parameter-panel--remote'
+  }
+  if (isPythonLocal.value) {
+    return 'parameter-panel parameter-panel--python'
+  }
+  return 'parameter-panel parameter-panel--local'
+})
+
+const tabsKey = computed(() => `${activeTab.value?.tabId ?? 'none'}:${props.executionTarget}`)
 
 const cliArgsError = computed(() => {
   if (activeMode.value !== 'cli') {
@@ -110,8 +148,9 @@ const cliArgsError = computed(() => {
 
 function onRawArgsUpdate(value: string) {
   const tab = activeTab.value
-  if (!tab) return
-  tab.rawArgs = value
+  const config = activeConfig.value
+  if (!tab || !config) return
+  config.rawArgs = value
 }
 
 async function copyCli() {
@@ -124,8 +163,10 @@ async function copyCli() {
   <div
     v-if="tool"
     class="mt-4"
+    :class="tabsThemeClass"
   >
     <NTabs
+      :key="tabsKey"
       v-model:value="activeMode"
       type="bar"
       animated
@@ -141,6 +182,11 @@ async function copyCli() {
       <NTabPane
         name="docs"
         tab="工具说明"
+      />
+      <NTabPane
+        v-if="props.executionTarget === 'remote'"
+        name="remote"
+        tab="远程配置"
       />
     </NTabs>
 
@@ -236,6 +282,7 @@ async function copyCli() {
               <NSwitch
                 v-else-if="param.type === 'boolean'"
                 :value="formBoolValue(param)"
+                :style="switchStyle"
                 @update:value="onBoolUpdate(param, $event)"
               />
 
@@ -326,7 +373,12 @@ async function copyCli() {
               :key="param.key"
               class="flex items-baseline gap-x-2 text-xs"
             >
-              <code class="shrink-0 text-dracula-cyan font-mono">{{ param.argKey || param.key }}</code>
+              <code
+                class="shrink-0 font-mono"
+                :class="props.executionTarget === 'remote' ? 'text-dracula-pink' : 'text-dracula-cyan'"
+              >
+                {{ param.argKey || param.key }}
+              </code>
               <NText depth="2">
                 {{ param.label }}
               </NText>
@@ -357,10 +409,30 @@ async function copyCli() {
           </div>
         </div>
       </div>
+
+      <div v-else-if="activeMode === 'remote'">
+        <div class="rounded-lg border border-white/15 bg-dracula-panel p-4">
+          <div class="mb-3 flex items-center gap-x-2">
+            <NTag
+              size="tiny"
+              :bordered="false"
+              class="border border-dracula-pink/20 bg-dracula-pink/10 text-dracula-pink"
+            >
+              远程配置
+            </NTag>
+          </div>
+          <NText
+            depth="2"
+            class="text-sm leading-relaxed"
+          >
+            远程权限策略、工作目录、运行时约束等配置稍后会接到这里；当前先保留独立标签页和记忆槽位。
+          </NText>
+        </div>
+      </div>
     </div>
 
     <div
-      v-if="activeMode !== 'docs'"
+      v-if="activeMode !== 'docs' && activeMode !== 'remote'"
       class="mt-4 rounded-lg border border-white/15 bg-dracula-panel p-3"
     >
       <div class="flex items-center justify-between">
@@ -413,5 +485,42 @@ async function copyCli() {
 .help-trigger:focus-visible {
   color: #8be9fd;
   opacity: 1;
+}
+
+.parameter-panel--remote .help-trigger:hover,
+.parameter-panel--remote .help-trigger:focus-visible {
+  color: #ff79c6;
+}
+
+.parameter-panel--local :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
+.parameter-panel--local :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
+  color: #8be9fd;
+}
+
+.parameter-panel--local :deep(.n-tabs-bar) {
+  background-color: #8be9fd !important;
+}
+
+.parameter-panel--remote :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
+.parameter-panel--remote :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
+  color: #ff79c6;
+}
+
+.parameter-panel--remote :deep(.n-tabs-bar) {
+  background-color: #ff79c6 !important;
+}
+
+.parameter-panel--python .help-trigger:hover,
+.parameter-panel--python .help-trigger:focus-visible {
+  color: #50fa7b;
+}
+
+.parameter-panel--python :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
+.parameter-panel--python :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
+  color: #50fa7b;
+}
+
+.parameter-panel--python :deep(.n-tabs-bar) {
+  background-color: #50fa7b !important;
 }
 </style>

@@ -13,7 +13,7 @@ interface ShortcutGroup {
 const groups: ShortcutGroup[] = [
   {
     title: '全局',
-    color: 'text-dracula-orange',
+    color: 'text-dracula-pink',
     items: [
       { key: 'Ctrl+P', desc: '全局搜索工具' },
       { key: 'Ctrl+F', desc: '收藏/取消收藏当前工具' },

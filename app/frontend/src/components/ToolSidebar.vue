@@ -21,6 +21,7 @@ import {
   TimeOutline,
   CodeSlash,
   LogoPython,
+  GlobeOutline,
 } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -208,16 +209,28 @@ function isToolActive(toolId: string) {
   return workspace.activeTab()?.toolId === toolId
 }
 
+function toolTabState(toolId: string) {
+  return workspace.openTabs.find((tab) => tab.toolId === toolId)
+}
+
+function isToolRemote(toolId: string) {
+  return toolTabState(toolId)?.executionTarget === 'remote'
+}
+
 function selectTool(tool: ToolManifest) {
   workspace.openTool(tool)
 }
 
-function kindTagType(kind: string): 'success' | 'info' {
-  return kind === 'python' ? 'success' : 'info'
-}
-
 function kindIcon(kind: string) {
   return kind === 'python' ? LogoPython : CodeSlash
+}
+
+function kindIconColor(tool: ToolManifest) {
+  return tool.kind === 'python' ? '#50fa7b' : '#8be9fd'
+}
+
+function kindTagClass(tool: ToolManifest) {
+  return tool.kind === 'python' ? 'python-kind-tag' : 'local-kind-tag'
 }
 
 function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
@@ -246,15 +259,23 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
       onMouseenter: (e: MouseEvent) => onTooltipEnter(e, tool.name),
       onMouseleave: onTooltipLeave,
     }, tool.name),
+    ...(isToolRemote(tool.id)
+      ? [h(NIcon, {
+          component: GlobeOutline,
+          size: 12,
+          color: '#ff79c6',
+          class: 'shrink-0',
+        })]
+      : []),
     h(NTag, {
       bordered: false,
       size: 'tiny',
-      type: kindTagType(tool.kind),
-      class: 'ml-auto shrink-0',
+      class: `ml-auto shrink-0 ${kindTagClass(tool)}`,
     }, {
       icon: () => h(NIcon, {
         component: kindIcon(tool.kind),
         size: 10,
+        color: kindIconColor(tool),
       }),
       default: () => tool.kind === 'python' ? 'py' : 'go',
     }),
@@ -383,6 +404,10 @@ defineExpose({
               block-line
               selectable
               class="category-tree"
+              :class="{
+                'category-tree--remote': workspace.activeToolTab?.executionTarget === 'remote',
+                'category-tree--python': workspace.activeToolTab?.executionTarget === 'local' && allTools.find((tool) => tool.id === workspace.activeToolTab?.toolId)?.kind === 'python',
+              }"
               @update:selected-keys="handleTreeSelect"
               @update:expanded-keys="handleExpandKeys"
             />
@@ -618,6 +643,12 @@ defineExpose({
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
 }
+.category-tree--remote {
+  --n-node-color-active: rgba(255, 121, 198, 0.16);
+}
+.category-tree--python {
+  --n-node-color-active: rgba(80, 250, 123, 0.14);
+}
 .category-tree .n-tree-node-content {
   padding-top: 2px;
   padding-bottom: 2px;
@@ -644,6 +675,9 @@ defineExpose({
 .category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
   stroke: rgba(139, 233, 253, 0.55);
 }
+.category-tree--remote .n-tree-node--expanded > .n-tree-node-switcher svg {
+  stroke: rgba(255, 121, 198, 0.65);
+}
 .category-tree .n-tree-node--selected .n-tree-node-indent {
   opacity: 0.3;
 }
@@ -652,5 +686,21 @@ defineExpose({
 }
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
   stroke: rgba(139, 233, 253, 0.55) !important;
+}
+.category-tree--remote .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
+  stroke: rgba(255, 121, 198, 0.65) !important;
+}
+.category-tree--python .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
+  stroke: rgba(80, 250, 123, 0.6) !important;
+}
+.local-kind-tag {
+  color: #8be9fd !important;
+  background-color: rgba(139, 233, 253, 0.1) !important;
+  border: 1px solid rgba(139, 233, 253, 0.2) !important;
+}
+.python-kind-tag {
+  color: #50fa7b !important;
+  background-color: rgba(80, 250, 123, 0.1) !important;
+  border: 1px solid rgba(80, 250, 123, 0.2) !important;
 }
 </style>

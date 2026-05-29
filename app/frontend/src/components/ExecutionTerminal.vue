@@ -10,6 +10,8 @@ import { ANIM } from '@/utils/animation'
 
 const props = defineProps<{
   taskId: string
+  executionTarget: 'local' | 'remote'
+  accent?: 'cyan' | 'green' | 'pink'
 }>()
 
 const execution = useExecutionStore()
@@ -268,7 +270,13 @@ onBeforeUnmount(() => {
             <NButton
               text
               size="tiny"
-              :type="autoScroll ? 'primary' : 'default'"
+              :class="autoScroll
+                ? props.executionTarget === 'remote'
+                  ? 'text-dracula-pink'
+                  : props.accent === 'green'
+                    ? 'text-dracula-green'
+                    : 'text-dracula-cyan'
+                : 'text-slate-400'"
               @click="toggleAutoScroll"
             >
               跟随

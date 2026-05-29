@@ -3,12 +3,26 @@ import { computed, ref, watch } from 'vue'
 import type { ToolManifest } from '@/types/workbench'
 
 export interface ToolTabState {
+  tabId: string
   toolId: string
-  parameterMode: 'structured' | 'raw'
+  executionTarget: ExecutionTarget
+  localConfig: ToolExecutionConfig
+  remoteConfig: RemoteExecutionConfig
+  openedAt: number
+}
+
+export type ExecutionTarget = 'local' | 'remote'
+export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
+
+export interface ToolExecutionConfig {
+  panelMode: ToolPanelMode
   rawArgs: string
   pythonEnv: string
   formModel: Record<string, string | number | boolean | null>
-  openedAt: number
+}
+
+export interface RemoteExecutionConfig extends ToolExecutionConfig {
+  connId: string
 }
 
 export interface UserSettings {
@@ -28,6 +42,7 @@ const STORAGE_KEYS = {
   recent: 'fire-salamander:recent',
   history: 'fire-salamander:history',
   settings: 'fire-salamander:settings',
+  toolState: 'fire-salamander:tool-state',
 } as const
 
 function loadJSON<T>(key: string, fallback: T): T {
@@ -63,6 +78,13 @@ interface HistoryEntry {
   timestamp: number
 }
 
+interface PersistedToolState {
+  executionTarget: ExecutionTarget
+  localConfig: ToolExecutionConfig
+  remoteConfig: RemoteExecutionConfig
+  updatedAt: number
+}
+
 interface RecentEntry {
   toolId: string
   args: string
@@ -71,44 +93,163 @@ interface RecentEntry {
 
 function createTabState(
   tool: ToolManifest,
-  lastArgs?: string,
-  lastPythonEnv?: string,
-  lastFormModel?: Record<string, string | number | boolean | null>,
+  persistedState?: PersistedToolState,
+  historyEntry?: HistoryEntry,
   defaultPythonPath = 'python',
 ): ToolTabState {
-  let formModel: Record<string, string | number | boolean | null>
+  const localConfig = persistedState?.localConfig
+    ? normalizeExecutionConfig(tool, persistedState.localConfig, defaultPythonPath, 'local')
+    : historyEntry
+      ? normalizeExecutionConfig(
+          tool,
+          {
+            panelMode: 'form',
+            rawArgs: historyEntry.args,
+            pythonEnv: historyEntry.pythonEnv,
+            formModel: historyEntry.formModel,
+          },
+          defaultPythonPath,
+          'local',
+        )
+      : createDefaultExecutionConfig(tool, defaultPythonPath, 'local')
 
-  if (lastFormModel && Object.keys(lastFormModel).length > 0) {
-    formModel = { ...lastFormModel }
-  } else {
-    formModel = {}
-    for (const param of tool.params) {
-      if (param.default !== undefined) {
-        formModel[param.key] = param.default as string | number | boolean | null
-        continue
-      }
-      switch (param.type) {
-        case 'number':
-          formModel[param.key] = null
-          break
-        case 'boolean':
-          formModel[param.key] = false
-          break
-        default:
-          formModel[param.key] = ''
-      }
-    }
-  }
-
-  const rawArgs = lastArgs || buildRawArgs(tool, formModel)
+  const remoteConfig = persistedState?.remoteConfig
+    ? normalizeRemoteExecutionConfig(tool, persistedState.remoteConfig, defaultPythonPath)
+    : createDefaultRemoteExecutionConfig(tool, defaultPythonPath)
 
   return {
+    tabId: `tool_${tool.id}`,
     toolId: tool.id,
-    parameterMode: lastArgs ? 'raw' : 'structured',
-    rawArgs,
-    pythonEnv: lastPythonEnv || defaultPythonPath,
-    formModel,
+    executionTarget: persistedState?.executionTarget === 'remote' ? 'remote' : 'local',
+    localConfig,
+    remoteConfig,
     openedAt: Date.now(),
+  }
+}
+
+function createDefaultFormModel(tool: ToolManifest): Record<string, string | number | boolean | null> {
+  const formModel: Record<string, string | number | boolean | null> = {}
+  for (const param of tool.params) {
+    if (param.default !== undefined) {
+      formModel[param.key] = param.default as string | number | boolean | null
+      continue
+    }
+    switch (param.type) {
+      case 'number':
+        formModel[param.key] = null
+        break
+      case 'boolean':
+        formModel[param.key] = false
+        break
+      default:
+        formModel[param.key] = ''
+    }
+  }
+  return formModel
+}
+
+function normalizeFormModel(
+  tool: ToolManifest,
+  source?: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> {
+  const formModel = createDefaultFormModel(tool)
+  if (!source) {
+    return formModel
+  }
+  for (const param of tool.params) {
+    if (Object.prototype.hasOwnProperty.call(source, param.key)) {
+      formModel[param.key] = source[param.key]
+    }
+  }
+  return formModel
+}
+
+function sanitizePanelMode(mode: ToolPanelMode | undefined, target: ExecutionTarget): ToolPanelMode {
+  if (mode === 'form' || mode === 'cli' || mode === 'docs') {
+    return mode
+  }
+  if (mode === 'remote' && target === 'remote') {
+    return mode
+  }
+  return 'form'
+}
+
+function cloneExecutionConfig(config: ToolExecutionConfig): ToolExecutionConfig {
+  return {
+    panelMode: config.panelMode,
+    rawArgs: config.rawArgs,
+    pythonEnv: config.pythonEnv,
+    formModel: { ...config.formModel },
+  }
+}
+
+function cloneRemoteExecutionConfig(config: RemoteExecutionConfig): RemoteExecutionConfig {
+  return {
+    ...cloneExecutionConfig(config),
+    connId: config.connId,
+  }
+}
+
+function createDefaultExecutionConfig(
+  tool: ToolManifest,
+  defaultPythonPath: string,
+  target: ExecutionTarget,
+): ToolExecutionConfig {
+  const formModel = createDefaultFormModel(tool)
+  return {
+    panelMode: sanitizePanelMode(undefined, target),
+    rawArgs: buildRawArgs(tool, formModel),
+    pythonEnv: defaultPythonPath,
+    formModel,
+  }
+}
+
+function createDefaultRemoteExecutionConfig(
+  tool: ToolManifest,
+  defaultPythonPath: string,
+): RemoteExecutionConfig {
+  return {
+    ...createDefaultExecutionConfig(tool, defaultPythonPath, 'remote'),
+    connId: '',
+  }
+}
+
+function normalizeExecutionConfig(
+  tool: ToolManifest,
+  source: Partial<ToolExecutionConfig> | undefined,
+  defaultPythonPath: string,
+  target: ExecutionTarget,
+): ToolExecutionConfig {
+  const formModel = normalizeFormModel(tool, source?.formModel)
+  return {
+    panelMode: sanitizePanelMode(source?.panelMode, target),
+    rawArgs: typeof source?.rawArgs === 'string' ? source.rawArgs : buildRawArgs(tool, formModel),
+    pythonEnv:
+      typeof source?.pythonEnv === 'string' && source.pythonEnv.trim().length > 0
+        ? source.pythonEnv
+        : defaultPythonPath,
+    formModel,
+  }
+}
+
+function normalizeRemoteExecutionConfig(
+  tool: ToolManifest,
+  source: Partial<RemoteExecutionConfig> | undefined,
+  defaultPythonPath: string,
+): RemoteExecutionConfig {
+  const config = normalizeExecutionConfig(tool, source, defaultPythonPath, 'remote')
+  return {
+    ...config,
+    connId: typeof source?.connId === 'string' ? source.connId : '',
+  }
+}
+
+function snapshotToolState(tab: ToolTabState): PersistedToolState {
+  return {
+    executionTarget: tab.executionTarget,
+    localConfig: cloneExecutionConfig(tab.localConfig),
+    remoteConfig: cloneRemoteExecutionConfig(tab.remoteConfig),
+    updatedAt: Date.now(),
   }
 }
 
@@ -168,11 +309,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const recentTools = ref<RecentEntry[]>(loadJSON<RecentEntry[]>(STORAGE_KEYS.recent, []))
   const toolHistory = ref<Record<string, HistoryEntry[]>>(loadJSON<Record<string, HistoryEntry[]>>(STORAGE_KEYS.history, {}))
   const settings = ref<UserSettings>({ ...defaultSettings, ...loadJSON<Partial<UserSettings>>(STORAGE_KEYS.settings, {}) })
+  const persistedToolStates = ref<Record<string, PersistedToolState>>(
+    loadJSON<Record<string, PersistedToolState>>(STORAGE_KEYS.toolState, {}),
+  )
 
   watch(favorites, (v) => saveJSON(STORAGE_KEYS.favorites, v), { deep: true })
   watch(recentTools, (v) => saveJSON(STORAGE_KEYS.recent, v), { deep: true })
   watch(toolHistory, (v) => saveJSON(STORAGE_KEYS.history, v), { deep: true })
   watch(settings, (v) => saveJSON(STORAGE_KEYS.settings, v), { deep: true })
+  watch(persistedToolStates, (v) => saveJSON(STORAGE_KEYS.toolState, v), { deep: true })
+  watch(
+    openTabs,
+    (tabs) => {
+      const nextState = { ...persistedToolStates.value }
+      for (const tab of tabs) {
+        nextState[tab.toolId] = snapshotToolState(tab)
+      }
+      persistedToolStates.value = nextState
+    },
+    { deep: true },
+  )
 
   const activeTabType = computed(() => {
     if (activeSSHTabIndex.value >= 0) return 'ssh'
@@ -183,6 +339,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeToolTab = computed(() =>
     activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined,
   )
+
+  const activeExecutionConfig = computed<ToolExecutionConfig | RemoteExecutionConfig | undefined>(() => {
+    const tab = activeToolTab.value
+    if (!tab) {
+      return undefined
+    }
+    return tab.executionTarget === 'remote' ? tab.remoteConfig : tab.localConfig
+  })
 
   const activeSSHTab = computed(() =>
     activeSSHTabIndex.value >= 0 ? sshTabs.value[activeSSHTabIndex.value] : undefined,
@@ -202,7 +366,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const items: UnifiedTabItem[] = [
       ...openTabs.value.map((t, i) => ({
         type: 'tool' as const,
-        key: `tool:${t.toolId}`,
+        key: `tool:${t.tabId}`,
         label: t.toolId,
         openedAt: t.openedAt,
         arrayIndex: i,
@@ -258,17 +422,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function openTool(tool: ToolManifest) {
     const existing = openTabs.value.findIndex((t) => t.toolId === tool.id)
     if (existing >= 0) {
-      const history = toolHistory.value[tool.id] || []
-      const lastEntry = history[0]
-      if (lastEntry) {
-        const tab = openTabs.value[existing]
-        tab.rawArgs = lastEntry.args
-        tab.pythonEnv = lastEntry.pythonEnv
-        tab.parameterMode = 'raw'
-        if (lastEntry.formModel) {
-          tab.formModel = { ...lastEntry.formModel }
-        }
-      }
       activeTabIndex.value = existing
       activeSSHTabIndex.value = -1
       return
@@ -276,11 +429,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
     const history = toolHistory.value[tool.id] || []
     const lastEntry = history[0]
-    const lastArgs = lastEntry?.args
-    const lastPythonEnv = lastEntry?.pythonEnv
-    const lastFormModel = lastEntry?.formModel
+    const persistedState = persistedToolStates.value[tool.id]
 
-    const tab = createTabState(tool, lastArgs, lastPythonEnv, lastFormModel, settings.value.defaultPythonPath)
+    const tab = createTabState(tool, persistedState, lastEntry, settings.value.defaultPythonPath)
     openTabs.value.push(tab)
     activeTabIndex.value = openTabs.value.length - 1
     activeSSHTabIndex.value = -1
@@ -300,7 +451,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function updateRawArgs(tool: ToolManifest, tab: ToolTabState) {
-    tab.rawArgs = buildRawArgs(tool, tab.formModel)
+    const config = tab.executionTarget === 'remote' ? tab.remoteConfig : tab.localConfig
+    config.rawArgs = buildRawArgs(tool, config.formModel)
+  }
+
+  function setExecutionTarget(index: number, target: ExecutionTarget) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].executionTarget = target
+  }
+
+  function setRemoteConnection(index: number, connId: string) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].remoteConfig.connId = connId
+  }
+
+  function setPythonEnv(index: number, value: string) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    const tab = openTabs.value[index]
+    const config = tab.executionTarget === 'remote' ? tab.remoteConfig : tab.localConfig
+    config.pythonEnv = value
+  }
+
+  function setPanelMode(index: number, value: ToolPanelMode) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    const tab = openTabs.value[index]
+    const config = tab.executionTarget === 'remote' ? tab.remoteConfig : tab.localConfig
+    config.panelMode = value
   }
 
   function setActiveTab(index: number) {
@@ -353,6 +537,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     favorites.value = []
     recentTools.value = []
     toolHistory.value = {}
+    persistedToolStates.value = {}
     settings.value = { ...defaultSettings }
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
@@ -454,6 +639,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeSSHTabIndex,
     activeTabType,
     activeToolTab,
+    activeExecutionConfig,
     activeSSHTab,
     activeTab,
     unifiedTabs,
@@ -469,6 +655,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openTool,
     closeTab,
     updateRawArgs,
+    setExecutionTarget,
+    setRemoteConnection,
+    setPythonEnv,
+    setPanelMode,
     setActiveTab,
     setActiveSSHTab,
     activateToolTab,

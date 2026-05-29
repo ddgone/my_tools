@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython, Star } from '@vicons/ionicons5'
+import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -44,6 +44,7 @@ const tabKey = computed(() => {
 const indicatorLeft = ref('0px')
 const indicatorWidth = ref('0px')
 const indicatorShow = ref(false)
+const indicatorInstant = ref(false)
 
 function syncIndicator() {
   const bar = tabBarRef.value
@@ -68,7 +69,15 @@ function syncIndicator() {
   indicatorShow.value = true
 }
 
-watch(tabKey, () => nextTick(syncIndicator))
+watch(tabKey, () => {
+  indicatorInstant.value = true
+  nextTick(() => {
+    syncIndicator()
+    requestAnimationFrame(() => {
+      indicatorInstant.value = false
+    })
+  })
+})
 watch(() => workspace.unifiedTabs.length, () => nextTick(syncIndicator))
 watch(() => workspace.unifiedTabs.map(t => t.label).join('|'), () => nextTick(syncIndicator))
 onMounted(() => {
@@ -100,6 +109,11 @@ const { size: topHeight, dividerProps: hDividerProps } = useResizable({
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
 const activeToolTabComputed = computed(() => workspace.activeToolTab)
+const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
+const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
+const activeAccentClass = computed(() =>
+  activeTargetIsRemote.value ? 'bg-dracula-pink' : activeToolKind.value === 'python' ? 'bg-dracula-green' : 'bg-dracula-cyan',
+)
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
@@ -121,7 +135,10 @@ const searchResults = computed(() => {
 const activeTabTaskId = computed(() => {
   const id = activeToolId.value
   if (!id) return ''
-  const tasks = execution.recentTasks.filter((t) => t.toolId === id)
+  const tasks = execution.recentTasks.filter((t) =>
+    t.toolId === id &&
+    (activeTargetIsRemote.value ? t.target.startsWith('remote:') : t.target === 'local'),
+  )
   return tasks.length > 0 ? tasks[0].id : ''
 })
 
@@ -138,47 +155,38 @@ async function handleExecute() {
   const tool = tab ? toolById(tab.toolId) : null
   if (!tool || !tab) return
 
-  const cliArgsError = validateCliArgs(tab.rawArgs)
+  const config = workspace.activeExecutionConfig
+  if (!config) return
+
+  const cliArgsError = validateCliArgs(config.rawArgs)
   if (cliArgsError) {
     message.error(cliArgsError)
     return
   }
 
-  workspace.recordUsage(tool.id, tab.rawArgs, tab.pythonEnv, tab.formModel)
-
-  launching.value = true
-  try {
-    await execution.startLocalExecution({
-      toolId: tool.id,
-      args: tab.rawArgs,
-      pythonEnv: tool.kind === 'python' ? tab.pythonEnv : undefined,
-    })
-  } finally {
-    launching.value = false
-  }
-}
-
-async function handleRemoteExecute(connId: string) {
-  const tab = workspace.activeToolTab
-  const tool = tab ? toolById(tab.toolId) : null
-  if (!tool || !tab) return
-
-  const cliArgsError = validateCliArgs(tab.rawArgs)
-  if (cliArgsError) {
-    message.error(cliArgsError)
+  if (tab.executionTarget === 'remote' && !tab.remoteConfig.connId) {
+    message.error('请选择远程环境后再执行')
     return
   }
 
-  workspace.recordUsage(tool.id, tab.rawArgs, tab.pythonEnv, tab.formModel)
+  workspace.recordUsage(tool.id, config.rawArgs, config.pythonEnv, config.formModel)
 
   launching.value = true
   try {
-    await execution.startRemoteExecution({
-      toolId: tool.id,
-      connId,
-      args: tab.rawArgs,
-      pythonEnv: tool.kind === 'python' ? tab.pythonEnv : undefined,
-    })
+    if (tab.executionTarget === 'remote') {
+      await execution.startRemoteExecution({
+        toolId: tool.id,
+        connId: tab.remoteConfig.connId,
+        args: config.rawArgs,
+        pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
+      })
+    } else {
+      await execution.startLocalExecution({
+        toolId: tool.id,
+        args: config.rawArgs,
+        pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
+      })
+    }
   } finally {
     launching.value = false
   }
@@ -192,6 +200,7 @@ async function handleCancel() {
 
 async function handleFileDialog(param: ParameterSpec) {
   const tab = activeToolTabComputed.value
+  const config = workspace.activeExecutionConfig
   if (!tab) return
 
   const key = param.key.toLowerCase()
@@ -232,15 +241,53 @@ async function handleFileDialog(param: ParameterSpec) {
   }
 
   if (result) {
-    tab.formModel[param.key] = result
+    if (config) {
+      config.formModel[param.key] = result
+    }
   }
 }
 
 function onPythonEnvUpdate(value: string) {
-  const tab = activeToolTabComputed.value
-  if (tab) {
-    tab.pythonEnv = value
+  if (workspace.activeTabIndex >= 0) {
+    workspace.setPythonEnv(workspace.activeTabIndex, value)
   }
+}
+
+function onExecutionTargetUpdate(value: 'local' | 'remote') {
+  if (workspace.activeTabIndex >= 0) {
+    workspace.setExecutionTarget(workspace.activeTabIndex, value)
+    nextTick(syncIndicator)
+  }
+}
+
+function onRemoteConnIdUpdate(value: string) {
+  if (workspace.activeTabIndex >= 0) {
+    workspace.setRemoteConnection(workspace.activeTabIndex, value)
+  }
+}
+
+function toolTabStateByToolId(id: string) {
+  return workspace.openTabs.find((tab) => tab.toolId === id)
+}
+
+function isToolTabRemote(id: string) {
+  return toolTabStateByToolId(id)?.executionTarget === 'remote'
+}
+
+function goTagClassForTool(id: string) {
+  return toolById(id)?.kind === 'python' ? 'text-dracula-green' : 'text-dracula-cyan'
+}
+
+function goIconColorForTool(id: string) {
+  return toolById(id)?.kind === 'python' ? '#50fa7b' : '#8be9fd'
+}
+
+function pythonTagClassForTool(id: string) {
+  return toolById(id)?.kind === 'python' ? 'text-dracula-green' : 'text-dracula-cyan'
+}
+
+function pythonIconColorForTool(id: string) {
+  return toolById(id)?.kind === 'python' ? '#50fa7b' : '#8be9fd'
 }
 
 function openSearch() {
@@ -377,7 +424,9 @@ watch(searchResults, (results) => {
           :class="
             (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
               (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
-              ? 'bg-dracula-bg text-dracula-text'
+              ? item.type === 'tool' && isToolTabRemote(item.label)
+                ? 'bg-[rgba(255,121,198,0.12)] text-dracula-text'
+                : 'bg-dracula-bg text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
           @click="workspace.activateUnifiedTab(item)"
@@ -393,17 +442,38 @@ watch(searchResults, (results) => {
             v-if="item.type === 'tool'"
             :bordered="false"
             size="tiny"
-            :type="toolById(item.label)?.kind === 'python' ? 'success' : 'info'"
-            class="shrink-0"
+            :class="[
+              'shrink-0',
+              toolById(item.label)?.kind === 'python'
+                ? pythonTagClassForTool(item.label)
+                : goTagClassForTool(item.label),
+            ]"
+            :style="toolById(item.label)?.kind === 'python'
+              ? {
+                backgroundColor: 'rgba(80, 250, 123, 0.1)',
+                border: '1px solid rgba(80, 250, 123, 0.2)',
+              }
+              : {
+                backgroundColor: 'rgba(139, 233, 253, 0.1)',
+                border: '1px solid rgba(139, 233, 253, 0.2)',
+              }"
           >
             <template #icon>
               <NIcon
                 :component="toolById(item.label)?.kind === 'python' ? LogoPython : CodeSlash"
                 size="10"
+                :color="toolById(item.label)?.kind === 'python' ? pythonIconColorForTool(item.label) : goIconColorForTool(item.label)"
               />
             </template>
             {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
           </NTag>
+          <NIcon
+            v-if="item.type === 'tool' && isToolTabRemote(item.label)"
+            :component="GlobeOutline"
+            size="11"
+            color="#ff79c6"
+            class="shrink-0"
+          />
           <span
             v-if="item.type === 'tool' && isTabRunning(item.label)"
             class="h-1.5 w-1.5 shrink-0 rounded-full bg-dracula-green"
@@ -432,7 +502,8 @@ watch(searchResults, (results) => {
         </button>
       </div>
       <div
-        class="absolute bottom-0 h-0.5 rounded-t-sm bg-dracula-cyan transition-[left,width,opacity] duration-200 ease-out"
+        class="absolute bottom-0 h-0.5 rounded-t-sm transition-[left,width,opacity,background-color] ease-out"
+        :class="[activeAccentClass, indicatorInstant ? 'duration-0' : 'duration-200']"
         :style="{
           left: indicatorLeft,
           width: indicatorWidth,
@@ -455,8 +526,9 @@ watch(searchResults, (results) => {
             :is-launching="launching"
             @execute="handleExecute"
             @cancel="handleCancel"
+            @update:execution-target="onExecutionTargetUpdate"
             @update:python-env="onPythonEnvUpdate"
-            @remote-execute="handleRemoteExecute"
+            @update:remote-conn-id="onRemoteConnIdUpdate"
           />
           <div
             class="mx-4 mt-3 h-px"
@@ -464,6 +536,7 @@ watch(searchResults, (results) => {
           />
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
+            :execution-target="workspace.activeToolTab.executionTarget"
             class="mt-3"
             @execute="handleExecute"
             @file-dialog="handleFileDialog"
@@ -475,11 +548,22 @@ watch(searchResults, (results) => {
           class="group relative shrink-0 bg-white/10"
           style="height: 1px; width: 100%"
         >
-          <div class="absolute inset-x-0 -top-1 -bottom-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
+          <div
+            class="absolute inset-x-0 -top-1 -bottom-1"
+            :class="activeTargetIsRemote
+              ? 'group-hover:bg-dracula-pink/10 group-active:bg-dracula-pink/20'
+              : activeToolKind === 'python'
+                ? 'group-hover:bg-dracula-green/10 group-active:bg-dracula-green/20'
+                : 'group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20'"
+          />
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ExecutionTerminal :task-id="activeTabTaskId" />
+          <ExecutionTerminal
+            :task-id="activeTabTaskId"
+            :execution-target="workspace.activeToolTab.executionTarget"
+            :accent="workspace.activeToolTab.executionTarget === 'remote' ? 'pink' : toolById(workspace.activeToolTab.toolId)?.kind === 'python' ? 'green' : 'cyan'"
+          />
         </div>
       </div>
     </template>
