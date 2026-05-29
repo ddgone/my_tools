@@ -160,24 +160,28 @@ func (r *RemoteExecutor) RunOutput(ctx context.Context, cmd string) (string, err
 }
 
 func (r *RemoteExecutor) DetectPlatform(ctx context.Context) (RemotePlatform, error) {
-	output, err := r.RunOutput(ctx, "uname -s && uname -m")
-	if err != nil {
-		return RemotePlatform{}, fmt.Errorf("检测远端平台失败: %w", err)
+	probes := []string{
+		"uname -s && uname -m",
+		"sh -lc 'uname -s && uname -m'",
+		"bash -lc 'uname -s && uname -m'",
 	}
 
-	lines := strings.Split(output, "\n")
-	if len(lines) < 2 {
-		return RemotePlatform{}, fmt.Errorf("无法解析远端平台信息: %q", output)
+	failures := make([]string, 0, len(probes))
+	for _, probe := range probes {
+		output, err := r.RunOutput(ctx, probe)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s => err: %v", probe, err))
+			continue
+		}
+
+		platform, parseErr := parseRemotePlatformOutput(output)
+		if parseErr == nil {
+			return platform, nil
+		}
+		failures = append(failures, fmt.Sprintf("%s => output: %q (%v)", probe, output, parseErr))
 	}
 
-	platform := RemotePlatform{
-		OS:   normalizeRemoteOS(lines[0]),
-		Arch: normalizeRemoteArch(lines[1]),
-	}
-	if platform.OS == "" || platform.Arch == "" {
-		return RemotePlatform{}, fmt.Errorf("暂不支持的远端平台: %q", output)
-	}
-	return platform, nil
+	return RemotePlatform{}, fmt.Errorf("无法解析远端平台信息，探测详情: %s", strings.Join(failures, " | "))
 }
 
 func ShellQuote(value string) string {
@@ -207,6 +211,30 @@ func normalizeRemoteArch(value string) string {
 	default:
 		return ""
 	}
+}
+
+func parseRemotePlatformOutput(output string) (RemotePlatform, error) {
+	lines := strings.Split(output, "\n")
+	normalized := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		normalized = append(normalized, line)
+	}
+	if len(normalized) < 2 {
+		return RemotePlatform{}, fmt.Errorf("平台输出不足: %q", output)
+	}
+
+	platform := RemotePlatform{
+		OS:   normalizeRemoteOS(normalized[0]),
+		Arch: normalizeRemoteArch(normalized[1]),
+	}
+	if platform.OS == "" || platform.Arch == "" {
+		return RemotePlatform{}, fmt.Errorf("暂不支持的远端平台: %q", output)
+	}
+	return platform, nil
 }
 
 type RemoteExecResult struct {

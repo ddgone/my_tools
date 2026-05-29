@@ -12,6 +12,7 @@ import (
 	"my_tools/libs/framework"
 
 	_ "my_tools/tools/go_tools/geojson_to_shapefile"
+	_ "my_tools/tools/go_tools/hdfs_download"
 	_ "my_tools/tools/go_tools/pos_trajectory_to_gis"
 	_ "my_tools/tools/go_tools/utm_extract_to_gis"
 	_ "my_tools/tools/python_tools"

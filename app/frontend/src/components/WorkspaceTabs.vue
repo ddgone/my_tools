@@ -181,10 +181,26 @@ async function handleFileDialog(param: ParameterSpec) {
 
   const key = param.key.toLowerCase()
   const label = param.label.toLowerCase()
-  const isSave = key.includes('output') || key.includes('save') || label.includes('输出') || label.includes('保存')
+  const placeholder = (param.placeholder || '').toLowerCase()
+  const help = (param.help || '').toLowerCase()
+  const isDir =
+    key.includes('dir') ||
+    key.includes('folder') ||
+    label.includes('目录') ||
+    label.includes('文件夹') ||
+    placeholder.includes('目录') ||
+    help.includes('目录')
+  const isSave = !isDir && (key.includes('output') || key.includes('save') || label.includes('输出') || label.includes('保存'))
   let result: string
 
-  if (isSave) {
+  if (isDir) {
+    result = await OpenFileDialog({
+      title: `选择 ${param.label}`,
+      filterName: '所有文件',
+      filterGlob: '*.*',
+      directory: true,
+    })
+  } else if (isSave) {
     result = await OpenSaveFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',
@@ -192,7 +208,6 @@ async function handleFileDialog(param: ParameterSpec) {
       directory: false,
     })
   } else {
-    const isDir = key.includes('dir') || key.includes('folder') || label.includes('目录') || label.includes('文件夹')
     result = await OpenFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',

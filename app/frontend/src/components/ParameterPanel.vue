@@ -6,7 +6,6 @@ import {
   NFormItem,
   NIcon,
   NInput,
-  NInputGroup,
   NInputNumber,
   NSelect,
   NSwitch,
@@ -14,9 +13,10 @@ import {
   NTabPane,
   NText,
   NTag,
+  NTooltip,
   type SelectOption,
 } from 'naive-ui'
-import { FolderOpen, Copy } from '@vicons/ionicons5'
+import { FolderOpen, Copy, HelpCircle } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
@@ -70,6 +70,10 @@ function onBoolUpdate(param: ParameterSpec, value: boolean) {
 function onSelectUpdate(param: ParameterSpec, value: string) {
   const tab = activeTab.value
   if (tab) tab.formModel[param.key] = value
+}
+
+function shouldShowHelpTooltip(param: ParameterSpec): boolean {
+  return typeof param.help === 'string' && param.help.includes('\n')
 }
 
 function formTextValue(param: ParameterSpec): string | null {
@@ -142,24 +146,69 @@ async function copyCli() {
             <NFormItem
               v-for="param in tool.params"
               :key="param.key"
-              :label="param.label"
-              :required="param.required"
             >
-              <NInputGroup v-if="param.type === 'text' || param.type === 'path'">
+              <template #label>
+                <div class="flex items-center gap-x-1.5">
+                  <span>{{ param.label }}</span>
+                  <span
+                    v-if="param.required"
+                    class="text-[13px] font-semibold leading-none text-red-400"
+                  >
+                    *
+                  </span>
+                  <NTooltip
+                    v-if="shouldShowHelpTooltip(param)"
+                    placement="top"
+                    :style="{ maxWidth: '320px' }"
+                  >
+                    <template #trigger>
+                      <NButton
+                        text
+                        size="tiny"
+                        class="opacity-70 hover:opacity-100"
+                      >
+                        <template #icon>
+                          <NIcon
+                            :component="HelpCircle"
+                            size="14"
+                          />
+                        </template>
+                      </NButton>
+                    </template>
+                    <div class="whitespace-pre-wrap text-xs leading-relaxed">
+                      {{ param.help }}
+                    </div>
+                  </NTooltip>
+                </div>
+              </template>
+              <NInput
+                v-if="param.type === 'text'"
+                :value="formTextValue(param)"
+                :placeholder="param.placeholder"
+                @update:value="onTextUpdate(param, $event)"
+              />
+
+              <div
+                v-else-if="param.type === 'path'"
+                class="flex w-full items-start gap-x-2"
+              >
                 <NInput
                   :value="formTextValue(param)"
+                  type="textarea"
                   :placeholder="param.placeholder"
+                  :autosize="{ minRows: 2, maxRows: 4 }"
+                  class="flex-1"
                   @update:value="onTextUpdate(param, $event)"
                 />
                 <NButton
-                  v-if="param.type === 'path'"
+                  class="shrink-0"
                   @click="emit('fileDialog', param)"
                 >
                   <template #icon>
                     <NIcon :component="FolderOpen" />
                   </template>
                 </NButton>
-              </NInputGroup>
+              </div>
 
               <NInput
                 v-else-if="param.type === 'textarea'"

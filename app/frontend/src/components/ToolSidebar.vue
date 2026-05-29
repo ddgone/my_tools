@@ -220,21 +220,15 @@ function kindIcon(kind: string) {
   return kind === 'python' ? LogoPython : CodeSlash
 }
 
+function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
+  return option.tool ? 'toggleSelect' : 'toggleExpand'
+}
+
 function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   const tool = option.tool
   if (!tool) {
     return h('span', {
-      class: 'text-sm font-semibold uppercase tracking-wider text-slate-400 cursor-pointer',
-      onClick: (e: MouseEvent) => {
-        e.stopPropagation()
-        const key = option.key as string
-        const idx = expandedKeys.value.indexOf(key)
-        if (idx >= 0) {
-          expandedKeys.value.splice(idx, 1)
-        } else {
-          expandedKeys.value.push(key)
-        }
-      },
+      class: 'text-sm font-semibold uppercase tracking-wider text-slate-400',
     }, option.label as string)
   }
   return h('div', {
@@ -383,6 +377,7 @@ defineExpose({
               :pattern="searchQuery"
               :selected-keys="selectedKeys"
               :render-label="renderNodeLabel"
+              :override-default-node-click-behavior="handleNodeClickBehavior"
               :indent="8"
               show-line
               block-line

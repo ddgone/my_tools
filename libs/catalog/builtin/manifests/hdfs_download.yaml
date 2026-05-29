@@ -1,0 +1,76 @@
+id: hdfs_download
+name: HDFS 批量下载工具
+kind: go
+category: KD测试工具 > HDFS工具
+icon: go
+description: 通过 WebHDFS 批量下载 HDFS 文件或目录到本地目录。
+docs:
+  summary: 支持一次输入多个 HDFS 路径，适合批量拉取测试数据并保留目录结构。
+  usage: |
+    通过 WebHDFS 从 HDFS 下载单个文件或整个目录到本地目录。
+
+    HDFS 路径列表输入方式：
+    - 多个路径请使用英文逗号 , 分隔
+    - 使用 / 开头的完整 HDFS 绝对路径
+    - 可填写文件路径或目录路径
+
+    示例：
+    /user/test/file_001,/user/test/dir_001
+
+    参数说明：
+    - HDFS 路径列表：要下载的 HDFS 文件或目录
+    - 本地目录：下载结果保存位置
+    - Namenode 地址：WebHDFS 的 host:port
+    - HDFS 用户名：访问 WebHDFS 时使用的用户名
+    - 跳过已存在文件：若本地已有同名文件且大小一致，则跳过下载
+params:
+  - key: input
+    argKey: input
+    type: textarea
+    label: HDFS 路径列表
+    placeholder: /user/test/file_001,/user/test/dir_001
+    required: true
+    help: |
+      多个 HDFS 路径请使用英文逗号 , 分隔。
+      输入要求：
+      - 使用 / 开头的完整 HDFS 绝对路径
+      - 可填写文件路径或目录路径
+
+      示例：
+      /user/test/file_001,/user/test/dir_001
+  - key: outputDir
+    argKey: output
+    type: path
+    label: 本地目录
+    placeholder: 选择本地保存目录
+    required: true
+    help: 下载结果保存到这个目录；目录型路径会按 HDFS 目录名创建子目录。
+  - key: client
+    argKey: client
+    type: text
+    label: Namenode 地址
+    default: 10.11.5.136:50070
+    placeholder: 例如 10.11.5.136:50070
+    help: WebHDFS Namenode 的 host:port。
+  - key: user
+    argKey: user
+    type: text
+    label: HDFS 用户名
+    default: hdfs
+    placeholder: 例如 hdfs
+    help: 通过 WebHDFS 访问 HDFS 时使用的用户名。
+  - key: skip
+    argKey: skip
+    type: boolean
+    label: 跳过已存在文件
+    default: false
+    help: 若本地已有同名文件且大小一致，则跳过下载。
+execution:
+  local:
+    adapter: go-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/go_tools/hdfs_download/tool.go
