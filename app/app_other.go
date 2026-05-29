@@ -8,10 +8,10 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-func nativeWindowFrame(ctx context.Context) (windowFrame, error) {
+func nativeWindowFrame(ctx context.Context) (windowFrame, bool, error) {
 	width, height := wailsruntime.WindowGetSize(ctx)
 	x, y := wailsruntime.WindowGetPosition(ctx)
-	return windowFrame{X: x, Y: y, Width: width, Height: height}, nil
+	return windowFrame{X: x, Y: y, Width: width, Height: height}, false, nil
 }
 
 func nativeSetWindowFrame(ctx context.Context, frame windowFrame) error {

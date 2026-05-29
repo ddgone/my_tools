@@ -130,10 +130,17 @@ function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | num
     }
 
     const escapedValue =
-      typeof value === 'string' && /\s/.test(value) ? `"${value}"` : String(value)
+      typeof value === 'string' ? formatCliValue(value) : String(value)
     parts.push(`-${argKey}`, escapedValue)
   }
   return parts.join(' ')
+}
+
+function formatCliValue(value: string): string {
+  if (!/[\s'"]/.test(value)) {
+    return value
+  }
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
 export interface SSHTabState {

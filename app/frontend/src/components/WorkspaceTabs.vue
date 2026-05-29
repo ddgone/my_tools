@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython, Star } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -13,6 +14,7 @@ import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
 import SSHDetailPanel from './SSHDetailPanel.vue'
+import { validateCliArgs } from '@/utils/cliArgs'
 
 const emit = defineEmits<{
   refreshSshList: []
@@ -21,6 +23,7 @@ const emit = defineEmits<{
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
+const message = useMessage()
 
 const launching = ref(false)
 const searchInput = ref('')
@@ -135,6 +138,12 @@ async function handleExecute() {
   const tool = tab ? toolById(tab.toolId) : null
   if (!tool || !tab) return
 
+  const cliArgsError = validateCliArgs(tab.rawArgs)
+  if (cliArgsError) {
+    message.error(cliArgsError)
+    return
+  }
+
   workspace.recordUsage(tool.id, tab.rawArgs, tab.pythonEnv, tab.formModel)
 
   launching.value = true
@@ -153,6 +162,12 @@ async function handleRemoteExecute(connId: string) {
   const tab = workspace.activeToolTab
   const tool = tab ? toolById(tab.toolId) : null
   if (!tool || !tab) return
+
+  const cliArgsError = validateCliArgs(tab.rawArgs)
+  if (cliArgsError) {
+    message.error(cliArgsError)
+    return
+  }
 
   workspace.recordUsage(tool.id, tab.rawArgs, tab.pythonEnv, tab.formModel)
 
@@ -614,10 +629,10 @@ watch(searchResults, (results) => {
     <Teleport to="body">
       <div
         v-if="tooltipShow"
-        class="pointer-events-none fixed z-[100] -translate-x-1/2 rounded-md bg-[#faf8f5] px-2.5 py-1.5 text-xs text-[#1a1a2e] shadow-lg shadow-black/20"
+        class="workbench-tooltip pointer-events-none fixed z-[100] -translate-x-1/2 px-2.5 py-1.5 text-xs"
         :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
       >
-        <div class="absolute -top-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-[#faf8f5]" />
+        <div class="workbench-tooltip-arrow absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45" />
         {{ tooltipText }}
       </div>
     </Teleport>

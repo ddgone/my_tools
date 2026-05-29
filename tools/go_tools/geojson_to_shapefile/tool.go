@@ -368,7 +368,10 @@ func (t *G2STool) Execute(ctx framework.AppContext) {
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs := framework.ParseArgs(args)
+		parsedArgs, err := framework.ParseArgs(args)
+		if err != nil {
+			return err
+		}
 
 		fs := flag.NewFlagSet("geojson2shp", flag.ContinueOnError)
 		fs.SetOutput(out)

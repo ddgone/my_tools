@@ -58,10 +58,10 @@ import (
 	"unsafe"
 )
 
-func nativeWindowFrame(ctx context.Context) (windowFrame, error) {
+func nativeWindowFrame(ctx context.Context) (windowFrame, bool, error) {
 	ptr, err := nativeWindowContext(ctx)
 	if err != nil {
-		return windowFrame{}, err
+		return windowFrame{}, false, err
 	}
 
 	frame := C.GetNativeWindowFrame(ptr)
@@ -70,7 +70,7 @@ func nativeWindowFrame(ctx context.Context) (windowFrame, error) {
 		Y:      int(frame.y),
 		Width:  int(frame.width),
 		Height: int(frame.height),
-	}, nil
+	}, false, nil
 }
 
 func nativeSetWindowFrame(ctx context.Context, frame windowFrame) error {

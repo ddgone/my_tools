@@ -15,6 +15,20 @@ type winRect struct {
 	Bottom int32
 }
 
+type winPoint struct {
+	X int32
+	Y int32
+}
+
+type windowPlacement struct {
+	Length           uint32
+	Flags            uint32
+	ShowCmd          uint32
+	PtMinPosition    winPoint
+	PtMaxPosition    winPoint
+	RcNormalPosition winRect
+}
+
 type monitorInfo struct {
 	CbSize    uint32
 	RcMonitor winRect
@@ -25,21 +39,30 @@ type monitorInfo struct {
 var (
 	user32                  = syscall.NewLazyDLL("user32.dll")
 	procGetWindowRect       = user32.NewProc("GetWindowRect")
+	procGetWindowPlacement  = user32.NewProc("GetWindowPlacement")
 	procSetWindowPos        = user32.NewProc("SetWindowPos")
 	procEnumDisplayMonitors = user32.NewProc("EnumDisplayMonitors")
 	procGetMonitorInfoW     = user32.NewProc("GetMonitorInfoW")
 )
 
-func nativeWindowFrame(ctx context.Context) (windowFrame, error) {
+func nativeWindowFrame(ctx context.Context) (windowFrame, bool, error) {
+	placement, err := getWindowPlacement(ctx)
+	if err == nil {
+		frame, minimised := frameFromWindowPlacement(placement)
+		if frame.valid() {
+			return frame, minimised, nil
+		}
+	}
+
 	hwnd, err := nativeWindowHandle(ctx)
 	if err != nil {
-		return windowFrame{}, err
+		return windowFrame{}, false, err
 	}
 
 	var rect winRect
 	ret, _, callErr := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rect)))
 	if ret == 0 {
-		return windowFrame{}, fmt.Errorf("GetWindowRect 失败: %w", callErr)
+		return windowFrame{}, false, fmt.Errorf("GetWindowRect 失败: %w", callErr)
 	}
 
 	return windowFrame{
@@ -47,7 +70,44 @@ func nativeWindowFrame(ctx context.Context) (windowFrame, error) {
 		Y:      int(rect.Top),
 		Width:  int(rect.Right - rect.Left),
 		Height: int(rect.Bottom - rect.Top),
-	}, nil
+	}, false, nil
+}
+
+func getWindowPlacement(ctx context.Context) (windowPlacement, error) {
+	hwnd, err := nativeWindowHandle(ctx)
+	if err != nil {
+		return windowPlacement{}, err
+	}
+
+	placement := windowPlacement{
+		Length: uint32(unsafe.Sizeof(windowPlacement{})),
+	}
+	ret, _, callErr := procGetWindowPlacement.Call(hwnd, uintptr(unsafe.Pointer(&placement)))
+	if ret == 0 {
+		return windowPlacement{}, fmt.Errorf("GetWindowPlacement 失败: %w", callErr)
+	}
+
+	return placement, nil
+}
+
+func frameFromWindowPlacement(placement windowPlacement) (windowFrame, bool) {
+	frame := windowFrame{
+		X:      int(placement.RcNormalPosition.Left),
+		Y:      int(placement.RcNormalPosition.Top),
+		Width:  int(placement.RcNormalPosition.Right - placement.RcNormalPosition.Left),
+		Height: int(placement.RcNormalPosition.Bottom - placement.RcNormalPosition.Top),
+	}
+
+	return frame, isPlacementMinimised(placement.ShowCmd)
+}
+
+func isPlacementMinimised(showCmd uint32) bool {
+	switch showCmd {
+	case 2, 6, 7, 11:
+		return true
+	default:
+		return false
+	}
 }
 
 func nativeSetWindowFrame(ctx context.Context, frame windowFrame) error {

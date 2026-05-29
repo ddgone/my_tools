@@ -54,6 +54,13 @@ const themeOverrides: GlobalThemeOverrides = {
   Tag: {
     borderRadius: '4px',
   },
+  Tooltip: {
+    color: '#faf8f5',
+    textColor: '#1a1a2e',
+    borderRadius: '6px',
+    boxShadow: '0 10px 24px rgba(0, 0, 0, 0.2)',
+    padding: '6px 10px',
+  },
   Form: {
     blankHeightSmall: '14px',
     blankHeightMedium: '20px',

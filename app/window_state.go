@@ -21,6 +21,11 @@ type windowFrame struct {
 	Height int
 }
 
+type windowSnapshot struct {
+	State     WindowState
+	Minimised bool
+}
+
 func (f windowFrame) valid() bool {
 	return f.Width > 0 && f.Height > 0
 }
@@ -46,11 +51,19 @@ func (a *App) beforeClose(ctx context.Context) bool {
 }
 
 func (a *App) currentWindowState() (WindowState, error) {
+	snapshot, err := a.currentWindowSnapshot()
+	if err != nil {
+		return WindowState{}, err
+	}
+	return snapshot.State, nil
+}
+
+func (a *App) currentWindowSnapshot() (windowSnapshot, error) {
 	if a.ctx == nil {
-		return WindowState{}, fmt.Errorf("应用尚未初始化")
+		return windowSnapshot{}, fmt.Errorf("应用尚未初始化")
 	}
 
-	frame, err := nativeWindowFrame(a.ctx)
+	frame, minimised, err := nativeWindowFrame(a.ctx)
 	if err != nil {
 		width, height := wailsruntime.WindowGetSize(a.ctx)
 		x, y := wailsruntime.WindowGetPosition(a.ctx)
@@ -63,32 +76,38 @@ func (a *App) currentWindowState() (WindowState, error) {
 		maximised = wailsruntime.WindowIsMaximised(a.ctx)
 	}
 
-	return WindowState{
-		Width:      frame.Width,
-		Height:     frame.Height,
-		X:          frame.X,
-		Y:          frame.Y,
-		Maximised:  maximised,
-		Fullscreen: fullscreen,
+	return windowSnapshot{
+		State: WindowState{
+			Width:      frame.Width,
+			Height:     frame.Height,
+			X:          frame.X,
+			Y:          frame.Y,
+			Maximised:  maximised,
+			Fullscreen: fullscreen,
+		},
+		Minimised: minimised,
 	}, nil
 }
 
 func (a *App) persistCurrentWindowState() error {
-	current, err := a.currentWindowState()
+	current, err := a.currentWindowSnapshot()
 	if err != nil {
 		return err
 	}
-
-	next := a.loadWindowConfig()
-	if !current.Maximised && !current.Fullscreen && current.Width > 0 && current.Height > 0 {
-		next.Width = current.Width
-		next.Height = current.Height
-		next.X = current.X
-		next.Y = current.Y
+	if current.Minimised {
+		return nil
 	}
 
-	next.Maximised = current.Maximised
-	next.Fullscreen = current.Fullscreen
+	next := a.loadWindowConfig()
+	if !current.State.Maximised && !current.State.Fullscreen && current.State.Width > 0 && current.State.Height > 0 {
+		next.Width = current.State.Width
+		next.Height = current.State.Height
+		next.X = current.State.X
+		next.Y = current.State.Y
+	}
+
+	next.Maximised = current.State.Maximised
+	next.Fullscreen = current.State.Fullscreen
 	return a.writeWindowConfig(next)
 }
 

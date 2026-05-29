@@ -908,7 +908,10 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
 		// Parse args manually using framework parser
-		parsedArgs := framework.ParseArgs(args)
+		parsedArgs, err := framework.ParseArgs(args)
+		if err != nil {
+			return err
+		}
 
 		fs := flag.NewFlagSet("utm_tool", flag.ContinueOnError)
 		fs.SetOutput(out)

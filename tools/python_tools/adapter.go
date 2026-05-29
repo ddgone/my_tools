@@ -169,7 +169,10 @@ arg1 "arg 2 with space" --flag value
 		defer os.Remove(tempPath)
 
 		// Parse arguments using framework parser
-		parsedArgs := framework.ParseArgs(args)
+		parsedArgs, err := framework.ParseArgs(args)
+		if err != nil {
+			return err
+		}
 
 		// Prepare command
 		cmdArgs := append([]string{"-u", tempPath}, parsedArgs...)

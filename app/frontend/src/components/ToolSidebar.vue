@@ -602,10 +602,10 @@ defineExpose({
   <Teleport to="body">
     <div
       v-if="tooltipShow"
-      class="pointer-events-none fixed z-[100] -translate-y-1/2 rounded-md bg-[#faf8f5] px-2.5 py-1.5 text-xs text-[#1a1a2e] shadow-lg shadow-black/20"
+      class="workbench-tooltip pointer-events-none fixed z-[100] -translate-y-1/2 px-2.5 py-1.5 text-xs"
       :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
     >
-      <div class="absolute -left-1 top-1/2 -translate-y-1/2 h-2 w-2 rotate-45 bg-[#faf8f5]" />
+      <div class="workbench-tooltip-arrow absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45" />
       {{ tooltipText }}
     </div>
   </Teleport>

@@ -141,7 +141,10 @@ func (t *ExampleTool) Execute(ctx framework.AppContext) {
 	usage := `这里写工具说明、参数解释和示例`
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs := framework.ParseArgs(args)
+		parsedArgs, err := framework.ParseArgs(args)
+		if err != nil {
+			return err
+		}
 
 		fs := flag.NewFlagSet("example_tool", flag.ContinueOnError)
 		fs.SetOutput(out)
@@ -178,10 +181,22 @@ func init() {
 桌面宿主当前传入的是一整段参数字符串，而不是 `[]string`。因此在 `flag.FlagSet` 前，必须先执行：
 
 ```go
-parsedArgs := framework.ParseArgs(args)
+parsedArgs, err := framework.ParseArgs(args)
+if err != nil {
+	return err
+}
 ```
 
-否则带空格的路径、引号参数和原始参数模式都可能解析错误。
+否则带空格的路径、引号参数和命令行模式都可能解析错误。
+
+当前 `framework.ParseArgs` 会严格校验参数字符串：
+
+- 支持单双引号
+- 支持空字符串值（如 `-input ""`）
+- 支持常见转义（如 `\"`、`\\`、`\ `）
+- 对未闭合引号或不完整转义直接返回错误
+
+这意味着工具作者不需要自己再写一套命令行拆分逻辑，只要正确接收并返回这个错误即可。
 
 ### `FlagSet` 输出必须写到 `out`
 

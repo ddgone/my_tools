@@ -62,10 +62,13 @@ func TestStartLocalExecutionRunsLegacyTool(t *testing.T) {
 }
 
 func TestBuildRemoteRunCommandForGoTool(t *testing.T) {
-	cmd, chmodCmd := buildRemoteRunCommand("/tmp/fire-salamander-abcd/geojson_to_shp_linux_amd64", remoteExecParams{
+	cmd, chmodCmd, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/geojson_to_shp_linux_amd64", remoteExecParams{
 		kind: "go",
 		args: `-input "/data/demo file.geojson" -workers 4`,
 	})
+	if err != nil {
+		t.Fatalf("buildRemoteRunCommand failed: %v", err)
+	}
 
 	expectedCmd := "cd '/tmp/fire-salamander-abcd' && './geojson_to_shp_linux_amd64' '-input' '/data/demo file.geojson' '-workers' '4'"
 	if cmd != expectedCmd {
@@ -79,11 +82,14 @@ func TestBuildRemoteRunCommandForGoTool(t *testing.T) {
 }
 
 func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
-	cmd, chmodCmd := buildRemoteRunCommand("/tmp/fire-salamander-abcd/restore_pcd_by_mgrs.py", remoteExecParams{
+	cmd, chmodCmd, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/restore_pcd_by_mgrs.py", remoteExecParams{
 		kind:      "python",
 		pythonEnv: "python3",
 		args:      `-input "/data/source dir"`,
 	})
+	if err != nil {
+		t.Fatalf("buildRemoteRunCommand failed: %v", err)
+	}
 
 	expectedCmd := "cd '/tmp/fire-salamander-abcd' && 'python3' './restore_pcd_by_mgrs.py' '-input' '/data/source dir'"
 	if cmd != expectedCmd {
@@ -92,5 +98,18 @@ func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
 
 	if chmodCmd != "" {
 		t.Fatalf("python command should not need chmod, got %s", chmodCmd)
+	}
+}
+
+func TestBuildRemoteRunCommandRejectsMalformedArgs(t *testing.T) {
+	_, _, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/demo", remoteExecParams{
+		kind: "go",
+		args: `-input "unterminated`,
+	})
+	if err == nil {
+		t.Fatal("expected malformed args to return error")
+	}
+	if !strings.Contains(err.Error(), "双引号未闭合") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

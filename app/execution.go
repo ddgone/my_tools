@@ -390,7 +390,10 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 		return err
 	}
 
-	runCmd, chmodCmd := buildRemoteRunCommand(remoteEntry, params)
+	runCmd, chmodCmd, err := buildRemoteRunCommand(remoteEntry, params)
+	if err != nil {
+		return err
+	}
 	if chmodCmd != "" {
 		if err := executor.Execute(ctx, chmodCmd, writer); err != nil {
 			return fmt.Errorf("设置远端产物权限失败: %w", err)
@@ -430,8 +433,12 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string, string) {
-	quotedArgs := joinRemoteShellArgs(framework.ParseArgs(params.args))
+func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string, string, error) {
+	parsedArgs, err := framework.ParseArgs(params.args)
+	if err != nil {
+		return "", "", err
+	}
+	quotedArgs := joinRemoteShellArgs(parsedArgs)
 	if params.kind == "python" {
 		env := strings.TrimSpace(params.pythonEnv)
 		if env == "" {
@@ -441,14 +448,14 @@ func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string,
 		if quotedArgs != "" {
 			cmd += " " + quotedArgs
 		}
-		return cmd, ""
+		return cmd, "", nil
 	}
 
 	cmd := fmt.Sprintf("cd %s && %s", runtime.ShellQuote(path.Dir(remoteEntry)), runtime.ShellQuote("./"+path.Base(remoteEntry)))
 	if quotedArgs != "" {
 		cmd += " " + quotedArgs
 	}
-	return cmd, fmt.Sprintf("chmod +x %s", runtime.ShellQuote(remoteEntry))
+	return cmd, fmt.Sprintf("chmod +x %s", runtime.ShellQuote(remoteEntry)), nil
 }
 
 func joinRemoteShellArgs(args []string) string {

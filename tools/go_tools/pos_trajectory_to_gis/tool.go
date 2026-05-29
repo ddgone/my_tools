@@ -379,7 +379,10 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs := framework.ParseArgs(args)
+		parsedArgs, err := framework.ParseArgs(args)
+		if err != nil {
+			return err
+		}
 
 		fs := flag.NewFlagSet("pos2gis", flag.ContinueOnError)
 		fs.SetOutput(out)

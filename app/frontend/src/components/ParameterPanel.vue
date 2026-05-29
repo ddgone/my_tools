@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  NAlert,
   NButton,
   NForm,
   NFormItem,
@@ -20,6 +21,7 @@ import { FolderOpen, Copy, HelpCircle } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
+import { validateCliArgs } from '@/utils/cliArgs'
 
 const props = defineProps<{
   tool: ToolManifest | null
@@ -99,6 +101,13 @@ function tabRawArgs(): string {
   return activeTab.value?.rawArgs ?? ''
 }
 
+const cliArgsError = computed(() => {
+  if (activeMode.value !== 'cli') {
+    return null
+  }
+  return validateCliArgs(tabRawArgs())
+})
+
 function onRawArgsUpdate(value: string) {
   const tab = activeTab.value
   if (!tab) return
@@ -162,18 +171,15 @@ async function copyCli() {
                     :style="{ maxWidth: '320px' }"
                   >
                     <template #trigger>
-                      <NButton
-                        text
-                        size="tiny"
-                        class="opacity-70 hover:opacity-100"
+                      <span
+                        class="help-trigger"
+                        tabindex="0"
                       >
-                        <template #icon>
-                          <NIcon
-                            :component="HelpCircle"
-                            size="14"
-                          />
-                        </template>
-                      </NButton>
+                        <NIcon
+                          :component="HelpCircle"
+                          size="14"
+                        />
+                      </span>
                     </template>
                     <div class="whitespace-pre-wrap text-xs leading-relaxed">
                       {{ param.help }}
@@ -254,13 +260,22 @@ async function copyCli() {
           placeholder="直接输入命令行参数，例如 -input &quot;/path/to/data&quot; -workers 4"
           :autosize="{ minRows: 4, maxRows: 10 }"
           class="font-mono"
+          :status="cliArgsError ? 'error' : undefined"
           @update:value="onRawArgsUpdate"
         />
+        <NAlert
+          v-if="cliArgsError"
+          type="error"
+          :show-icon="false"
+          size="small"
+        >
+          {{ cliArgsError }}
+        </NAlert>
         <NText
           depth="3"
           class="text-[11px]"
         >
-          命令行模式支持直接输入 CLI 参数字符串，适合复杂 flag 组合或高级调试场景。
+          命令行模式支持直接输入 CLI 参数字符串；空格请用引号包裹，值内双引号请写成 <code>\"</code>，未闭合引号会在执行时报参数解析错误。
         </NText>
       </div>
 
@@ -378,5 +393,25 @@ async function copyCli() {
 <style scoped>
 :deep(.n-tabs-bar) {
   transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.help-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(160, 166, 186, 0.82);
+  cursor: pointer;
+  transition:
+    color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.help-trigger:hover,
+.help-trigger:focus-visible {
+  color: #8be9fd;
+  opacity: 1;
 }
 </style>
