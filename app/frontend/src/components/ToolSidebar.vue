@@ -117,6 +117,11 @@ const activeSidebarTheme = computed(() =>
 const sidebarThemeStyle = computed<CSSProperties>(() => ({
   ...makeExecutionThemeVars(activeSidebarTheme.value, 'tool-sidebar'),
 }))
+const treeThemeOverrides = computed(() => ({
+  nodeColorActive: activeSidebarTheme.value.accentSoftBg,
+  nodeColorHover: 'transparent',
+  nodeColorPressed: 'transparent',
+}))
 
 const categoryPathStr = (tool: ToolManifest) =>
   tool.category.length > 0 ? tool.category.join(' > ') : '未分类'
@@ -223,16 +228,24 @@ function toolTabState(toolId: string) {
   return workspace.openTabs.find((tab) => tab.toolId === toolId)
 }
 
+function persistedToolState(toolId: string) {
+  return workspace.getPersistedToolState(toolId)
+}
+
+function toolExecutionTarget(toolId: string) {
+  return toolTabState(toolId)?.executionTarget ?? persistedToolState(toolId)?.executionTarget ?? 'local'
+}
+
 function isToolRemote(toolId: string) {
-  return toolTabState(toolId)?.executionTarget === 'remote'
+  return toolExecutionTarget(toolId) === 'remote'
 }
 
 function selectTool(tool: ToolManifest) {
   workspace.openTool(tool)
 }
 
-function toolKindTheme(tool: ToolManifest) {
-  return getExecutionTheme(tool.kind, 'local')
+function toolExecutionTheme(tool: ToolManifest) {
+  return getExecutionTheme(tool.kind, toolExecutionTarget(tool.id))
 }
 
 function kindIcon(kind: string) {
@@ -240,11 +253,28 @@ function kindIcon(kind: string) {
 }
 
 function kindIconColor(tool: ToolManifest) {
-  return toolKindTheme(tool).accent
+  return toolExecutionTheme(tool).accent
 }
 
 function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   return option.tool ? 'toggleSelect' : 'toggleExpand'
+}
+
+function treeNodeProps({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
+  const tool = option.tool
+  if (!tool) {
+    return {
+      class: 'category-tree-node',
+    }
+  }
+  const theme = toolExecutionTheme(tool)
+  return {
+    class: 'tool-tree-node',
+    style: {
+      '--tool-node-hover-bg': `rgba(${theme.accentRgb}, 0.06)`,
+      '--tool-node-pressed-bg': `rgba(${theme.accentRgb}, 0.09)`,
+    },
+  }
 }
 
 function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
@@ -265,35 +295,50 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
       class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-dracula-green shadow-[0_0_6px_rgba(80,250,123,0.4)]' : 'border border-slate-600'}`,
     }),
     h('span', {
-      class: 'truncate text-sm text-slate-200',
+      class: 'truncate text-sm',
+      style: {
+        color: toolExecutionTheme(tool).accent,
+      },
       onMouseenter: (e: MouseEvent) => onTooltipEnter(e, tool.name),
       onMouseleave: onTooltipLeave,
     }, tool.name),
-    ...(isToolRemote(tool.id)
-      ? [h(NIcon, {
-          component: GlobeOutline,
-          size: 12,
-          color: getExecutionTheme(tool.kind, 'remote').accent,
-          class: 'shrink-0',
-        })]
-      : []),
-    h(NTag, {
-      bordered: false,
-      size: 'tiny',
-      class: 'ml-auto shrink-0',
-      style: {
-        color: toolKindTheme(tool).accent,
-        backgroundColor: toolKindTheme(tool).accentSoftBg,
-        border: `1px solid ${toolKindTheme(tool).accentSoftBorder}`,
-      },
-    }, {
-      icon: () => h(NIcon, {
-        component: kindIcon(tool.kind),
-        size: 10,
-        color: kindIconColor(tool),
+    h('div', {
+      class: 'ml-auto flex shrink-0 items-center gap-x-1',
+    }, [
+      ...(isToolRemote(tool.id)
+        ? [h(NIcon, {
+            component: GlobeOutline,
+            size: 12,
+            color: toolExecutionTheme(tool).accent,
+            class: 'shrink-0',
+          })]
+        : []),
+      ...(workspace.isFavorite(tool.id)
+        ? [h(NIcon, {
+            component: StarIcon,
+            size: 12,
+            color: '#f1fa8c',
+            class: 'shrink-0',
+          })]
+        : []),
+      h(NTag, {
+        bordered: false,
+        size: 'tiny',
+        class: 'shrink-0',
+        style: {
+          color: toolExecutionTheme(tool).accent,
+          backgroundColor: toolExecutionTheme(tool).accentSoftBg,
+          border: `1px solid ${toolExecutionTheme(tool).accentSoftBorder}`,
+        },
+      }, {
+        icon: () => h(NIcon, {
+          component: kindIcon(tool.kind),
+          size: 10,
+          color: kindIconColor(tool),
+        }),
+        default: () => tool.kind === 'python' ? 'py' : 'go',
       }),
-      default: () => tool.kind === 'python' ? 'py' : 'go',
-    }),
+    ]),
   ])
 }
 
@@ -428,12 +473,14 @@ defineExpose({
               :pattern="searchQuery"
               :selected-keys="selectedKeys"
               :render-label="renderNodeLabel"
+              :node-props="treeNodeProps"
               :override-default-node-click-behavior="handleNodeClickBehavior"
               :indent="8"
               show-line
               block-line
               selectable
               class="category-tree"
+              :theme-overrides="treeThemeOverrides"
               @update:selected-keys="handleTreeSelect"
               @update:expanded-keys="handleExpandKeys"
             />
@@ -713,5 +760,17 @@ defineExpose({
 }
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
   stroke: var(--tool-sidebar-accent-soft-strong-border) !important;
+}
+.category-tree .tool-tree-node:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: var(--tool-node-hover-bg) !important;
+}
+.category-tree .tool-tree-node.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: var(--tool-node-pressed-bg) !important;
+}
+.category-tree .category-tree-node:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+.category-tree .category-tree-node.n-tree-node--clickable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 </style>

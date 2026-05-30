@@ -533,6 +533,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return entry?.args || ''
   }
 
+  function getPersistedToolState(toolId: string): PersistedToolState | undefined {
+    return persistedToolStates.value[toolId]
+  }
+
   function resetAllData() {
     favorites.value = []
     recentTools.value = []
@@ -673,6 +677,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     isFavorite,
     getHistory,
     getRecentArgs,
+    getPersistedToolState,
     resetAllData,
     defaultSettings,
   }

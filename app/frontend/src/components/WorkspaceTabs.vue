@@ -278,12 +278,12 @@ function isToolTabRemote(id: string) {
   return toolTabStateByToolId(id)?.executionTarget === 'remote'
 }
 
-function toolKindThemeForTool(id: string) {
-  return getExecutionTheme(toolById(id)?.kind, 'local')
+function toolExecutionThemeForTool(id: string) {
+  return getExecutionTheme(toolById(id)?.kind, isToolTabRemote(id) ? 'remote' : 'local')
 }
 
 function toolKindTagStyleForTool(id: string): CSSProperties {
-  const theme = toolKindThemeForTool(id)
+  const theme = toolExecutionThemeForTool(id)
   return {
     color: theme.accent,
     backgroundColor: theme.accentSoftBg,
@@ -292,7 +292,13 @@ function toolKindTagStyleForTool(id: string): CSSProperties {
 }
 
 function toolKindIconColorForTool(id: string) {
-  return toolKindThemeForTool(id).accent
+  return toolExecutionThemeForTool(id).accent
+}
+
+function toolNameStyleForTool(id: string): CSSProperties {
+  return {
+    color: toolExecutionThemeForTool(id).accent,
+  }
 }
 
 function isUnifiedTabActive(item: { type: string; arrayIndex: number }) {
@@ -469,7 +475,7 @@ watch(searchResults, (results) => {
             v-if="item.type === 'tool' && isToolTabRemote(item.label)"
             :component="GlobeOutline"
             size="11"
-            color="#ff79c6"
+            :color="toolExecutionThemeForTool(item.label).accent"
             class="shrink-0"
           />
           <span
@@ -478,6 +484,7 @@ watch(searchResults, (results) => {
           />
           <span
             class="truncate text-xs"
+            :style="item.type === 'tool' ? toolNameStyleForTool(item.label) : undefined"
             :data-fullname="item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label"
             @mouseenter="(e: MouseEvent) => onTooltipEnter(e, item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label)"
             @mouseleave="onTooltipLeave"
