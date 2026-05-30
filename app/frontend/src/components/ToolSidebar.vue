@@ -22,6 +22,9 @@ import {
   CodeSlash,
   LogoPython,
   GlobeOutline,
+  Play,
+  LaptopOutline,
+  OpenOutline,
 } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -29,6 +32,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
+import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { ANIM } from '@/utils/animation'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 import gsap from 'gsap'
@@ -260,6 +264,79 @@ function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: Too
   return option.tool ? 'toggleSelect' : 'toggleExpand'
 }
 
+const toolContextMenuShow = ref(false)
+const toolContextMenuX = ref(0)
+const toolContextMenuY = ref(0)
+const toolContextMenuTool = ref<ToolManifest | null>(null)
+
+const toolContextMenuOptions = computed(() => {
+  const tool = toolContextMenuTool.value
+  if (!tool) return []
+  return [
+    { label: '打开工具', key: 'open', icon: OpenOutline },
+    {
+      label: workspace.isFavorite(tool.id) ? '取消收藏' : '收藏工具',
+      key: 'favorite',
+      icon: StarIcon,
+    },
+    { type: 'divider' as const, key: 'divider-actions' },
+    { label: '本地运行', key: 'run-local', icon: LaptopOutline, hint: '占位' },
+    { label: '远程运行', key: 'run-remote', icon: GlobeOutline, hint: '占位' },
+    { label: '直接执行', key: 'run-now', icon: Play, hint: '占位' },
+  ]
+})
+
+function closeToolContextMenu() {
+  toolContextMenuShow.value = false
+  toolContextMenuTool.value = null
+}
+
+function openToolContextMenu(event: MouseEvent, tool: ToolManifest) {
+  event.preventDefault()
+  event.stopPropagation()
+  selectedKeys.value = [tool.id]
+  toolContextMenuTool.value = tool
+  toolContextMenuShow.value = false
+  toolContextMenuX.value = event.clientX
+  toolContextMenuY.value = event.clientY
+  nextTick(() => {
+    toolContextMenuShow.value = true
+  })
+}
+
+function handleToolContextMenuSelect(key: string | number) {
+  const tool = toolContextMenuTool.value
+  closeToolContextMenu()
+  if (!tool) return
+  switch (String(key)) {
+    case 'open':
+      selectTool(tool)
+      break
+    case 'favorite':
+      workspace.toggleFavorite(tool.id)
+      message.success(workspace.isFavorite(tool.id) ? `已收藏 ${tool.name}` : `已取消收藏 ${tool.name}`)
+      break
+    case 'run-local':
+      selectTool(tool)
+      if (workspace.activeTabIndex >= 0) {
+        workspace.setExecutionTarget(workspace.activeTabIndex, 'local')
+      }
+      message.info(`已切换到 ${tool.name} 的本地运行入口`)
+      break
+    case 'run-remote':
+      selectTool(tool)
+      if (workspace.activeTabIndex >= 0) {
+        workspace.setExecutionTarget(workspace.activeTabIndex, 'remote')
+      }
+      message.info(`已切换到 ${tool.name} 的远程运行入口`)
+      break
+    case 'run-now':
+      selectTool(tool)
+      message.info(`已为 ${tool.name} 预留“直接执行”菜单动作，后续可接真正执行逻辑`)
+      break
+  }
+}
+
 function treeNodeProps({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   const tool = option.tool
   if (!tool) {
@@ -289,6 +366,9 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     onClick: (e: MouseEvent) => {
       e.stopPropagation()
       selectTool(tool)
+    },
+    onContextmenu: (e: MouseEvent) => {
+      openToolContextMenu(e, tool)
     },
   }, [
     h('span', {
@@ -393,6 +473,10 @@ watch(selectedKeys, () => {
   })
 })
 
+watch([() => props.activeView, searchQuery], () => {
+  closeToolContextMenu()
+})
+
 function handleTreeSelect(keys: string[], _option: Array<TreeOption | null>) {
   if (keys.length === 0) return
   const tool = allTools.value.find((item) => item.id === keys[0])
@@ -413,8 +497,8 @@ function sshDropdownOptions(_conn: SSHConnection) {
   ]
 }
 
-function handleSSHMenuSelect(key: string, conn: SSHConnection) {
-  switch (key) {
+function handleSSHMenuSelect(key: string | number, conn: SSHConnection) {
+  switch (String(key)) {
     case 'edit':
       selectConnection(conn)
       break
@@ -436,287 +520,300 @@ defineExpose({
 </script>
 
 <template>
-  <aside
-    class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
-    :style="{ width: props.width + 'px' }"
-  >
-    <NScrollbar
-      class="flex-1"
-      :style="sidebarThemeStyle"
+  <div class="contents">
+    <aside
+      class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
+      :style="{ width: props.width + 'px' }"
     >
-      <Transition
-        name="slide"
-        mode="out-in"
+      <NScrollbar
+        class="flex-1"
+        :style="sidebarThemeStyle"
       >
-        <div
-          v-if="activeView === 'tools'"
-          key="tools"
-        >
-          <div class="p-3">
-            <NInput
-              v-model:value="searchQuery"
-              placeholder="搜索工具..."
-              clearable
-              size="small"
-            >
-              <template #prefix>
-                <NIcon :component="Search" />
-              </template>
-            </NInput>
-          </div>
-          <div class="p-2">
-            <NTree
-              :key="treeRenderKey"
-              ref="treeRef"
-              :expanded-keys="expandedKeys"
-              :data="treeData"
-              :pattern="searchQuery"
-              :selected-keys="selectedKeys"
-              :render-label="renderNodeLabel"
-              :node-props="treeNodeProps"
-              :override-default-node-click-behavior="handleNodeClickBehavior"
-              :indent="8"
-              show-line
-              block-line
-              selectable
-              class="category-tree"
-              :theme-overrides="treeThemeOverrides"
-              @update:selected-keys="handleTreeSelect"
-              @update:expanded-keys="handleExpandKeys"
-            />
-          </div>
-        </div>
-
-        <div
-          v-else-if="activeView === 'favorites'"
-          key="favorites"
-          class="p-2"
+        <Transition
+          name="slide"
+          mode="out-in"
         >
           <div
-            v-if="favoriteTools.length === 0"
-            class="flex flex-col items-center justify-center py-12 text-center"
+            v-if="activeView === 'tools'"
+            key="tools"
           >
-            <NIcon
-              :component="StarIcon"
-              size="32"
-              color="#44475a"
-            />
-            <p class="mt-2 text-xs text-slate-500">
-              暂无收藏的工具
-            </p>
-            <p class="mt-1 text-[10px] text-slate-600">
-              使用 Ctrl+F 收藏工具
-            </p>
-          </div>
-          <div
-            v-else
-            class="space-y-1"
-          >
-            <NCard
-              v-for="tool in favoriteTools"
-              :key="tool.id"
-              size="small"
-              :bordered="true"
-              hoverable
-              class="ui-surface-hover"
-              :content-style="{ padding: '8px 10px' }"
-              :style="isToolActive(tool.id)
-                ? {
-                  borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
-                  backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
-                }
-                : {}"
-              @click="selectTool(tool)"
-            >
-              <div
-                class="flex items-center gap-x-2 text-left"
-                :style="isToolActive(tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
+            <div class="p-3">
+              <NInput
+                v-model:value="searchQuery"
+                placeholder="搜索工具..."
+                clearable
+                size="small"
               >
-                <NIcon
-                  :component="kindIcon(tool.kind)"
-                  size="16"
-                  :color="kindIconColor(tool)"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm">
-                    {{ tool.name }}
-                  </div>
-                  <div class="truncate text-[10px] text-slate-500">
-                    {{ categoryPathStr(tool) }} · {{ tool.description }}
-                  </div>
-                </div>
-              </div>
-            </NCard>
-          </div>
-        </div>
-
-        <div
-          v-else-if="activeView === 'recent'"
-          key="recent"
-          class="p-2"
-        >
-          <div
-            v-if="recentToolList.length === 0"
-            class="flex flex-col items-center justify-center py-12 text-center"
-          >
-            <NIcon
-              :component="TimeOutline"
-              size="32"
-              color="#44475a"
-            />
-            <p class="mt-2 text-xs text-slate-500">
-              暂无最近使用
-            </p>
-            <p class="mt-1 text-[10px] text-slate-600">
-              打开工具后自动记录
-            </p>
-          </div>
-          <div
-            v-else
-            class="space-y-1"
-          >
-            <NCard
-              v-for="entry in recentToolList"
-              :key="entry.tool.id"
-              size="small"
-              :bordered="true"
-              hoverable
-              class="ui-surface-hover"
-              :content-style="{ padding: '8px 10px' }"
-              :style="isToolActive(entry.tool.id)
-                ? {
-                  borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
-                  backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
-                }
-                : {}"
-              @click="selectTool(entry.tool)"
-            >
-              <div
-                class="flex items-center gap-x-2 text-left"
-                :style="isToolActive(entry.tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
-              >
-                <NIcon
-                  :component="kindIcon(entry.tool.kind)"
-                  size="16"
-                  :color="kindIconColor(entry.tool)"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm">
-                    {{ entry.tool.name }}
-                  </div>
-                  <div class="truncate text-[10px] text-slate-500">
-                    {{ entry.args || '无参数' }}
-                  </div>
-                </div>
-              </div>
-            </NCard>
-          </div>
-        </div>
-
-        <div
-          v-else-if="activeView === 'ssh'"
-          key="ssh"
-          class="flex h-full flex-col"
-        >
-          <div class="flex items-center justify-between px-3 py-2">
-            <span class="text-xs font-medium text-slate-300">SSH 连接</span>
-            <NButton
-              text
-              size="tiny"
-              type="primary"
-              @click="createConnection()"
-            >
-              <template #icon>
-                <NIcon :component="Add" />
-              </template>
-              新建
-            </NButton>
-          </div>
-
-          <div
-            v-if="sshConnections.length === 0"
-            class="flex flex-1 items-center justify-center p-4"
-          >
-            <div class="text-center">
-              <NIcon
-                :component="ServerOutline"
-                size="28"
-                color="#44475a"
+                <template #prefix>
+                  <NIcon :component="Search" />
+                </template>
+              </NInput>
+            </div>
+            <div class="p-2">
+              <NTree
+                :key="treeRenderKey"
+                ref="treeRef"
+                :expanded-keys="expandedKeys"
+                :data="treeData"
+                :pattern="searchQuery"
+                :selected-keys="selectedKeys"
+                :render-label="renderNodeLabel"
+                :node-props="treeNodeProps"
+                :override-default-node-click-behavior="handleNodeClickBehavior"
+                :indent="8"
+                show-line
+                block-line
+                selectable
+                class="category-tree"
+                :theme-overrides="treeThemeOverrides"
+                @update:selected-keys="handleTreeSelect"
+                @update:expanded-keys="handleExpandKeys"
               />
-              <p class="mt-2 text-xs text-slate-500">
-                暂无 SSH 连接
-              </p>
-              <NButton
-                size="tiny"
-                class="mt-3"
-                @click="createConnection()"
-              >
-                新建第一个连接
-              </NButton>
             </div>
           </div>
 
           <div
-            v-else
-            class="space-y-1 overflow-y-auto px-2"
+            v-else-if="activeView === 'favorites'"
+            key="favorites"
+            class="p-2"
           >
-            <NCard
-              v-for="conn in sshConnections"
-              :key="conn.id"
-              size="small"
-              :bordered="true"
-              hoverable
-              class="ui-surface-hover"
-              :content-style="{ padding: '8px 10px' }"
-              @click="selectConnection(conn)"
+            <div
+              v-if="favoriteTools.length === 0"
+              class="flex flex-col items-center justify-center py-12 text-center"
             >
-              <div class="flex items-center gap-x-2 text-left text-slate-300">
-                <NIcon
-                  :component="ServerOutline"
-                  size="16"
-                  color="#8be9fd"
-                />
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm font-medium text-slate-200">
-                    {{ conn.name }}
-                  </div>
-                  <div class="truncate text-[10px] text-slate-500">
-                    {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+              <NIcon
+                :component="StarIcon"
+                size="32"
+                color="#44475a"
+              />
+              <p class="mt-2 text-xs text-slate-500">
+                暂无收藏的工具
+              </p>
+              <p class="mt-1 text-[10px] text-slate-600">
+                使用右键菜单或 Ctrl+F 收藏工具
+              </p>
+            </div>
+            <div
+              v-else
+              class="space-y-1"
+            >
+              <NCard
+                v-for="tool in favoriteTools"
+                :key="tool.id"
+                size="small"
+                :bordered="true"
+                hoverable
+                class="ui-surface-hover"
+                :content-style="{ padding: '8px 10px' }"
+                :style="isToolActive(tool.id)
+                  ? {
+                    borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
+                    backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
+                  }
+                  : {}"
+                @click="selectTool(tool)"
+              >
+                <div
+                  class="flex items-center gap-x-2 text-left"
+                  :style="isToolActive(tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
+                >
+                  <NIcon
+                    :component="kindIcon(tool.kind)"
+                    size="16"
+                    :color="kindIconColor(tool)"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm">
+                      {{ tool.name }}
+                    </div>
+                    <div class="truncate text-[10px] text-slate-500">
+                      {{ categoryPathStr(tool) }} · {{ tool.description }}
+                    </div>
                   </div>
                 </div>
-                <NDropdown
-                  trigger="click"
-                  :options="sshDropdownOptions(conn)"
-                  @select="(key: string) => handleSSHMenuSelect(key, conn)"
-                >
-                  <NButton
-                    text
-                    size="tiny"
-                    @click.stop
-                  >
-                    <template #icon>
-                      <NIcon :component="EllipsisHorizontal" />
-                    </template>
-                  </NButton>
-                </NDropdown>
-              </div>
-            </NCard>
+              </NCard>
+            </div>
           </div>
-        </div>
-      </Transition>
-    </NScrollbar>
-  </aside>
 
-  <Teleport to="body">
-    <div
-      v-if="tooltipShow"
-      class="workbench-tooltip pointer-events-none fixed z-[100] -translate-y-1/2 px-2.5 py-1.5 text-xs"
-      :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
-    >
-      <div class="workbench-tooltip-arrow absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45" />
-      {{ tooltipText }}
-    </div>
-  </Teleport>
+          <div
+            v-else-if="activeView === 'recent'"
+            key="recent"
+            class="p-2"
+          >
+            <div
+              v-if="recentToolList.length === 0"
+              class="flex flex-col items-center justify-center py-12 text-center"
+            >
+              <NIcon
+                :component="TimeOutline"
+                size="32"
+                color="#44475a"
+              />
+              <p class="mt-2 text-xs text-slate-500">
+                暂无最近使用
+              </p>
+              <p class="mt-1 text-[10px] text-slate-600">
+                打开工具后自动记录
+              </p>
+            </div>
+            <div
+              v-else
+              class="space-y-1"
+            >
+              <NCard
+                v-for="entry in recentToolList"
+                :key="entry.tool.id"
+                size="small"
+                :bordered="true"
+                hoverable
+                class="ui-surface-hover"
+                :content-style="{ padding: '8px 10px' }"
+                :style="isToolActive(entry.tool.id)
+                  ? {
+                    borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
+                    backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
+                  }
+                  : {}"
+                @click="selectTool(entry.tool)"
+              >
+                <div
+                  class="flex items-center gap-x-2 text-left"
+                  :style="isToolActive(entry.tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
+                >
+                  <NIcon
+                    :component="kindIcon(entry.tool.kind)"
+                    size="16"
+                    :color="kindIconColor(entry.tool)"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm">
+                      {{ entry.tool.name }}
+                    </div>
+                    <div class="truncate text-[10px] text-slate-500">
+                      {{ entry.args || '无参数' }}
+                    </div>
+                  </div>
+                </div>
+              </NCard>
+            </div>
+          </div>
+
+          <div
+            v-else-if="activeView === 'ssh'"
+            key="ssh"
+            class="flex h-full flex-col"
+          >
+            <div class="flex items-center justify-between px-3 py-2">
+              <span class="text-xs font-medium text-slate-300">SSH 连接</span>
+              <NButton
+                text
+                size="tiny"
+                type="primary"
+                @click="createConnection()"
+              >
+                <template #icon>
+                  <NIcon :component="Add" />
+                </template>
+                新建
+              </NButton>
+            </div>
+
+            <div
+              v-if="sshConnections.length === 0"
+              class="flex flex-1 items-center justify-center p-4"
+            >
+              <div class="text-center">
+                <NIcon
+                  :component="ServerOutline"
+                  size="28"
+                  color="#44475a"
+                />
+                <p class="mt-2 text-xs text-slate-500">
+                  暂无 SSH 连接
+                </p>
+                <NButton
+                  size="tiny"
+                  class="mt-3"
+                  @click="createConnection()"
+                >
+                  新建第一个连接
+                </NButton>
+              </div>
+            </div>
+
+            <div
+              v-else
+              class="space-y-1 overflow-y-auto px-2"
+            >
+              <NCard
+                v-for="conn in sshConnections"
+                :key="conn.id"
+                size="small"
+                :bordered="true"
+                hoverable
+                class="ui-surface-hover"
+                :content-style="{ padding: '8px 10px' }"
+                @click="selectConnection(conn)"
+              >
+                <div class="flex items-center gap-x-2 text-left text-slate-300">
+                  <NIcon
+                    :component="ServerOutline"
+                    size="16"
+                    color="#8be9fd"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm font-medium text-slate-200">
+                      {{ conn.name }}
+                    </div>
+                    <div class="truncate text-[10px] text-slate-500">
+                      {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
+                    </div>
+                  </div>
+                  <NDropdown
+                    trigger="click"
+                    :options="sshDropdownOptions(conn)"
+                    @select="key => handleSSHMenuSelect(key, conn)"
+                  >
+                    <NButton
+                      text
+                      size="tiny"
+                      @click.stop
+                    >
+                      <template #icon>
+                        <NIcon :component="EllipsisHorizontal" />
+                      </template>
+                    </NButton>
+                  </NDropdown>
+                </div>
+              </NCard>
+            </div>
+          </div>
+        </Transition>
+      </NScrollbar>
+    </aside>
+
+    <WorkbenchContextMenu
+      :show="toolContextMenuShow"
+      :x="toolContextMenuX"
+      :y="toolContextMenuY"
+      :title="toolContextMenuTool?.name ?? ''"
+      :subtitle="toolContextMenuTool ? categoryPathStr(toolContextMenuTool) : ''"
+      :items="toolContextMenuOptions"
+      @select="handleToolContextMenuSelect"
+      @close="closeToolContextMenu"
+    />
+
+    <Teleport to="body">
+      <div
+        v-if="tooltipShow"
+        class="workbench-tooltip pointer-events-none fixed z-[100] -translate-y-1/2 px-2.5 py-1.5 text-xs"
+        :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
+      >
+        <div class="workbench-tooltip-arrow absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45" />
+        {{ tooltipText }}
+      </div>
+    </Teleport>
+  </div>
 </template>
 
 <style>
