@@ -35,8 +35,9 @@ const emit = defineEmits<{
 const sshConnections = ref<SSHConnection[]>([])
 const switchTrackRef = ref<HTMLElement | null>(null)
 const switchThumbRef = ref<HTMLElement | null>(null)
-const localButtonRef = ref<HTMLElement | null>(null)
-const remoteButtonRef = ref<HTMLElement | null>(null)
+const switchBackgroundRef = ref<HTMLElement | null>(null)
+const switchLocalLabelRef = ref<HTMLElement | null>(null)
+const switchRemoteLabelRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 
 async function loadConnections() {
@@ -54,9 +55,9 @@ watch(
 )
 
 const isRemote = computed(() => props.tab?.executionTarget === 'remote')
+const isPythonTool = computed(() => props.tool?.kind === 'python')
 const isPythonLocal = computed(() => !isRemote.value && props.tool?.kind === 'python')
 
-const accentTextClass = computed(() => (isRemote.value ? 'text-dracula-pink' : isPythonLocal.value ? 'text-dracula-green' : 'text-dracula-cyan'))
 const executeButtonClass = computed(() =>
   isRemote.value
     ? 'border-dracula-pink/20 bg-dracula-pink text-[#2f1026] hover:bg-[#ff94d2]'
@@ -64,17 +65,63 @@ const executeButtonClass = computed(() =>
       ? 'border-dracula-green/20 bg-dracula-green text-[#082512] hover:bg-[#7dff9a]'
       : 'border-dracula-cyan/20 bg-dracula-cyan text-[#102433] hover:bg-[#a4ffff]',
 )
-const goTagClass = computed(() =>
-  isRemote.value
-    ? 'text-dracula-pink'
-    : 'text-dracula-cyan',
-)
-const goIconColor = computed(() => (isRemote.value ? '#ff79c6' : '#8be9fd'))
-const switchThumbStyle = computed(() => ({
-  backgroundColor: isRemote.value ? 'rgba(255, 121, 198, 0.22)' : isPythonLocal.value ? 'rgba(80, 250, 123, 0.18)' : 'rgba(139, 233, 253, 0.16)',
+const detailTheme = computed(() => {
+  if (isRemote.value) {
+    return {
+      accent: '#ff79c6',
+      accentSoftBackground: 'rgba(255, 121, 198, 0.1)',
+      accentSoftBorder: 'rgba(255, 121, 198, 0.2)',
+      panelBackground: '#ff79c6',
+      panelText: '#2f1026',
+    }
+  }
+
+  if (isPythonTool.value) {
+    return {
+      accent: '#50fa7b',
+      accentSoftBackground: 'rgba(80, 250, 123, 0.1)',
+      accentSoftBorder: 'rgba(80, 250, 123, 0.2)',
+      panelBackground: '#50fa7b',
+      panelText: '#082512',
+    }
+  }
+
+  return {
+    accent: '#8be9fd',
+    accentSoftBackground: 'rgba(139, 233, 253, 0.1)',
+    accentSoftBorder: 'rgba(139, 233, 253, 0.2)',
+    panelBackground: '#8be9fd',
+    panelText: '#102433',
+  }
+})
+const detailThemeStyle = computed(() => ({
+  '--tool-detail-accent': detailTheme.value.accent,
+  '--tool-detail-accent-soft-bg': detailTheme.value.accentSoftBackground,
+  '--tool-detail-accent-soft-border': detailTheme.value.accentSoftBorder,
+  '--tool-detail-panel-text': detailTheme.value.panelText,
+  '--tool-detail-transition': '160ms var(--ease-out-soft)',
 }))
-const pythonTagClass = computed(() => (isRemote.value ? 'text-dracula-pink' : 'text-dracula-green'))
-const pythonIconColor = computed(() => (isRemote.value ? '#ff79c6' : '#50fa7b'))
+const switchTrackHoverClass = computed(() =>
+  'hover:border-white/15',
+)
+const switchTrackStyle = computed(() => ({
+  borderColor: 'rgba(15, 23, 42, 0.60)',
+  backgroundColor: 'rgba(8, 14, 24, 0.78)',
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.10), inset 0 3px 8px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+}))
+const switchBackgroundStyle = computed(() => ({
+  backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 55%, rgba(0,0,0,0.05) 100%)',
+}))
+const switchThumbStyle = computed(() => ({
+  borderColor: 'rgba(255, 255, 255, 0.32)',
+  background: 'rgba(255, 255, 255, 0.76)',
+  backdropFilter: 'blur(6px)',
+  WebkitBackdropFilter: 'blur(6px)',
+  boxShadow: '0 3px 14px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.04) inset, 0 1px 0 rgba(255, 255, 255, 0.55) inset',
+}))
+function toggleExecutionTarget() {
+  emit('update:execution-target', isRemote.value ? 'local' : 'remote')
+}
 
 const pythonEnvValue = computed(() => {
   if (!props.tab) {
@@ -84,6 +131,9 @@ const pythonEnvValue = computed(() => {
 })
 
 const remoteConnId = computed(() => props.tab?.remoteConfig.connId ?? '')
+function updateRemoteConnId(value: string | null) {
+  emit('update:remote-conn-id', value ?? '')
+}
 
 const remoteConnectionOptions = computed<SelectOption[]>(() =>
   sshConnections.value.map((conn) => ({
@@ -94,21 +144,72 @@ const remoteConnectionOptions = computed<SelectOption[]>(() =>
 
 async function animateSwitchThumb(immediate = false) {
   await nextTick()
+  const background = switchBackgroundRef.value
   const thumb = switchThumbRef.value
-  const target = isRemote.value ? remoteButtonRef.value : localButtonRef.value
   const track = switchTrackRef.value
-  if (!thumb || !target || !track) {
+  const localLabel = switchLocalLabelRef.value
+  const remoteLabel = switchRemoteLabelRef.value
+  if (!thumb || !background || !track || !localLabel || !remoteLabel) {
     return
   }
-  const x = target.offsetLeft - track.offsetLeft
-  const width = target.offsetWidth
-  gsap.to(thumb, {
-    x,
-    width,
-    duration: immediate ? 0 : 0.24,
-    ease: 'power2.out',
-    overwrite: 'auto',
+
+  const inset = 1
+  const thumbWidth = thumb.offsetWidth
+  const trackWidth = track.clientWidth
+  const labelWidth = Math.max(trackWidth - thumbWidth - inset * 2, 0)
+  // The thumb already has a static `left: 1px`; animation x should be relative to that base.
+  const thumbX = isRemote.value ? Math.max(trackWidth - thumbWidth - inset * 2, 0) : 0
+  const localVisibleX = inset + thumbWidth
+  const remoteVisibleX = inset
+  const localHiddenX = trackWidth
+  const remoteHiddenX = -labelWidth
+  const duration = immediate ? 0 : 0.16
+  const ease = 'power2.out'
+  const timeline = gsap.timeline({
+    defaults: {
+      duration,
+      ease,
+      overwrite: 'auto',
+    },
   })
+
+  timeline.to(
+    background,
+    {
+      backgroundColor: detailTheme.value.panelBackground,
+    },
+    0,
+  )
+  timeline.to(
+    thumb,
+    {
+      x: thumbX,
+    },
+    0,
+  )
+  timeline.to(
+    localLabel,
+    {
+      x: isRemote.value ? localHiddenX : localVisibleX,
+      width: labelWidth,
+    },
+    0,
+  )
+  timeline.to(
+    remoteLabel,
+    {
+      x: isRemote.value ? remoteVisibleX : remoteHiddenX,
+      width: labelWidth,
+    },
+    0,
+  )
+  timeline.to(
+    [localLabel, remoteLabel],
+    {
+      color: detailTheme.value.panelText,
+    },
+    0,
+  )
 }
 
 watch(() => props.tab?.executionTarget, () => {
@@ -121,8 +222,9 @@ onMounted(() => {
     void animateSwitchThumb(true)
   })
   if (switchTrackRef.value) resizeObserver.observe(switchTrackRef.value)
-  if (localButtonRef.value) resizeObserver.observe(localButtonRef.value)
-  if (remoteButtonRef.value) resizeObserver.observe(remoteButtonRef.value)
+  if (switchThumbRef.value) resizeObserver.observe(switchThumbRef.value)
+  if (switchLocalLabelRef.value) resizeObserver.observe(switchLocalLabelRef.value)
+  if (switchRemoteLabelRef.value) resizeObserver.observe(switchRemoteLabelRef.value)
 })
 
 onBeforeUnmount(() => {
@@ -131,14 +233,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="tool && tab">
+  <div
+    v-if="tool && tab"
+    :style="detailThemeStyle"
+  >
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <NIcon
             :component="tool.kind === 'python' ? LogoPython : CodeSlash"
             size="13"
-            :class="accentTextClass"
+            class="tool-detail-accent tool-detail-transition"
           />
           <NText
             depth="3"
@@ -150,22 +255,13 @@ onBeforeUnmount(() => {
           <NTag
             size="tiny"
             :bordered="false"
-            :class="tool.kind === 'python' ? pythonTagClass : goTagClass"
-            :style="tool.kind === 'python'
-              ? {
-                backgroundColor: isRemote ? 'rgba(255, 121, 198, 0.1)' : 'rgba(80, 250, 123, 0.1)',
-                border: isRemote ? '1px solid rgba(255, 121, 198, 0.2)' : '1px solid rgba(80, 250, 123, 0.2)',
-              }
-              : {
-                backgroundColor: isRemote ? 'rgba(255, 121, 198, 0.1)' : 'rgba(139, 233, 253, 0.1)',
-                border: isRemote ? '1px solid rgba(255, 121, 198, 0.2)' : '1px solid rgba(139, 233, 253, 0.2)',
-              }"
+            class="tool-kind-tag tool-detail-transition"
           >
             <template #icon>
               <NIcon
                 :component="tool.kind === 'python' ? LogoPython : CodeSlash"
                 size="10"
-                :color="tool.kind === 'python' ? pythonIconColor : goIconColor"
+                class="tool-detail-accent tool-detail-transition"
               />
             </template>
             {{ tool.kind === 'python' ? 'py' : 'go' }}
@@ -197,45 +293,48 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-        <div
+        <button
           ref="switchTrackRef"
-          class="relative inline-flex items-center rounded-full border border-white/10 bg-black/20 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          type="button"
+          class="ui-interactive relative inline-flex h-8 w-24 shrink-0 items-center overflow-hidden rounded-md border bg-transparent px-0 text-left shadow-sm"
+          :class="switchTrackHoverClass"
+          :style="switchTrackStyle"
+          :aria-label="isRemote ? '切换到本地执行目标' : '切换到远程执行目标'"
+          @click="toggleExecutionTarget"
         >
           <div
-            ref="switchThumbRef"
-            class="absolute inset-y-1 left-1 rounded-full border border-white/10 shadow-[0_8px_18px_rgba(0,0,0,0.22)]"
-            :style="switchThumbStyle"
-            style="width: 0"
+            ref="switchBackgroundRef"
+            class="pointer-events-none absolute inset-0 z-0 rounded-md"
+            :style="switchBackgroundStyle"
           />
-          <button
-            ref="localButtonRef"
-            v-press
-            type="button"
-            class="ui-interactive relative z-[1] flex min-w-[72px] items-center justify-center gap-x-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="tab.executionTarget === 'local' ? 'text-dracula-text' : 'text-slate-400 hover:text-dracula-text'"
-            @click="emit('update:execution-target', 'local')"
+          <div
+            ref="switchLocalLabelRef"
+            class="pointer-events-none absolute inset-y-0 left-0 z-[1] flex items-center justify-center gap-x-1 text-[12px] font-semibold tracking-[0.01em]"
           >
             <NIcon
               :component="LaptopOutline"
-              size="13"
+              size="12"
             />
-            本地
-          </button>
-          <button
-            ref="remoteButtonRef"
-            v-press
-            type="button"
-            class="ui-interactive relative z-[1] flex min-w-[72px] items-center justify-center gap-x-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="tab.executionTarget === 'remote' ? 'text-dracula-text' : 'text-slate-400 hover:text-dracula-text'"
-            @click="emit('update:execution-target', 'remote')"
+            <span>本地</span>
+          </div>
+          <div
+            ref="switchRemoteLabelRef"
+            class="pointer-events-none absolute inset-y-0 left-0 z-[1] flex items-center justify-center gap-x-1 text-[12px] font-semibold tracking-[0.01em]"
           >
             <NIcon
               :component="GlobeOutline"
-              size="13"
+              size="12"
             />
-            远程
-          </button>
-        </div>
+            <span>远程</span>
+          </div>
+          <div
+            ref="switchThumbRef"
+            class="pointer-events-none absolute inset-y-[1px] left-[1px] z-[2] flex w-[30px] items-center justify-center rounded-[5px] border"
+            :style="switchThumbStyle"
+          >
+            <span class="text-[12px] font-bold tracking-[0.04em] text-[#243041]">火</span>
+          </div>
+        </button>
 
         <NButton
           v-press
@@ -308,7 +407,7 @@ onBeforeUnmount(() => {
           clearable
           filterable
           class="max-w-[420px] flex-1"
-          @update:value="emit('update:remote-conn-id', ($event as string | null) ?? '')"
+          @update:value="updateRemoteConnId"
         />
       </div>
     </div>
@@ -333,3 +432,25 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.tool-detail-transition {
+  transition:
+    color var(--tool-detail-transition),
+    background-color var(--tool-detail-transition),
+    border-color var(--tool-detail-transition),
+    box-shadow var(--tool-detail-transition),
+    fill var(--tool-detail-transition),
+    stroke var(--tool-detail-transition);
+}
+
+.tool-detail-accent {
+  color: var(--tool-detail-accent);
+}
+
+.tool-kind-tag {
+  color: var(--tool-detail-accent) !important;
+  background-color: var(--tool-detail-accent-soft-bg) !important;
+  border: 1px solid var(--tool-detail-accent-soft-border) !important;
+}
+</style>

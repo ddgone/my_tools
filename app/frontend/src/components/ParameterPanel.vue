@@ -464,7 +464,15 @@ async function copyCli() {
 
 <style scoped>
 :deep(.n-tabs-bar) {
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition:
+    left 0.16s var(--ease-out-soft),
+    max-width 0.16s var(--ease-out-soft),
+    width 0.16s var(--ease-out-soft),
+    background-color 0.16s var(--ease-out-soft) !important;
+}
+
+.parameter-panel :deep(.n-tabs-tab__label) {
+  transition: color 0.16s var(--ease-out-soft);
 }
 
 .help-trigger {
