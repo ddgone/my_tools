@@ -128,7 +128,9 @@ func buildGoPackage(req BuildRequest) (string, error) {
 }
 
 func buildImportPath(sourceEntry string) string {
-	normalized := filepath.ToSlash(strings.TrimSpace(sourceEntry))
+	normalized := strings.TrimSpace(sourceEntry)
+	normalized = strings.ReplaceAll(normalized, "\\", "/")
+	normalized = filepath.ToSlash(normalized)
 	normalized = strings.TrimPrefix(normalized, "./")
 	importDir := path.Dir(normalized)
 	importDir = strings.TrimPrefix(importDir, "./")

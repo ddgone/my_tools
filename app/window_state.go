@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -46,7 +47,9 @@ func (a *App) domReady(ctx context.Context) {
 
 func (a *App) beforeClose(ctx context.Context) bool {
 	a.ctx = ctx
-	_ = a.persistCurrentWindowState()
+	if err := a.persistCurrentWindowState(); err != nil {
+		log.Printf("persistCurrentWindowState failed: %v", err)
+	}
 	return false
 }
 

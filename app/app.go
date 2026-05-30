@@ -37,6 +37,31 @@ type WindowState struct {
 	Fullscreen bool `json:"fullscreen"`
 }
 
+const defaultAppConfigJSON = `{
+  "app": {
+    "version": "1.0.0",
+    "language": "zh-CN"
+  },
+  "execution": {
+    "defaultPython": "python3",
+    "maxHistory": 50,
+    "remoteTimeoutSec": 30
+  },
+  "ui": {
+    "theme": "dracula",
+    "verboseShortcuts": false
+  },
+  "window": {
+    "width": 0,
+    "height": 0,
+    "x": -1,
+    "y": -1,
+    "maximised": false,
+    "fullscreen": false
+  }
+}
+`
+
 func NewApp() *App {
 	return &App{
 		legacy:    map[string]*legacyTool{},
@@ -91,21 +116,43 @@ func (a *App) loadWindowConfig() WindowState {
 	return cfg.Window
 }
 
+func defaultConfigDocument() map[string]json.RawMessage {
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(defaultAppConfigJSON), &cfg); err != nil || cfg == nil {
+		return map[string]json.RawMessage{}
+	}
+	return cfg
+}
+
+func loadConfigDocument(configPath string) (map[string]json.RawMessage, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaultConfigDocument(), nil
+		}
+		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(data, &cfg); err != nil || cfg == nil {
+		return defaultConfigDocument(), nil
+	}
+	return cfg, nil
+}
+
 func (a *App) writeWindowConfig(state WindowState) error {
 	layout, err := runtimeenv.ResolveLayout()
 	if err != nil {
 		return fmt.Errorf("解析运行时目录失败: %w", err)
 	}
+	if err := os.MkdirAll(layout.ConfigDir(), 0755); err != nil {
+		return fmt.Errorf("创建配置目录失败: %w", err)
+	}
 	configPath := filepath.Join(layout.ConfigDir(), "app.json")
 
-	data, err := os.ReadFile(configPath)
+	cfg, err := loadConfigDocument(configPath)
 	if err != nil {
-		return fmt.Errorf("读取配置文件失败: %w", err)
-	}
-
-	var cfg map[string]json.RawMessage
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("解析配置文件失败: %w", err)
+		return err
 	}
 
 	windowData, err := json.Marshal(state)
