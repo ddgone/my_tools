@@ -212,9 +212,17 @@ async function animateSwitchThumb(immediate = false) {
   )
 }
 
-watch(() => props.tab?.executionTarget, () => {
-  void animateSwitchThumb()
-})
+watch(
+  [
+    () => props.tab?.tabId,
+    () => props.tab?.executionTarget,
+    () => props.tool?.id,
+    () => props.tool?.kind,
+  ],
+  ([nextTabId], [prevTabId]) => {
+    void animateSwitchThumb(nextTabId !== prevTabId)
+  },
+)
 
 onMounted(() => {
   void animateSwitchThumb(true)
