@@ -268,6 +268,10 @@ const toolContextMenuShow = ref(false)
 const toolContextMenuX = ref(0)
 const toolContextMenuY = ref(0)
 const toolContextMenuTool = ref<ToolManifest | null>(null)
+const sshContextMenuShow = ref(false)
+const sshContextMenuX = ref(0)
+const sshContextMenuY = ref(0)
+const sshContextMenuConn = ref<SSHConnection | null>(null)
 
 const toolContextMenuOptions = computed(() => {
   const tool = toolContextMenuTool.value
@@ -335,6 +339,36 @@ function handleToolContextMenuSelect(key: string | number) {
       message.info(`已为 ${tool.name} 预留“直接执行”菜单动作，后续可接真正执行逻辑`)
       break
   }
+}
+
+const sshContextMenuOptions = computed(() => {
+  const conn = sshContextMenuConn.value
+  if (!conn) return []
+  return sshDropdownOptions(conn)
+})
+
+function closeSSHContextMenu() {
+  sshContextMenuShow.value = false
+  sshContextMenuConn.value = null
+}
+
+function openSSHContextMenu(event: MouseEvent, conn: SSHConnection) {
+  event.preventDefault()
+  event.stopPropagation()
+  sshContextMenuConn.value = conn
+  sshContextMenuShow.value = false
+  sshContextMenuX.value = event.clientX
+  sshContextMenuY.value = event.clientY
+  nextTick(() => {
+    sshContextMenuShow.value = true
+  })
+}
+
+function handleSSHContextMenuSelect(key: string | number) {
+  const conn = sshContextMenuConn.value
+  closeSSHContextMenu()
+  if (!conn) return
+  handleSSHMenuSelect(key, conn)
 }
 
 function treeNodeProps({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
@@ -475,6 +509,7 @@ watch(selectedKeys, () => {
 
 watch([() => props.activeView, searchQuery], () => {
   closeToolContextMenu()
+  closeSSHContextMenu()
 })
 
 function handleTreeSelect(keys: string[], _option: Array<TreeOption | null>) {
@@ -612,6 +647,7 @@ defineExpose({
                   }
                   : {}"
                 @click="selectTool(tool)"
+                @contextmenu="openToolContextMenu($event, tool)"
               >
                 <div
                   class="flex items-center gap-x-2 text-left"
@@ -675,6 +711,7 @@ defineExpose({
                   }
                   : {}"
                 @click="selectTool(entry.tool)"
+                @contextmenu="openToolContextMenu($event, entry.tool)"
               >
                 <div
                   class="flex items-center gap-x-2 text-left"
@@ -754,6 +791,7 @@ defineExpose({
                 class="ui-surface-hover"
                 :content-style="{ padding: '8px 10px' }"
                 @click="selectConnection(conn)"
+                @contextmenu="openSSHContextMenu($event, conn)"
               >
                 <div class="flex items-center gap-x-2 text-left text-slate-300">
                   <NIcon
@@ -775,6 +813,7 @@ defineExpose({
                     @select="key => handleSSHMenuSelect(key, conn)"
                   >
                     <NButton
+                      class="hidden"
                       text
                       size="tiny"
                       @click.stop
@@ -801,6 +840,17 @@ defineExpose({
       :items="toolContextMenuOptions"
       @select="handleToolContextMenuSelect"
       @close="closeToolContextMenu"
+    />
+
+    <WorkbenchContextMenu
+      :show="sshContextMenuShow"
+      :x="sshContextMenuX"
+      :y="sshContextMenuY"
+      :title="sshContextMenuConn?.name ?? ''"
+      :subtitle="sshContextMenuConn ? `${sshContextMenuConn.user}@${sshContextMenuConn.host}:${sshContextMenuConn.port}` : ''"
+      :items="sshContextMenuOptions"
+      @select="handleSSHContextMenuSelect"
+      @close="closeSSHContextMenu"
     />
 
     <Teleport to="body">
