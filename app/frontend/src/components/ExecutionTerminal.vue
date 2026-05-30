@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
 import { NButton, NIcon, NScrollbar, NText, NTooltip, useMessage } from 'naive-ui'
 import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
@@ -7,11 +7,12 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
 import gsap from 'gsap'
 import { ANIM } from '@/utils/animation'
+import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 
 const props = defineProps<{
   taskId: string
   executionTarget: 'local' | 'remote'
-  accent?: 'cyan' | 'green' | 'pink'
+  toolKind?: string
 }>()
 
 const execution = useExecutionStore()
@@ -20,6 +21,13 @@ const message = useMessage()
 const terminalRef = ref<InstanceType<typeof NScrollbar> | null>(null)
 const autoScroll = ref(true)
 let detachScrollListener: (() => void) | null = null
+const terminalTheme = computed(() => getExecutionTheme(props.toolKind, props.executionTarget))
+const terminalThemeStyle = computed<CSSProperties>(() => ({
+  ...makeExecutionThemeVars(terminalTheme.value, 'execution-terminal'),
+}))
+const followButtonStyle = computed<CSSProperties>(() => ({
+  color: autoScroll.value ? 'var(--execution-terminal-accent)' : '#94a3b8',
+}))
 
 const logs = computed(() => execution.logsForTask(props.taskId))
 
@@ -182,7 +190,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col overflow-hidden shell-bg rounded-b-lg border-t border-white/15">
+  <div
+    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-lg border-t border-white/15 shell-bg"
+    :style="terminalThemeStyle"
+  >
     <div class="flex shrink-0 items-center justify-between bg-dracula-panel/30 px-3 py-1.5">
       <div class="flex items-center gap-x-1.5">
         <span class="h-2.5 w-2.5 rounded-full bg-red-500/70" />
@@ -270,13 +281,8 @@ onBeforeUnmount(() => {
             <NButton
               text
               size="tiny"
-              :class="autoScroll
-                ? props.executionTarget === 'remote'
-                  ? 'text-dracula-pink'
-                  : props.accent === 'green'
-                    ? 'text-dracula-green'
-                    : 'text-dracula-cyan'
-                : 'text-slate-400'"
+              class="execution-terminal-follow-button"
+              :style="followButtonStyle"
               @click="toggleAutoScroll"
             >
               跟随
@@ -327,3 +333,15 @@ onBeforeUnmount(() => {
     </NScrollbar>
   </div>
 </template>
+
+<style scoped>
+.execution-terminal-follow-button {
+  transition:
+    color 0.16s var(--ease-out-soft),
+    opacity 0.16s var(--ease-out-soft);
+}
+
+.execution-terminal-follow-button:hover:not(:disabled) {
+  color: var(--execution-terminal-accent) !important;
+}
+</style>

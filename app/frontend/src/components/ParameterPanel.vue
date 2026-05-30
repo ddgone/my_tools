@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, type CSSProperties } from 'vue'
 import {
   NAlert,
   NButton,
@@ -23,6 +23,7 @@ import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
 import { validateCliArgs } from '@/utils/cliArgs'
 import type { ToolPanelMode } from '@/stores/workspace'
+import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 
 const props = defineProps<{
   tool: ToolManifest | null
@@ -39,7 +40,7 @@ const message = useMessage()
 
 const activeTab = computed(() => workspace.activeTab())
 const activeConfig = computed(() => workspace.activeExecutionConfig)
-const isPythonLocal = computed(() => props.executionTarget === 'local' && props.tool?.kind === 'python')
+const executionTheme = computed(() => getExecutionTheme(props.tool?.kind, props.executionTarget))
 
 type ParamMode = ToolPanelMode
 const activeMode = computed<ParamMode>({
@@ -118,24 +119,20 @@ function tabRawArgs(): string {
   return activeConfig.value?.rawArgs ?? ''
 }
 
+const panelThemeStyle = computed<CSSProperties>(() => ({
+  ...makeExecutionThemeVars(executionTheme.value, 'parameter-panel'),
+}))
+
 const switchStyle = computed(() => ({
-  '--n-rail-color-active': props.executionTarget === 'remote'
-    ? 'rgba(255, 121, 198, 0.5)'
-    : isPythonLocal.value
-      ? 'rgba(80, 250, 123, 0.5)'
-      : 'rgba(139, 233, 253, 0.55)',
+  '--n-rail-color-active': 'var(--parameter-panel-rail-active)',
   '--n-button-color': '#f8f8f2',
 }))
 
-const tabsThemeClass = computed(() => {
-  if (props.executionTarget === 'remote') {
-    return 'parameter-panel parameter-panel--remote'
-  }
-  if (isPythonLocal.value) {
-    return 'parameter-panel parameter-panel--python'
-  }
-  return 'parameter-panel parameter-panel--local'
-})
+const accentTagStyle = computed<CSSProperties>(() => ({
+  color: 'var(--parameter-panel-accent)',
+  backgroundColor: 'var(--parameter-panel-accent-soft-bg)',
+  border: '1px solid var(--parameter-panel-accent-soft-border)',
+}))
 
 const tabsKey = computed(() => `${activeTab.value?.tabId ?? 'none'}:${props.executionTarget}`)
 
@@ -162,8 +159,8 @@ async function copyCli() {
 <template>
   <div
     v-if="tool"
-    class="mt-4"
-    :class="tabsThemeClass"
+    class="mt-4 parameter-panel"
+    :style="panelThemeStyle"
   >
     <NTabs
       :key="tabsKey"
@@ -332,7 +329,7 @@ async function copyCli() {
             <NTag
               size="tiny"
               :bordered="false"
-              type="info"
+              :style="accentTagStyle"
             >
               使用说明
             </NTag>
@@ -374,8 +371,7 @@ async function copyCli() {
               class="flex items-baseline gap-x-2 text-xs"
             >
               <code
-                class="shrink-0 font-mono"
-                :class="props.executionTarget === 'remote' ? 'text-dracula-pink' : 'text-dracula-cyan'"
+                class="parameter-panel-accent shrink-0 font-mono"
               >
                 {{ param.argKey || param.key }}
               </code>
@@ -416,7 +412,7 @@ async function copyCli() {
             <NTag
               size="tiny"
               :bordered="false"
-              class="border border-dracula-pink/20 bg-dracula-pink/10 text-dracula-pink"
+              :style="accentTagStyle"
             >
               远程配置
             </NTag>
@@ -455,7 +451,7 @@ async function copyCli() {
           </template>
         </NButton>
       </div>
-      <code class="mt-1.5 block break-all font-mono text-sm leading-relaxed text-dracula-yellow">
+      <code class="parameter-panel-accent mt-1.5 block break-all font-mono text-sm leading-relaxed">
         {{ tabRawArgs() || '(无参数)' }}
       </code>
     </div>
@@ -491,44 +487,20 @@ async function copyCli() {
 
 .help-trigger:hover,
 .help-trigger:focus-visible {
-  color: #8be9fd;
+  color: var(--parameter-panel-accent);
   opacity: 1;
 }
 
-.parameter-panel--remote .help-trigger:hover,
-.parameter-panel--remote .help-trigger:focus-visible {
-  color: #ff79c6;
+.parameter-panel-accent {
+  color: var(--parameter-panel-accent);
 }
 
-.parameter-panel--local :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
-.parameter-panel--local :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
-  color: #8be9fd;
+.parameter-panel :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
+.parameter-panel :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
+  color: var(--parameter-panel-accent);
 }
 
-.parameter-panel--local :deep(.n-tabs-bar) {
-  background-color: #8be9fd !important;
-}
-
-.parameter-panel--remote :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
-.parameter-panel--remote :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
-  color: #ff79c6;
-}
-
-.parameter-panel--remote :deep(.n-tabs-bar) {
-  background-color: #ff79c6 !important;
-}
-
-.parameter-panel--python .help-trigger:hover,
-.parameter-panel--python .help-trigger:focus-visible {
-  color: #50fa7b;
-}
-
-.parameter-panel--python :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
-.parameter-panel--python :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
-  color: #50fa7b;
-}
-
-.parameter-panel--python :deep(.n-tabs-bar) {
-  background-color: #50fa7b !important;
+.parameter-panel :deep(.n-tabs-bar) {
+  background-color: var(--parameter-panel-accent) !important;
 }
 </style>

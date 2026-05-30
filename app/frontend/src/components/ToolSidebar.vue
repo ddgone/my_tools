@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, h, nextTick } from 'vue'
+import { computed, ref, watch, h, nextTick, type CSSProperties } from 'vue'
 import {
   NButton,
   NCard,
@@ -30,6 +30,7 @@ import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../.
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
 import { ANIM } from '@/utils/animation'
+import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 import gsap from 'gsap'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 
@@ -107,6 +108,15 @@ watch(() => props.activeView, (view) => {
 }, { immediate: true })
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
+const activeSidebarTheme = computed(() =>
+  getExecutionTheme(
+    workspace.activeTabType === 'tool' ? workspace.activeToolTab?.toolId ? allTools.value.find((tool) => tool.id === workspace.activeToolTab?.toolId)?.kind : undefined : undefined,
+    workspace.activeTabType === 'tool' ? workspace.activeToolTab?.executionTarget ?? 'local' : 'local',
+  ),
+)
+const sidebarThemeStyle = computed<CSSProperties>(() => ({
+  ...makeExecutionThemeVars(activeSidebarTheme.value, 'tool-sidebar'),
+}))
 
 const categoryPathStr = (tool: ToolManifest) =>
   tool.category.length > 0 ? tool.category.join(' > ') : '未分类'
@@ -206,7 +216,7 @@ function isToolRunning(toolId: string) {
 }
 
 function isToolActive(toolId: string) {
-  return workspace.activeTab()?.toolId === toolId
+  return workspace.activeTabType === 'tool' && workspace.activeToolTab?.toolId === toolId
 }
 
 function toolTabState(toolId: string) {
@@ -221,16 +231,16 @@ function selectTool(tool: ToolManifest) {
   workspace.openTool(tool)
 }
 
+function toolKindTheme(tool: ToolManifest) {
+  return getExecutionTheme(tool.kind, 'local')
+}
+
 function kindIcon(kind: string) {
   return kind === 'python' ? LogoPython : CodeSlash
 }
 
 function kindIconColor(tool: ToolManifest) {
-  return tool.kind === 'python' ? '#50fa7b' : '#8be9fd'
-}
-
-function kindTagClass(tool: ToolManifest) {
-  return tool.kind === 'python' ? 'python-kind-tag' : 'local-kind-tag'
+  return toolKindTheme(tool).accent
 }
 
 function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
@@ -263,14 +273,19 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
       ? [h(NIcon, {
           component: GlobeOutline,
           size: 12,
-          color: '#ff79c6',
+          color: getExecutionTheme(tool.kind, 'remote').accent,
           class: 'shrink-0',
         })]
       : []),
     h(NTag, {
       bordered: false,
       size: 'tiny',
-      class: `ml-auto shrink-0 ${kindTagClass(tool)}`,
+      class: 'ml-auto shrink-0',
+      style: {
+        color: toolKindTheme(tool).accent,
+        backgroundColor: toolKindTheme(tool).accentSoftBg,
+        border: `1px solid ${toolKindTheme(tool).accentSoftBorder}`,
+      },
     }, {
       icon: () => h(NIcon, {
         component: kindIcon(tool.kind),
@@ -284,6 +299,9 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
 
 const selectedKeys = ref<string[]>([])
 const expandedKeys = ref<string[]>([])
+const treeRenderKey = computed(() =>
+  `${workspace.activeTabType}:${workspace.activeToolTab?.toolId ?? 'none'}:${workspace.activeToolTab?.executionTarget ?? 'local'}`,
+)
 
 const treeRef = ref<InstanceType<typeof NTree> | null>(null)
 
@@ -311,13 +329,16 @@ watch([treeData, () => workspace.settings.autoExpandAll, searchQuery], ([data, a
     : collectBranchKeys(data)
 }, { immediate: true })
 
-watch(() => workspace.activeTab()?.toolId, (toolId) => {
-  if (toolId) {
+watch([
+  () => workspace.activeTabType,
+  () => workspace.activeToolTab?.toolId,
+], ([activeTabType, toolId]) => {
+  if (activeTabType === 'tool' && toolId) {
     selectedKeys.value = [toolId]
   } else {
     selectedKeys.value = []
   }
-})
+}, { immediate: true })
 
 watch(selectedKeys, () => {
   nextTick(() => {
@@ -329,6 +350,11 @@ watch(selectedKeys, () => {
 
 function handleTreeSelect(keys: string[], _option: Array<TreeOption | null>) {
   if (keys.length === 0) return
+  const tool = allTools.value.find((item) => item.id === keys[0])
+  if (tool) {
+    selectTool(tool)
+    return
+  }
   selectedKeys.value = keys
 }
 
@@ -369,7 +395,10 @@ defineExpose({
     class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
     :style="{ width: props.width + 'px' }"
   >
-    <NScrollbar class="flex-1">
+    <NScrollbar
+      class="flex-1"
+      :style="sidebarThemeStyle"
+    >
       <Transition
         name="slide"
         mode="out-in"
@@ -392,6 +421,7 @@ defineExpose({
           </div>
           <div class="p-2">
             <NTree
+              :key="treeRenderKey"
               ref="treeRef"
               :expanded-keys="expandedKeys"
               :data="treeData"
@@ -404,10 +434,6 @@ defineExpose({
               block-line
               selectable
               class="category-tree"
-              :class="{
-                'category-tree--remote': workspace.activeToolTab?.executionTarget === 'remote',
-                'category-tree--python': workspace.activeToolTab?.executionTarget === 'local' && allTools.find((tool) => tool.id === workspace.activeToolTab?.toolId)?.kind === 'python',
-              }"
               @update:selected-keys="handleTreeSelect"
               @update:expanded-keys="handleExpandKeys"
             />
@@ -447,17 +473,22 @@ defineExpose({
               hoverable
               class="ui-surface-hover"
               :content-style="{ padding: '8px 10px' }"
-              :style="isToolActive(tool.id) ? { borderColor: 'rgba(255,121,198,0.45)', backgroundColor: 'rgba(255,121,198,0.06)' } : {}"
+              :style="isToolActive(tool.id)
+                ? {
+                  borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
+                  backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
+                }
+                : {}"
               @click="selectTool(tool)"
             >
               <div
                 class="flex items-center gap-x-2 text-left"
-                :class="isToolActive(tool.id) ? 'text-dracula-pink' : 'text-slate-300'"
+                :style="isToolActive(tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
               >
                 <NIcon
                   :component="kindIcon(tool.kind)"
                   size="16"
-                  :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                  :color="kindIconColor(tool)"
                 />
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-sm">
@@ -505,17 +536,22 @@ defineExpose({
               hoverable
               class="ui-surface-hover"
               :content-style="{ padding: '8px 10px' }"
-              :style="isToolActive(entry.tool.id) ? { borderColor: 'rgba(241,250,140,0.45)', backgroundColor: 'rgba(241,250,140,0.06)' } : {}"
+              :style="isToolActive(entry.tool.id)
+                ? {
+                  borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
+                  backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
+                }
+                : {}"
               @click="selectTool(entry.tool)"
             >
               <div
                 class="flex items-center gap-x-2 text-left"
-                :class="isToolActive(entry.tool.id) ? 'text-dracula-yellow' : 'text-slate-300'"
+                :style="isToolActive(entry.tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
               >
                 <NIcon
                   :component="kindIcon(entry.tool.kind)"
                   size="16"
-                  :color="entry.tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                  :color="kindIconColor(entry.tool)"
                 />
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-sm">
@@ -638,16 +674,10 @@ defineExpose({
 
 <style>
 .category-tree {
-  --n-node-color-active: rgba(139, 233, 253, 0.14);
+  --n-node-color-active: var(--tool-sidebar-accent-soft-bg);
   --n-line-color: rgba(255,255,255,0.10);
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
-}
-.category-tree--remote {
-  --n-node-color-active: rgba(255, 121, 198, 0.16);
-}
-.category-tree--python {
-  --n-node-color-active: rgba(80, 250, 123, 0.14);
 }
 .category-tree .n-tree-node-content {
   padding-top: 2px;
@@ -673,10 +703,7 @@ defineExpose({
   stroke: rgba(255,255,255,0.7);
 }
 .category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
-  stroke: rgba(139, 233, 253, 0.55);
-}
-.category-tree--remote .n-tree-node--expanded > .n-tree-node-switcher svg {
-  stroke: rgba(255, 121, 198, 0.65);
+  stroke: var(--tool-sidebar-accent-soft-strong-border);
 }
 .category-tree .n-tree-node--selected .n-tree-node-indent {
   opacity: 0.3;
@@ -685,22 +712,6 @@ defineExpose({
   opacity: 1;
 }
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
-  stroke: rgba(139, 233, 253, 0.55) !important;
-}
-.category-tree--remote .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
-  stroke: rgba(255, 121, 198, 0.65) !important;
-}
-.category-tree--python .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
-  stroke: rgba(80, 250, 123, 0.6) !important;
-}
-.local-kind-tag {
-  color: #8be9fd !important;
-  background-color: rgba(139, 233, 253, 0.1) !important;
-  border: 1px solid rgba(139, 233, 253, 0.2) !important;
-}
-.python-kind-tag {
-  color: #50fa7b !important;
-  background-color: rgba(80, 250, 123, 0.1) !important;
-  border: 1px solid rgba(80, 250, 123, 0.2) !important;
+  stroke: var(--tool-sidebar-accent-soft-strong-border) !important;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick, type CSSProperties } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline } from '@vicons/ionicons5'
@@ -15,6 +15,7 @@ import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
 import SSHDetailPanel from './SSHDetailPanel.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
+import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 
 const emit = defineEmits<{
   refreshSshList: []
@@ -111,9 +112,12 @@ const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
 const activeToolTabComputed = computed(() => workspace.activeToolTab)
 const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
 const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
-const activeAccentClass = computed(() =>
-  activeTargetIsRemote.value ? 'bg-dracula-pink' : activeToolKind.value === 'python' ? 'bg-dracula-green' : 'bg-dracula-cyan',
+const activeExecutionTheme = computed(() =>
+  getExecutionTheme(activeToolKind.value, activeTargetIsRemote.value ? 'remote' : 'local'),
 )
+const workspaceThemeStyle = computed<CSSProperties>(() => ({
+  ...makeExecutionThemeVars(activeExecutionTheme.value, 'workspace-tabs'),
+}))
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
@@ -274,20 +278,26 @@ function isToolTabRemote(id: string) {
   return toolTabStateByToolId(id)?.executionTarget === 'remote'
 }
 
-function goTagClassForTool(id: string) {
-  return toolById(id)?.kind === 'python' ? 'text-dracula-green' : 'text-dracula-cyan'
+function toolKindThemeForTool(id: string) {
+  return getExecutionTheme(toolById(id)?.kind, 'local')
 }
 
-function goIconColorForTool(id: string) {
-  return toolById(id)?.kind === 'python' ? '#50fa7b' : '#8be9fd'
+function toolKindTagStyleForTool(id: string): CSSProperties {
+  const theme = toolKindThemeForTool(id)
+  return {
+    color: theme.accent,
+    backgroundColor: theme.accentSoftBg,
+    border: `1px solid ${theme.accentSoftBorder}`,
+  }
 }
 
-function pythonTagClassForTool(id: string) {
-  return toolById(id)?.kind === 'python' ? 'text-dracula-green' : 'text-dracula-cyan'
+function toolKindIconColorForTool(id: string) {
+  return toolKindThemeForTool(id).accent
 }
 
-function pythonIconColorForTool(id: string) {
-  return toolById(id)?.kind === 'python' ? '#50fa7b' : '#8be9fd'
+function isUnifiedTabActive(item: { type: string; arrayIndex: number }) {
+  return (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex)
+    || (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
 }
 
 function openSearch() {
@@ -410,6 +420,7 @@ watch(searchResults, (results) => {
   <div
     ref="contentRef"
     class="flex flex-1 flex-col overflow-hidden"
+    :style="workspaceThemeStyle"
   >
     <div
       ref="tabBarRef"
@@ -422,13 +433,13 @@ watch(searchResults, (results) => {
           v-press
           class="ui-interactive group flex min-w-0 items-center gap-1 border-r border-white/15 px-2.5 py-1.5"
           :class="
-            (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex) ||
-              (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
-              ? item.type === 'tool' && isToolTabRemote(item.label)
-                ? 'bg-[rgba(255,121,198,0.12)] text-dracula-text'
-                : 'bg-dracula-bg text-dracula-text'
+            isUnifiedTabActive(item)
+              ? 'text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
+          :style="isUnifiedTabActive(item) && item.type === 'tool'
+            ? { backgroundColor: 'var(--workspace-tabs-active-tab-bg)' }
+            : undefined"
           @click="workspace.activateUnifiedTab(item)"
         >
           <NIcon
@@ -442,27 +453,14 @@ watch(searchResults, (results) => {
             v-if="item.type === 'tool'"
             :bordered="false"
             size="tiny"
-            :class="[
-              'shrink-0',
-              toolById(item.label)?.kind === 'python'
-                ? pythonTagClassForTool(item.label)
-                : goTagClassForTool(item.label),
-            ]"
-            :style="toolById(item.label)?.kind === 'python'
-              ? {
-                backgroundColor: 'rgba(80, 250, 123, 0.1)',
-                border: '1px solid rgba(80, 250, 123, 0.2)',
-              }
-              : {
-                backgroundColor: 'rgba(139, 233, 253, 0.1)',
-                border: '1px solid rgba(139, 233, 253, 0.2)',
-              }"
+            class="shrink-0"
+            :style="toolKindTagStyleForTool(item.label)"
           >
             <template #icon>
               <NIcon
                 :component="toolById(item.label)?.kind === 'python' ? LogoPython : CodeSlash"
                 size="10"
-                :color="toolById(item.label)?.kind === 'python' ? pythonIconColorForTool(item.label) : goIconColorForTool(item.label)"
+                :color="toolKindIconColorForTool(item.label)"
               />
             </template>
             {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
@@ -503,11 +501,12 @@ watch(searchResults, (results) => {
       </div>
       <div
         class="absolute bottom-0 h-0.5 rounded-t-sm transition-[left,width,opacity,background-color] ease-out"
-        :class="[activeAccentClass, indicatorInstant ? 'duration-0' : 'duration-200']"
+        :class="[indicatorInstant ? 'duration-0' : 'duration-200']"
         :style="{
           left: indicatorLeft,
           width: indicatorWidth,
           opacity: indicatorShow ? 1 : 0,
+          backgroundColor: 'var(--workspace-tabs-accent)',
         }"
       />
     </div>
@@ -532,7 +531,7 @@ watch(searchResults, (results) => {
           />
           <div
             class="mx-4 mt-3 h-px"
-            style="background: linear-gradient(to right, transparent, rgba(255,255,255,0.14), transparent)"
+            :style="{ background: 'var(--workspace-tabs-divider-gradient)' }"
           />
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
@@ -549,12 +548,7 @@ watch(searchResults, (results) => {
           style="height: 1px; width: 100%"
         >
           <div
-            class="absolute inset-x-0 -top-1 -bottom-1"
-            :class="activeTargetIsRemote
-              ? 'group-hover:bg-dracula-pink/10 group-active:bg-dracula-pink/20'
-              : activeToolKind === 'python'
-                ? 'group-hover:bg-dracula-green/10 group-active:bg-dracula-green/20'
-                : 'group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20'"
+            class="workspace-tabs-divider-glow absolute inset-x-0 -top-1 -bottom-1"
           />
         </div>
 
@@ -562,7 +556,7 @@ watch(searchResults, (results) => {
           <ExecutionTerminal
             :task-id="activeTabTaskId"
             :execution-target="workspace.activeToolTab.executionTarget"
-            :accent="workspace.activeToolTab.executionTarget === 'remote' ? 'pink' : toolById(workspace.activeToolTab.toolId)?.kind === 'python' ? 'green' : 'cyan'"
+            :tool-kind="toolById(workspace.activeToolTab.toolId)?.kind"
           />
         </div>
       </div>
@@ -722,3 +716,17 @@ watch(searchResults, (results) => {
     </Teleport>
   </div>
 </template>
+
+<style scoped>
+.workspace-tabs-divider-glow {
+  transition: background-color 0.16s var(--ease-out-soft);
+}
+
+.group:hover .workspace-tabs-divider-glow {
+  background-color: var(--workspace-tabs-accent-soft-bg);
+}
+
+.group:active .workspace-tabs-divider-glow {
+  background-color: var(--workspace-tabs-accent-soft-strong-bg);
+}
+</style>

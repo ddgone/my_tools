@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { NButton, NIcon, NInput, NSelect, NText, NTag, type SelectOption } from 'naive-ui'
 import {
   Play,
@@ -14,6 +14,7 @@ import {
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ExecutionTarget, ToolTabState } from '@/stores/workspace'
+import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
 const props = defineProps<{
@@ -55,51 +56,16 @@ watch(
 )
 
 const isRemote = computed(() => props.tab?.executionTarget === 'remote')
-const isPythonTool = computed(() => props.tool?.kind === 'python')
-const isPythonLocal = computed(() => !isRemote.value && props.tool?.kind === 'python')
-
-const executeButtonClass = computed(() =>
-  isRemote.value
-    ? 'border-dracula-pink/20 bg-dracula-pink text-[#2f1026] hover:bg-[#ff94d2]'
-    : isPythonLocal.value
-      ? 'border-dracula-green/20 bg-dracula-green text-[#082512] hover:bg-[#7dff9a]'
-      : 'border-dracula-cyan/20 bg-dracula-cyan text-[#102433] hover:bg-[#a4ffff]',
-)
-const detailTheme = computed(() => {
-  if (isRemote.value) {
-    return {
-      accent: '#ff79c6',
-      accentSoftBackground: 'rgba(255, 121, 198, 0.1)',
-      accentSoftBorder: 'rgba(255, 121, 198, 0.2)',
-      panelBackground: '#ff79c6',
-      panelText: '#2f1026',
-    }
-  }
-
-  if (isPythonTool.value) {
-    return {
-      accent: '#50fa7b',
-      accentSoftBackground: 'rgba(80, 250, 123, 0.1)',
-      accentSoftBorder: 'rgba(80, 250, 123, 0.2)',
-      panelBackground: '#50fa7b',
-      panelText: '#082512',
-    }
-  }
-
-  return {
-    accent: '#8be9fd',
-    accentSoftBackground: 'rgba(139, 233, 253, 0.1)',
-    accentSoftBorder: 'rgba(139, 233, 253, 0.2)',
-    panelBackground: '#8be9fd',
-    panelText: '#102433',
-  }
-})
-const detailThemeStyle = computed(() => ({
-  '--tool-detail-accent': detailTheme.value.accent,
-  '--tool-detail-accent-soft-bg': detailTheme.value.accentSoftBackground,
-  '--tool-detail-accent-soft-border': detailTheme.value.accentSoftBorder,
-  '--tool-detail-panel-text': detailTheme.value.panelText,
+const detailTheme = computed(() => getExecutionTheme(props.tool?.kind, isRemote.value ? 'remote' : 'local'))
+const detailThemeStyle = computed<CSSProperties>(() => ({
+  ...makeExecutionThemeVars(detailTheme.value, 'tool-detail'),
+  '--tool-detail-panel-text': detailTheme.value.accentText,
   '--tool-detail-transition': '160ms var(--ease-out-soft)',
+}))
+const executeButtonStyle = computed<CSSProperties>(() => ({
+  backgroundColor: 'var(--tool-detail-accent)',
+  borderColor: 'var(--tool-detail-accent-soft-border)',
+  color: 'var(--tool-detail-accent-text)',
 }))
 const switchTrackHoverClass = computed(() =>
   'hover:border-white/15',
@@ -176,7 +142,7 @@ async function animateSwitchThumb(immediate = false) {
   timeline.to(
     background,
     {
-      backgroundColor: detailTheme.value.panelBackground,
+      backgroundColor: detailTheme.value.accent,
     },
     0,
   )
@@ -206,7 +172,7 @@ async function animateSwitchThumb(immediate = false) {
   timeline.to(
     [localLabel, remoteLabel],
     {
-      color: detailTheme.value.panelText,
+      color: detailTheme.value.accentText,
     },
     0,
   )
@@ -278,7 +244,7 @@ onBeforeUnmount(() => {
             v-if="isRemote"
             size="tiny"
             :bordered="false"
-            class="border border-dracula-pink/15 bg-dracula-pink/10 text-dracula-pink"
+            class="tool-kind-tag tool-detail-transition"
           >
             <template #icon>
               <NIcon
@@ -349,8 +315,8 @@ onBeforeUnmount(() => {
           size="small"
           :disabled="isRunning || isLaunching"
           :loading="isLaunching"
-          class="border shadow-sm"
-          :class="executeButtonClass"
+          class="tool-detail-action-button border shadow-sm"
+          :style="executeButtonStyle"
           @click="emit('execute')"
         >
           <template #icon>
@@ -400,11 +366,11 @@ onBeforeUnmount(() => {
         <NIcon
           :component="ServerOutline"
           size="15"
-          class="text-dracula-pink"
+          class="tool-detail-accent tool-detail-transition"
         />
         <NText
           depth="3"
-          class="shrink-0 text-[11px] uppercase tracking-wide text-dracula-pink"
+          class="tool-detail-accent tool-detail-transition shrink-0 text-[11px] uppercase tracking-wide"
         >
           远程环境选择
         </NText>
@@ -460,5 +426,18 @@ onBeforeUnmount(() => {
   color: var(--tool-detail-accent) !important;
   background-color: var(--tool-detail-accent-soft-bg) !important;
   border: 1px solid var(--tool-detail-accent-soft-border) !important;
+}
+
+.tool-detail-action-button {
+  transition:
+    background-color var(--tool-detail-transition),
+    border-color var(--tool-detail-transition),
+    color var(--tool-detail-transition),
+    box-shadow var(--tool-detail-transition);
+}
+
+.tool-detail-action-button:hover:not(:disabled) {
+  background-color: var(--tool-detail-accent-hover) !important;
+  border-color: var(--tool-detail-accent-soft-strong-border) !important;
 }
 </style>
