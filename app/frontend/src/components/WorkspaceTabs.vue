@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick, type CSSProperties } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline } from '@vicons/ionicons5'
+import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -17,6 +17,7 @@ import SSHDetailPanel from './SSHDetailPanel.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import gsap from 'gsap'
 
 const emit = defineEmits<{
   refreshSshList: []
@@ -38,6 +39,7 @@ type UnifiedTabItem = {
   label: string
   openedAt: number
   arrayIndex: number
+  pinned: boolean
 }
 
 type WorkbenchMenuItem = {
@@ -51,64 +53,144 @@ type WorkbenchMenuItem = {
 
 const { tooltipText, tooltipX, tooltipY, tooltipShow, onEnter: onTooltipEnter, onLeave: onTooltipLeave } = useTruncationTooltip({ placement: 'bottom' })
 
-const tabKey = computed(() => {
-  if (workspace.activeTabType === 'tool')
-    return `tool-${workspace.activeTabIndex}`
-  if (workspace.activeTabType === 'ssh')
-    return `ssh-${workspace.activeSSHTabIndex}`
-  return 'empty'
-})
+const dragTabKey = ref('')
+const dragPointerId = ref<number | null>(null)
+const dragActivated = ref(false)
+const dragStartX = ref(0)
+const dragCurrentX = ref(0)
+const dragTargetIndex = ref(-1)
+const dragGroupKeys = ref<string[]>([])
+const dragSnapshotRects = ref<Map<string, DOMRect>>(new Map())
+const suppressClickAfterDrag = ref(false)
 
-const indicatorLeft = ref('0px')
-const indicatorWidth = ref('0px')
-const indicatorShow = ref(false)
-const indicatorInstant = ref(false)
-
-function syncIndicator() {
-  const bar = tabBarRef.value
-  if (!bar || workspace.unifiedTabs.length === 0) {
-    indicatorShow.value = false
-    return
-  }
-  const buttons = bar.querySelectorAll<HTMLElement>('button')
-  const idx = workspace.unifiedTabs.findIndex(t => {
-    if (workspace.activeTabType === 'tool') return t.type === 'tool' && t.arrayIndex === workspace.activeTabIndex
-    if (workspace.activeTabType === 'ssh') return t.type === 'ssh' && t.arrayIndex === workspace.activeSSHTabIndex
-    return false
-  })
-  if (idx < 0 || idx >= buttons.length) {
-    indicatorShow.value = false
-    return
-  }
-  const barRect = bar.getBoundingClientRect()
-  const btnRect = buttons[idx].getBoundingClientRect()
-  indicatorLeft.value = `${btnRect.left - barRect.left}px`
-  indicatorWidth.value = `${btnRect.width}px`
-  indicatorShow.value = true
+function tabButtonElements() {
+  return Array.from(tabBarRef.value?.querySelectorAll<HTMLElement>('[data-tab-key]') ?? [])
 }
 
-watch(tabKey, () => {
-  indicatorInstant.value = true
-  nextTick(() => {
-    syncIndicator()
-    requestAnimationFrame(() => {
-      indicatorInstant.value = false
-    })
-  })
-})
-watch(() => workspace.unifiedTabs.length, () => nextTick(syncIndicator))
-watch(() => workspace.unifiedTabs.map(t => t.label).join('|'), () => nextTick(syncIndicator))
-onMounted(() => {
-  nextTick(syncIndicator)
-  const observer = new ResizeObserver(() => nextTick(syncIndicator))
-  if (tabBarRef.value) observer.observe(tabBarRef.value)
-  ;(window as any).__tabIndicatorObserver = observer
-})
+function tabButtonElementByKey(key: string) {
+  return tabButtonElements().find(element => element.dataset.tabKey === key) ?? null
+}
 
-onUnmounted(() => {
-  const observer = (window as any).__tabIndicatorObserver
-  if (observer) observer.disconnect()
-})
+function captureTabRects() {
+  const rects = new Map<string, DOMRect>()
+  for (const element of tabButtonElements()) {
+    const key = element.dataset.tabKey
+    if (key) {
+      rects.set(key, element.getBoundingClientRect())
+    }
+  }
+  return rects
+}
+
+function clearTabTransforms(exceptKey = '') {
+  for (const element of tabButtonElements()) {
+    const key = element.dataset.tabKey ?? ''
+    if (exceptKey && key === exceptKey) continue
+    gsap.killTweensOf(element)
+    gsap.set(element, { clearProps: 'x,zIndex,boxShadow,scale' })
+  }
+}
+
+async function animateTabLayout(prevRects: Map<string, DOMRect>, excludeKey = '') {
+  await nextTick()
+  clearTabTransforms()
+  await nextTick()
+  for (const element of tabButtonElements()) {
+    const key = element.dataset.tabKey
+    if (!key || key === excludeKey) continue
+    const prevRect = prevRects.get(key)
+    if (!prevRect) continue
+    const nextRect = element.getBoundingClientRect()
+    const deltaX = prevRect.left - nextRect.left
+    if (Math.abs(deltaX) < 1) continue
+    gsap.killTweensOf(element)
+    gsap.fromTo(element, {
+      x: deltaX,
+    }, {
+      x: 0,
+      duration: 0.22,
+      ease: 'power2.out',
+      clearProps: 'x',
+    })
+  }
+}
+
+function dragScopedTabKeys() {
+  const dragItem = dragTabKey.value ? resolveUnifiedTabByKey(dragTabKey.value) : null
+  if (!dragItem) return []
+  return (workspace.unifiedTabs as UnifiedTabItem[])
+    .filter(item => item.pinned === dragItem.pinned)
+    .map(item => item.key)
+}
+
+function computeDragTargetIndex() {
+  const dragKey = dragTabKey.value
+  const keys = dragGroupKeys.value
+  const draggedRect = dragSnapshotRects.value.get(dragKey)
+  if (!dragKey || keys.length === 0 || !draggedRect) return -1
+
+  const dragDirection = Math.sign(dragCurrentX.value)
+  const dragBoundary = dragDirection >= 0
+    ? draggedRect.left + dragCurrentX.value + draggedRect.width
+    : draggedRect.left + dragCurrentX.value
+  let nextIndex = 0
+  for (const key of keys) {
+    if (key === dragKey) continue
+    const rect = dragSnapshotRects.value.get(key)
+    if (!rect) continue
+    const center = rect.left + rect.width / 2
+    if (center < dragBoundary) {
+      nextIndex++
+    }
+  }
+  return Math.max(0, Math.min(keys.length - 1, nextIndex))
+}
+
+function applyTabDragPreview() {
+  const dragKey = dragTabKey.value
+  const draggedElement = dragKey ? tabButtonElementByKey(dragKey) : null
+  const draggedRect = dragSnapshotRects.value.get(dragKey)
+  if (!dragKey || !draggedElement || !draggedRect) return
+
+  const scopedKeys = dragGroupKeys.value
+  const fromIndex = scopedKeys.indexOf(dragKey)
+  if (fromIndex < 0) return
+
+  const nextIndex = computeDragTargetIndex()
+  dragTargetIndex.value = nextIndex
+
+  const draggedWidth = draggedRect.width
+  gsap.killTweensOf(draggedElement)
+  gsap.set(draggedElement, {
+    x: dragCurrentX.value,
+    zIndex: 30,
+    scale: 1.02,
+    boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
+  })
+
+  for (const element of tabButtonElements()) {
+    const key = element.dataset.tabKey ?? ''
+    if (!key || key === dragKey) continue
+
+    let offsetX = 0
+    const index = scopedKeys.indexOf(key)
+    if (index >= 0) {
+      if (nextIndex > fromIndex && index > fromIndex && index <= nextIndex) {
+        offsetX = -draggedWidth
+      } else if (nextIndex < fromIndex && index >= nextIndex && index < fromIndex) {
+        offsetX = draggedWidth
+      }
+    }
+
+    gsap.killTweensOf(element)
+    gsap.to(element, {
+      x: offsetX,
+      duration: 0.14,
+      ease: 'power2.out',
+      overwrite: true,
+    })
+  }
+}
 
 const showSearchModal = computed({
   get: () => workspace.showSearch,
@@ -277,7 +359,6 @@ function onPythonEnvUpdate(value: string) {
 function onExecutionTargetUpdate(value: 'local' | 'remote') {
   if (workspace.activeTabIndex >= 0) {
     workspace.setExecutionTarget(workspace.activeTabIndex, value)
-    nextTick(syncIndicator)
   }
 }
 
@@ -342,8 +423,10 @@ const tabContextMenuOptions = computed<WorkbenchMenuItem[]>(() => {
 
   const tabs = workspace.unifiedTabs as UnifiedTabItem[]
   const tabIndex = tabs.findIndex(tab => tab.key === item.key)
-  const hasLeft = tabIndex > 0
-  const hasRight = tabIndex >= 0 && tabIndex < tabs.length - 1
+  const closableLeftCount = tabIndex > 0 ? tabs.slice(0, tabIndex).filter(tab => !tab.pinned).length : 0
+  const closableRightCount = tabIndex >= 0 ? tabs.slice(tabIndex + 1).filter(tab => !tab.pinned).length : 0
+  const closableOtherCount = tabs.filter(tab => tab.key !== item.key && !tab.pinned).length
+  const closableAllCount = tabs.filter(tab => !tab.pinned).length
   const isTool = item.type === 'tool'
   const isActive = isUnifiedTabActive(item)
 
@@ -357,13 +440,13 @@ const tabContextMenuOptions = computed<WorkbenchMenuItem[]>(() => {
       : []),
     ...(isTool ? [{ type: 'divider' as const, key: 'divider-tool' }] : []),
     { label: '关闭标签', key: 'close' },
-    { label: '关闭其他标签', key: 'close-others', disabled: tabs.length <= 1 },
-    { label: '关闭左侧标签', key: 'close-left', disabled: !hasLeft },
-    { label: '关闭右侧标签', key: 'close-right', disabled: !hasRight },
-    { label: '关闭所有标签', key: 'close-all', danger: true, disabled: tabs.length === 0 },
+    { label: '关闭其他标签', key: 'close-others', disabled: closableOtherCount === 0 },
+    { label: '关闭左侧标签', key: 'close-left', disabled: closableLeftCount === 0 },
+    { label: '关闭右侧标签', key: 'close-right', disabled: closableRightCount === 0 },
+    { label: '关闭所有标签', key: 'close-all', danger: true, disabled: closableAllCount === 0 },
     { type: 'divider' as const, key: 'divider-extra' },
     { label: '复制标签名称', key: 'copy-name' },
-    { label: '固定标签', key: 'pin', hint: '占位' },
+    { label: item.pinned ? '取消固定标签' : '固定标签', key: 'pin' },
   ]
 })
 
@@ -391,7 +474,7 @@ function resolveUnifiedTabByKey(key: string) {
 function closeTabsByKeys(keys: string[]) {
   for (const key of keys) {
     const item = resolveUnifiedTabByKey(key)
-    if (item) {
+    if (item && !item.pinned) {
       workspace.closeUnifiedTab(item)
     }
   }
@@ -447,9 +530,111 @@ async function handleTabContextMenuSelect(key: string) {
       message.success('已复制标签名称')
       break
     case 'pin':
-      message.info(`已为 ${unifiedTabDisplayName(current ?? currentItem)} 预留“固定标签”菜单动作`)
+      if (current) {
+        const prevRects = captureTabRects()
+        workspace.toggleTabPinned(current.key)
+        await animateTabLayout(prevRects)
+        message.success(workspace.isTabPinned(current.key) ? `已固定 ${unifiedTabDisplayName(current)}` : `已取消固定 ${unifiedTabDisplayName(current)}`)
+      }
       break
   }
+}
+
+function tabButtonStyle(item: UnifiedTabItem): CSSProperties | undefined {
+  const style: CSSProperties = {}
+  if (isUnifiedTabActive(item)) {
+    style.backgroundColor = 'var(--workspace-tabs-active-tab-bg)'
+  }
+  if (dragTabKey.value === item.key) {
+    style.cursor = 'grabbing'
+  }
+  return Object.keys(style).length > 0 ? style : undefined
+}
+
+function handleTabClick(item: UnifiedTabItem) {
+  if (suppressClickAfterDrag.value) {
+    suppressClickAfterDrag.value = false
+    return
+  }
+  workspace.activateUnifiedTab(item)
+}
+
+function handleTabPointerDown(event: PointerEvent, item: UnifiedTabItem) {
+  if (event.button !== 0) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-tab-close]')) return
+
+  const element = event.currentTarget as HTMLElement | null
+  dragPointerId.value = event.pointerId
+  dragTabKey.value = item.key
+  dragActivated.value = false
+  dragStartX.value = event.clientX
+  dragCurrentX.value = 0
+  dragSnapshotRects.value = captureTabRects()
+  dragGroupKeys.value = (workspace.unifiedTabs as UnifiedTabItem[])
+    .filter(tab => tab.pinned === item.pinned)
+    .map(tab => tab.key)
+  dragTargetIndex.value = dragGroupKeys.value.indexOf(item.key)
+  if (element?.setPointerCapture) {
+    element.setPointerCapture(event.pointerId)
+  }
+}
+
+function handleGlobalPointerMove(event: PointerEvent) {
+  if (dragPointerId.value !== event.pointerId || !dragTabKey.value) return
+  const deltaX = event.clientX - dragStartX.value
+  if (!dragActivated.value && Math.abs(deltaX) < 6) return
+
+  dragActivated.value = true
+  dragCurrentX.value = deltaX
+  applyTabDragPreview()
+}
+
+async function finishTabPointerDrag(pointerId?: number | null) {
+  if (!dragTabKey.value) return
+  if (pointerId !== undefined && pointerId !== null && dragPointerId.value !== pointerId) return
+
+  const dragKey = dragTabKey.value
+  const scopedKeys = dragScopedTabKeys()
+  const fromIndex = scopedKeys.indexOf(dragKey)
+  const toIndex = dragActivated.value ? computeDragTargetIndex() : fromIndex
+  const prevRects = dragActivated.value ? captureTabRects() : new Map<string, DOMRect>()
+
+  dragPointerId.value = null
+  dragSnapshotRects.value = new Map()
+  dragGroupKeys.value = []
+  dragCurrentX.value = 0
+  dragTargetIndex.value = -1
+
+  if (!dragActivated.value) {
+    dragTabKey.value = ''
+    clearTabTransforms()
+    return
+  }
+
+  dragActivated.value = false
+  dragTabKey.value = ''
+  suppressClickAfterDrag.value = true
+
+  if (fromIndex >= 0 && toIndex >= 0 && toIndex !== fromIndex) {
+    const targetKey = scopedKeys[toIndex]
+    workspace.moveUnifiedTab(dragKey, targetKey, toIndex > fromIndex ? 'after' : 'before')
+    await animateTabLayout(prevRects, dragKey)
+  } else {
+    clearTabTransforms()
+  }
+
+  window.setTimeout(() => {
+    suppressClickAfterDrag.value = false
+  }, 0)
+}
+
+function handleGlobalPointerUp(event: PointerEvent) {
+  void finishTabPointerDrag(event.pointerId)
+}
+
+function handleGlobalPointerCancel(event: PointerEvent) {
+  void finishTabPointerDrag(event.pointerId)
 }
 
 function openSearch() {
@@ -547,10 +732,17 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
+  window.addEventListener('pointermove', handleGlobalPointerMove)
+  window.addEventListener('pointerup', handleGlobalPointerUp)
+  window.addEventListener('pointercancel', handleGlobalPointerCancel)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('pointermove', handleGlobalPointerMove)
+  window.removeEventListener('pointerup', handleGlobalPointerUp)
+  window.removeEventListener('pointercancel', handleGlobalPointerCancel)
+  clearTabTransforms()
 })
 
 watch(searchInput, () => {
@@ -590,19 +782,25 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
-          v-press
-          class="ui-interactive group flex min-w-0 items-center gap-1 border-r border-white/15 px-2.5 py-1.5"
+          :data-tab-key="item.key"
+          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1 overflow-hidden border-r border-white/15 px-3 py-1.5 pr-8"
           :class="
             isUnifiedTabActive(item)
               ? 'text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
-          :style="isUnifiedTabActive(item) && item.type === 'tool'
-            ? { backgroundColor: 'var(--workspace-tabs-active-tab-bg)' }
-            : undefined"
-          @click="workspace.activateUnifiedTab(item)"
+          :style="tabButtonStyle(item)"
+          @click="handleTabClick(item)"
           @contextmenu="openTabContextMenu($event, item)"
+          @pointerdown="handleTabPointerDown($event, item)"
         >
+          <NIcon
+            v-if="item.pinned"
+            :component="BookmarkSharp"
+            size="14"
+            color="#ffb86c"
+            class="shrink-0 opacity-90"
+          />
           <NIcon
             v-if="item.type === 'ssh'"
             :component="ServerOutline"
@@ -627,6 +825,13 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
           </NTag>
           <NIcon
+            v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
+            :component="Star"
+            size="11"
+            color="#f1fa8c"
+            class="shrink-0"
+          />
+          <NIcon
             v-if="item.type === 'tool' && isToolTabRemote(item.label)"
             :component="GlobeOutline"
             size="11"
@@ -638,7 +843,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             class="h-1.5 w-1.5 shrink-0 rounded-full bg-dracula-green"
           />
           <span
-            class="truncate text-xs"
+            class="min-w-0 truncate text-xs"
             :style="item.type === 'tool' ? toolNameStyleForTool(item.label) : undefined"
             :data-fullname="unifiedTabDisplayName(item)"
             @mouseenter="handleTabLabelMouseEnter($event, item)"
@@ -646,31 +851,19 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           >
             {{ unifiedTabDisplayName(item) }}
           </span>
-          <NIcon
-            v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
-            :component="Star"
-            size="10"
-            color="#f1fa8c"
-            class="shrink-0 opacity-70"
-          />
           <span
-            v-press
-            class="ui-interactive ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
+            data-tab-close="true"
+            class="ui-interactive absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
             @pointerdown.stop
             @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
+          <span
+            v-if="isUnifiedTabActive(item)"
+            class="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-t-sm"
+            :style="{ backgroundColor: 'var(--workspace-tabs-accent)' }"
+          />
         </button>
       </div>
-      <div
-        class="absolute bottom-0 h-0.5 rounded-t-sm transition-[left,width,opacity,background-color] ease-out"
-        :class="[indicatorInstant ? 'duration-0' : 'duration-200']"
-        :style="{
-          left: indicatorLeft,
-          width: indicatorWidth,
-          opacity: indicatorShow ? 1 : 0,
-          backgroundColor: 'var(--workspace-tabs-accent)',
-        }"
-      />
     </div>
 
     <template v-if="workspace.activeTabType === 'tool' && workspace.activeToolTab">

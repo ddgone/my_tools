@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import type { ToolManifest } from '@/types/workbench'
+import type { SSHConnection, ToolManifest } from '@/types/workbench'
 
 export interface ToolTabState {
   tabId: string
@@ -43,6 +43,8 @@ const STORAGE_KEYS = {
   history: 'fire-salamander:history',
   settings: 'fire-salamander:settings',
   toolState: 'fire-salamander:tool-state',
+  pinnedTabs: 'fire-salamander:pinned-tabs',
+  tabOrder: 'fire-salamander:tab-order',
 } as const
 
 function loadJSON<T>(key: string, fallback: T): T {
@@ -312,12 +314,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const persistedToolStates = ref<Record<string, PersistedToolState>>(
     loadJSON<Record<string, PersistedToolState>>(STORAGE_KEYS.toolState, {}),
   )
+  const pinnedTabs = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.pinnedTabs, []))
+  const tabOrder = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.tabOrder, []))
+  const pinnedTabsRestored = ref(false)
 
   watch(favorites, (v) => saveJSON(STORAGE_KEYS.favorites, v), { deep: true })
   watch(recentTools, (v) => saveJSON(STORAGE_KEYS.recent, v), { deep: true })
   watch(toolHistory, (v) => saveJSON(STORAGE_KEYS.history, v), { deep: true })
   watch(settings, (v) => saveJSON(STORAGE_KEYS.settings, v), { deep: true })
   watch(persistedToolStates, (v) => saveJSON(STORAGE_KEYS.toolState, v), { deep: true })
+  watch(pinnedTabs, (v) => saveJSON(STORAGE_KEYS.pinnedTabs, v), { deep: true })
+  watch(tabOrder, (v) => saveJSON(STORAGE_KEYS.tabOrder, v), { deep: true })
   watch(
     openTabs,
     (tabs) => {
@@ -360,9 +367,51 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     label: string
     openedAt: number
     arrayIndex: number
+    pinned: boolean
   }
 
+  function isPersistentTabLayoutKey(key: string): boolean {
+    if (key.startsWith('tool:tool_')) {
+      return true
+    }
+    return key.startsWith('ssh:ssh_') && !key.startsWith('ssh:ssh_new_')
+  }
+
+  function buildCurrentTabKeys(): string[] {
+    return [
+      ...openTabs.value.map((tab) => `tool:${tab.tabId}`),
+      ...sshTabs.value.map((tab) => `ssh:${tab.tabId}`),
+    ]
+  }
+
+  function reconcileTabLayout() {
+    const currentKeys = buildCurrentTabKeys()
+    const existingKeys = new Set(currentKeys)
+
+    const nextPinned = pinnedTabs.value.filter((key) => existingKeys.has(key) || isPersistentTabLayoutKey(key))
+    if (nextPinned.length !== pinnedTabs.value.length || nextPinned.some((key, index) => key !== pinnedTabs.value[index])) {
+      pinnedTabs.value = nextPinned
+    }
+
+    const persistentPinnedSet = new Set(nextPinned.filter((key) => isPersistentTabLayoutKey(key)))
+    const nextOrder = tabOrder.value.filter((key) => existingKeys.has(key) || persistentPinnedSet.has(key))
+    for (const key of currentKeys) {
+      if (!nextOrder.includes(key)) {
+        nextOrder.push(key)
+      }
+    }
+    if (nextOrder.length !== tabOrder.value.length || nextOrder.some((key, index) => key !== tabOrder.value[index])) {
+      tabOrder.value = nextOrder
+    }
+  }
+
+  watch([openTabs, sshTabs], () => {
+    reconcileTabLayout()
+  }, { deep: true, immediate: true })
+
   const unifiedTabs = computed<UnifiedTabItem[]>(() => {
+    const orderIndex = new Map(tabOrder.value.map((key, index) => [key, index]))
+    const pinnedKeySet = new Set(pinnedTabs.value)
     const items: UnifiedTabItem[] = [
       ...openTabs.value.map((t, i) => ({
         type: 'tool' as const,
@@ -370,6 +419,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         label: t.toolId,
         openedAt: t.openedAt,
         arrayIndex: i,
+        pinned: pinnedKeySet.has(`tool:${t.tabId}`),
       })),
       ...sshTabs.value.map((s, i) => ({
         type: 'ssh' as const,
@@ -377,11 +427,97 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         label: s.label,
         openedAt: s.openedAt,
         arrayIndex: i,
+        pinned: pinnedKeySet.has(`ssh:${s.tabId}`),
       })),
     ]
-    items.sort((a, b) => a.openedAt - b.openedAt)
+    items.sort((a, b) => {
+      if (a.pinned !== b.pinned) {
+        return a.pinned ? -1 : 1
+      }
+      const aOrder = orderIndex.get(a.key)
+      const bOrder = orderIndex.get(b.key)
+      if (aOrder !== undefined && bOrder !== undefined && aOrder !== bOrder) {
+        return aOrder - bOrder
+      }
+      if (aOrder !== undefined && bOrder === undefined) return -1
+      if (aOrder === undefined && bOrder !== undefined) return 1
+      return a.openedAt - b.openedAt
+    })
     return items
   })
+
+  function isTabPinned(key: string): boolean {
+    return pinnedTabs.value.includes(key)
+  }
+
+  function orderedPinnedTabKeys() {
+    const pinnedKeySet = new Set(pinnedTabs.value)
+    const orderedKeys = tabOrder.value.filter((key) => pinnedKeySet.has(key))
+    for (const key of pinnedTabs.value) {
+      if (!orderedKeys.includes(key)) {
+        orderedKeys.push(key)
+      }
+    }
+    return orderedKeys
+  }
+
+  function setTabPinned(key: string, pinned: boolean) {
+    const current = isTabPinned(key)
+    if (current === pinned) return
+    if (pinned) {
+      const nextPinned = pinnedTabs.value.filter((item) => item !== key)
+      nextPinned.push(key)
+      pinnedTabs.value = nextPinned
+
+      const currentKeys = buildCurrentTabKeys()
+      const currentKeySet = new Set(currentKeys)
+      const persistentPinnedSet = new Set(nextPinned.filter((item) => isPersistentTabLayoutKey(item)))
+      const nextOrder = tabOrder.value.filter((item) =>
+        item !== key && (currentKeySet.has(item) || persistentPinnedSet.has(item)),
+      )
+      const pinnedWithoutCurrent = nextPinned.filter((item) => item !== key)
+      const lastPinnedKey = pinnedWithoutCurrent[pinnedWithoutCurrent.length - 1]
+      if (lastPinnedKey) {
+        const lastPinnedIndex = nextOrder.indexOf(lastPinnedKey)
+        nextOrder.splice(lastPinnedIndex + 1, 0, key)
+      } else {
+        nextOrder.unshift(key)
+      }
+      tabOrder.value = nextOrder
+      return
+    }
+    pinnedTabs.value = pinnedTabs.value.filter((item) => item !== key)
+  }
+
+  function toggleTabPinned(key: string) {
+    setTabPinned(key, !isTabPinned(key))
+  }
+
+  function moveUnifiedTab(dragKey: string, targetKey: string, placement: 'before' | 'after' = 'before') {
+    if (dragKey === targetKey) return
+    const currentKeys = buildCurrentTabKeys()
+    if (!currentKeys.includes(dragKey) || !currentKeys.includes(targetKey)) return
+
+    const pinnedKeySet = new Set(pinnedTabs.value)
+    const dragPinned = pinnedKeySet.has(dragKey)
+    const targetPinned = pinnedKeySet.has(targetKey)
+    if (dragPinned !== targetPinned) return
+
+    const currentKeySet = new Set(currentKeys)
+    const persistentPinnedSet = new Set(pinnedTabs.value.filter((key) => isPersistentTabLayoutKey(key)))
+    const nextOrder = tabOrder.value.filter((key) => currentKeySet.has(key) || persistentPinnedSet.has(key))
+    if (!nextOrder.includes(dragKey)) nextOrder.push(dragKey)
+    if (!nextOrder.includes(targetKey)) nextOrder.push(targetKey)
+
+    const dragIndex = nextOrder.indexOf(dragKey)
+    const targetIndex = nextOrder.indexOf(targetKey)
+    if (dragIndex < 0 || targetIndex < 0) return
+
+    nextOrder.splice(dragIndex, 1)
+    const adjustedTargetIndex = nextOrder.indexOf(targetKey)
+    nextOrder.splice(placement === 'after' ? adjustedTargetIndex + 1 : adjustedTargetIndex, 0, dragKey)
+    tabOrder.value = nextOrder
+  }
 
   function activateUnifiedTab(item: UnifiedTabItem) {
     if (item.type === 'tool') {
@@ -542,6 +678,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     recentTools.value = []
     toolHistory.value = {}
     persistedToolStates.value = {}
+    pinnedTabs.value = []
+    tabOrder.value = []
     settings.value = { ...defaultSettings }
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
@@ -622,6 +760,33 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  function restorePinnedTabs(tools: ToolManifest[], sshConnections: SSHConnection[] = []) {
+    if (pinnedTabsRestored.value) return
+    pinnedTabsRestored.value = true
+
+    const toolById = new Map(tools.map((tool) => [tool.id, tool]))
+    const sshById = new Map(sshConnections.map((conn) => [conn.id, conn]))
+
+    for (const key of orderedPinnedTabKeys()) {
+      if (key.startsWith('tool:tool_')) {
+        const toolId = key.slice('tool:tool_'.length)
+        const tool = toolById.get(toolId)
+        if (tool) {
+          openTool(tool)
+        }
+        continue
+      }
+
+      if (key.startsWith('ssh:ssh_')) {
+        const connId = key.slice('ssh:ssh_'.length)
+        const conn = sshById.get(connId)
+        if (conn) {
+          openSSHEdit(conn.id, conn.name)
+        }
+      }
+    }
+  }
+
   function setActiveSSHTab(index: number) {
     if (index >= 0 && index < sshTabs.value.length) {
       activeSSHTabIndex.value = index
@@ -649,6 +814,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     unifiedTabs,
     activateUnifiedTab,
     closeUnifiedTab,
+    moveUnifiedTab,
+    pinnedTabs,
+    tabOrder,
+    isTabPinned,
+    setTabPinned,
+    toggleTabPinned,
     showSearch,
     showHotkeyHelp,
     showSettings,
@@ -668,6 +839,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activateToolTab,
     openSSHNew,
     openSSHEdit,
+    restorePinnedTabs,
     closeSSHTab,
     promoteNewSSHTab,
     closeSSHTabByConnectionId,

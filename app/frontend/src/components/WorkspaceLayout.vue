@@ -15,6 +15,7 @@ import WorkspaceTabs from './WorkspaceTabs.vue'
 import StatusBar from './StatusBar.vue'
 import HotkeyHelpModal from './HotkeyHelpModal.vue'
 import SettingsModal from './SettingsModal.vue'
+import { ListSSHConnections } from '../../wailsjs/go/main/App'
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
@@ -57,7 +58,11 @@ function handleOpenSettings() {
 
 onMounted(async () => {
   try {
-    await Promise.all([workbench.loadBootstrap(), execution.hydrate()])
+    const [, sshConnections] = await Promise.all([
+      Promise.all([workbench.loadBootstrap(), execution.hydrate()]),
+      ListSSHConnections().catch(() => []),
+    ])
+    workspace.restorePinnedTabs(workbench.bootstrap?.tools ?? [], sshConnections)
   } catch {
     // 各个 store 内部已有错误状态记录，此处仅防止未处理拒绝
   }
