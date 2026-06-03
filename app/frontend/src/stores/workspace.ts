@@ -9,6 +9,7 @@ export interface ToolTabState {
   executionTarget: ExecutionTarget
   localConfig: ToolExecutionConfig
   remoteConfig: RemoteExecutionConfig
+  terminalVisible: boolean
   openedAt: number
 }
 
@@ -85,6 +86,7 @@ interface PersistedToolState {
   executionTarget: ExecutionTarget
   localConfig: ToolExecutionConfig
   remoteConfig: RemoteExecutionConfig
+  terminalVisible: boolean
   updatedAt: number
 }
 
@@ -126,6 +128,7 @@ function createTabState(
     executionTarget: persistedState?.executionTarget === 'remote' ? 'remote' : 'local',
     localConfig,
     remoteConfig,
+    terminalVisible: persistedState?.terminalVisible === true,
     openedAt: Date.now(),
   }
 }
@@ -252,6 +255,7 @@ function snapshotToolState(tab: ToolTabState): PersistedToolState {
     executionTarget: tab.executionTarget,
     localConfig: cloneExecutionConfig(tab.localConfig),
     remoteConfig: cloneRemoteExecutionConfig(tab.remoteConfig),
+    terminalVisible: tab.terminalVisible,
     updatedAt: Date.now(),
   }
 }
@@ -351,6 +355,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeToolTab = computed(() =>
     activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined,
   )
+
+  const activeToolTerminalVisible = computed(() => activeToolTab.value?.terminalVisible === true)
 
   const activeExecutionConfig = computed<ToolExecutionConfig | RemoteExecutionConfig | undefined>(() => {
     const tab = activeToolTab.value
@@ -628,6 +634,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     config.panelMode = value
   }
 
+  function setTerminalVisible(index: number, value: boolean) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].terminalVisible = value
+  }
+
+  function toggleTerminalVisible(index: number) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].terminalVisible = !openTabs.value[index].terminalVisible
+  }
+
   function setActiveTab(index: number) {
     if (index >= 0 && index < openTabs.value.length) {
       activeTabIndex.value = index
@@ -813,6 +833,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeSSHTabIndex,
     activeTabType,
     activeToolTab,
+    activeToolTerminalVisible,
     activeExecutionConfig,
     activeSSHTab,
     activeTab,
@@ -839,6 +860,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setRemoteConnection,
     setPythonEnv,
     setPanelMode,
+    setTerminalVisible,
+    toggleTerminalVisible,
     setActiveTab,
     setActiveSSHTab,
     activateToolTab,

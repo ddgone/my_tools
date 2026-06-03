@@ -210,6 +210,7 @@ const { size: topHeight, dividerProps: hDividerProps } = useResizable({
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
 const activeToolTabComputed = computed(() => workspace.activeToolTab)
+const isTerminalVisible = computed(() => workspace.activeToolTerminalVisible)
 const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
 const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
 const activeExecutionTheme = computed(() =>
@@ -279,6 +280,10 @@ async function handleExecute() {
   if (tab.executionTarget === 'remote' && !tab.remoteConfig.connId) {
     message.error('请选择远程环境后再执行')
     return
+  }
+
+  if (workspace.activeTabIndex >= 0) {
+    workspace.setTerminalVisible(workspace.activeTabIndex, true)
   }
 
   workspace.recordUsage(tool.id, config.rawArgs, config.pythonEnv, config.formModel)
@@ -864,8 +869,9 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
     <template v-if="workspace.activeTabType === 'tool' && workspace.activeToolTab">
       <div class="flex flex-1 flex-col overflow-hidden">
         <div
-          class="shrink-0 overflow-y-auto border-b border-white/15 p-4"
-          :style="{ height: topHeight + 'px' }"
+          class="overflow-y-auto p-4"
+          :class="isTerminalVisible ? 'shrink-0 border-b border-white/15' : 'min-h-0 flex-1'"
+          :style="isTerminalVisible ? { height: topHeight + 'px' } : undefined"
         >
           <ToolDetailPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
@@ -892,23 +898,25 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           />
         </div>
 
-        <div
-          v-bind="hDividerProps"
-          class="group relative shrink-0 bg-white/10"
-          style="height: 1px; width: 100%"
-        >
+        <template v-if="isTerminalVisible">
           <div
-            class="workspace-tabs-divider-glow absolute inset-x-0 -top-1 -bottom-1"
-          />
-        </div>
+            v-bind="hDividerProps"
+            class="group relative shrink-0 bg-white/10"
+            style="height: 1px; width: 100%"
+          >
+            <div
+              class="workspace-tabs-divider-glow absolute inset-x-0 -top-1 -bottom-1"
+            />
+          </div>
 
-        <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ExecutionTerminal
-            :task-id="activeTabTaskId"
-            :execution-target="workspace.activeToolTab.executionTarget"
-            :tool-kind="toolById(workspace.activeToolTab.toolId)?.kind"
-          />
-        </div>
+          <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ExecutionTerminal
+              :task-id="activeTabTaskId"
+              :execution-target="workspace.activeToolTab.executionTarget"
+              :tool-kind="toolById(workspace.activeToolTab.toolId)?.kind"
+            />
+          </div>
+        </template>
       </div>
     </template>
 

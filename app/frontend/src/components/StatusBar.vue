@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { NIcon, NText } from 'naive-ui'
-import { CheckmarkCircle } from '@vicons/ionicons5'
+import { NButton, NIcon, NText } from 'naive-ui'
+import { CheckmarkCircle, TerminalOutline } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { computed } from 'vue'
 
 const execution = useExecutionStore()
+const workspace = useWorkspaceStore()
 
 const activeTaskCount = computed(() => execution.tasks.filter((t) => t.status === 'running').length)
+const hasActiveToolTab = computed(() => workspace.activeTabType === 'tool' && workspace.activeTabIndex >= 0)
+const terminalToggleLabel = computed(() =>
+  workspace.activeToolTerminalVisible ? '隐藏终端' : '显示终端',
+)
+
+function toggleTerminal() {
+  if (!hasActiveToolTab.value) {
+    return
+  }
+  workspace.toggleTerminalVisible(workspace.activeTabIndex)
+}
 </script>
 
 <template>
@@ -37,7 +50,18 @@ const activeTaskCount = computed(() => execution.tasks.filter((t) => t.status ==
         </template>
       </NText>
     </div>
-    <div class="flex items-center gap-x-3">
+    <div class="flex items-center gap-x-2">
+      <NButton
+        quaternary
+        size="tiny"
+        :disabled="!hasActiveToolTab"
+        @click="toggleTerminal"
+      >
+        <template #icon>
+          <NIcon :component="TerminalOutline" />
+        </template>
+        {{ terminalToggleLabel }}
+      </NButton>
       <NText
         depth="3"
         class="text-[10px]"
