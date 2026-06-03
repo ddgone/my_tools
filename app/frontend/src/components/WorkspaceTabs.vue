@@ -211,7 +211,6 @@ const { size: terminalHeight, dividerProps: hDividerProps } = useResizable({
   max: () => Math.max(terminalMinHeight, workspaceBodyHeight.value - topPanelMinHeight),
   initial: initialTerminalHeight,
   reverse: true,
-  storageKey: 'fire-salamander:terminal-height',
 })
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
@@ -225,6 +224,9 @@ const activeExecutionTheme = computed(() =>
 const workspaceThemeStyle = computed<CSSProperties>(() => ({
   ...makeExecutionThemeVars(activeExecutionTheme.value, 'workspace-tabs'),
 }))
+const activeToolTerminalHeight = computed(() =>
+  workspace.activeToolTerminalHeight ?? initialTerminalHeight,
+)
 
 function syncWorkspaceBodyHeight() {
   const contentHeight = contentRef.value?.clientHeight ?? 0
@@ -234,6 +236,27 @@ function syncWorkspaceBodyHeight() {
     workspaceBodyHeight.value = nextHeight
   }
 }
+
+watch(
+  () => workspace.activeToolTab?.toolId,
+  () => {
+    terminalHeight.value = activeToolTerminalHeight.value
+  },
+  { immediate: true },
+)
+
+watch(
+  terminalHeight,
+  (value) => {
+    if (workspace.activeTabType !== 'tool' || workspace.activeTabIndex < 0) {
+      return
+    }
+    if (workspace.activeToolTerminalHeight === value) {
+      return
+    }
+    workspace.setTerminalHeight(workspace.activeTabIndex, value)
+  },
+)
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
