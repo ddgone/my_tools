@@ -86,16 +86,30 @@ type ParameterOption struct {
 	Value string `yaml:"value" json:"value"`
 }
 
+type ParameterCondition struct {
+	Key    string `yaml:"key" json:"key"`
+	Equals any    `yaml:"equals,omitempty" json:"equals,omitempty"`
+}
+
+type ParameterVisibility struct {
+	All []ParameterCondition `yaml:"all,omitempty" json:"all,omitempty"`
+	Any []ParameterCondition `yaml:"any,omitempty" json:"any,omitempty"`
+}
+
 type ParameterSpec struct {
-	Key         string             `yaml:"key" json:"key"`
-	ArgKey      string             `yaml:"argKey,omitempty" json:"argKey,omitempty"`
-	Type        ParameterFieldType `yaml:"type" json:"type"`
-	Label       string             `yaml:"label" json:"label"`
-	Placeholder string             `yaml:"placeholder,omitempty" json:"placeholder,omitempty"`
-	Required    bool               `yaml:"required,omitempty" json:"required,omitempty"`
-	Default     any                `yaml:"default,omitempty" json:"default,omitempty"`
-	Help        string             `yaml:"help,omitempty" json:"help,omitempty"`
-	Options     []ParameterOption  `yaml:"options,omitempty" json:"options,omitempty"`
+	Key         string               `yaml:"key" json:"key"`
+	ArgKey      string               `yaml:"argKey,omitempty" json:"argKey,omitempty"`
+	Type        ParameterFieldType   `yaml:"type" json:"type"`
+	Label       string               `yaml:"label" json:"label"`
+	Placeholder string               `yaml:"placeholder,omitempty" json:"placeholder,omitempty"`
+	Required    bool                 `yaml:"required,omitempty" json:"required,omitempty"`
+	Default     any                  `yaml:"default,omitempty" json:"default,omitempty"`
+	Help        string               `yaml:"help,omitempty" json:"help,omitempty"`
+	Options     []ParameterOption    `yaml:"options,omitempty" json:"options,omitempty"`
+	Group       string               `yaml:"group,omitempty" json:"group,omitempty"`
+	PathMode    string               `yaml:"pathMode,omitempty" json:"pathMode,omitempty"`
+	Emit        *bool                `yaml:"emit,omitempty" json:"emit,omitempty"`
+	VisibleWhen *ParameterVisibility `yaml:"visibleWhen,omitempty" json:"visibleWhen,omitempty"`
 }
 
 type LocalExecutionSpec struct {

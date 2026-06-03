@@ -24,6 +24,7 @@ import type { ParameterSpec, ToolManifest } from '@/types/workbench'
 import { validateCliArgs } from '@/utils/cliArgs'
 import type { ToolPanelMode } from '@/stores/workspace'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getVisibleParams } from '@/utils/toolParams'
 
 const props = defineProps<{
   tool: ToolManifest | null
@@ -32,7 +33,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   execute: []
-  fileDialog: [param: ParameterSpec]
+  fileDialog: [param: ParameterSpec, target?: 'file' | 'directory']
 }>()
 
 const workspace = useWorkspaceStore()
@@ -72,6 +73,33 @@ function selectOptions(param: ParameterSpec): SelectOption[] {
   return (param.options ?? []).map((o) => ({ label: o.label, value: o.value }))
 }
 
+const visibleParams = computed(() => {
+  if (!props.tool) {
+    return []
+  }
+  return getVisibleParams(props.tool, activeConfig.value?.formModel ?? {})
+})
+
+const groupedVisibleParams = computed(() => {
+  const groups: Array<{ name: string; params: ParameterSpec[] }> = []
+  const seen = new Map<string, { name: string; params: ParameterSpec[] }>()
+
+  for (const param of visibleParams.value) {
+    const groupName = param.group?.trim() || ''
+    const existing = seen.get(groupName)
+    if (existing) {
+      existing.params.push(param)
+      continue
+    }
+
+    const group = { name: groupName, params: [param] }
+    seen.set(groupName, group)
+    groups.push(group)
+  }
+
+  return groups
+})
+
 function onTextUpdate(param: ParameterSpec, value: string) {
   const config = activeConfig.value
   if (config) config.formModel[param.key] = value
@@ -93,7 +121,7 @@ function onSelectUpdate(param: ParameterSpec, value: string) {
 }
 
 function shouldShowHelpTooltip(param: ParameterSpec): boolean {
-  return typeof param.help === 'string' && param.help.includes('\n')
+  return typeof param.help === 'string' && param.help.trim().length > 0
 }
 
 function formTextValue(param: ParameterSpec): string | null {
@@ -118,6 +146,21 @@ function formSelectValue(param: ParameterSpec): string | null {
 function tabRawArgs(): string {
   return activeConfig.value?.rawArgs ?? ''
 }
+
+function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: string; target: 'file' | 'directory' }> {
+  switch (param.pathMode) {
+    case 'file':
+      return [{ key: 'file', label: '选文件', target: 'file' }]
+    case 'fileOrDirectory':
+      return [
+        { key: 'file', label: '选文件', target: 'file' },
+        { key: 'directory', label: '选目录', target: 'directory' },
+      ]
+    default:
+      return [{ key: 'directory', label: '浏览', target: 'directory' }]
+  }
+}
+
 
 const panelThemeStyle = computed<CSSProperties>(() => ({
   ...makeExecutionThemeVars(executionTheme.value, 'parameter-panel'),
@@ -194,102 +237,124 @@ async function copyCli() {
           label-align="left"
           size="small"
         >
-          <div class="grid grid-cols-2 gap-x-6 gap-y-2">
-            <NFormItem
-              v-for="param in tool.params"
-              :key="param.key"
+          <div class="space-y-5">
+            <section
+              v-for="group in groupedVisibleParams"
+              :key="group.name || '__default__'"
             >
-              <template #label>
-                <div class="flex items-center gap-x-1.5">
-                  <span>{{ param.label }}</span>
-                  <span
-                    v-if="param.required"
-                    class="text-[13px] font-semibold leading-none text-red-400"
-                  >
-                    *
-                  </span>
-                  <NTooltip
-                    v-if="shouldShowHelpTooltip(param)"
-                    placement="top"
-                    :style="{ maxWidth: '320px' }"
-                  >
-                    <template #trigger>
-                      <span
-                        class="help-trigger"
-                        tabindex="0"
-                      >
-                        <NIcon
-                          :component="HelpCircle"
-                          size="14"
-                        />
-                      </span>
-                    </template>
-                    <div class="whitespace-pre-wrap text-xs leading-relaxed">
-                      {{ param.help }}
-                    </div>
-                  </NTooltip>
-                </div>
-              </template>
-              <NInput
-                v-if="param.type === 'text'"
-                :value="formTextValue(param)"
-                :placeholder="param.placeholder"
-                @update:value="onTextUpdate(param, $event)"
-              />
-
               <div
-                v-else-if="param.type === 'path'"
-                class="flex w-full items-start gap-x-2"
+                v-if="group.name"
+                class="mb-2 text-[11px] uppercase tracking-wider text-slate-400"
               >
-                <NInput
-                  :value="formTextValue(param)"
-                  type="textarea"
-                  :placeholder="param.placeholder"
-                  :autosize="{ minRows: 2, maxRows: 4 }"
-                  class="flex-1"
-                  @update:value="onTextUpdate(param, $event)"
-                />
-                <NButton
-                  class="shrink-0"
-                  @click="emit('fileDialog', param)"
-                >
-                  <template #icon>
-                    <NIcon :component="FolderOpen" />
-                  </template>
-                </NButton>
+                {{ group.name }}
               </div>
+              <div class="grid grid-cols-2 gap-x-6 gap-y-2">
+                <NFormItem
+                  v-for="param in group.params"
+                  :key="param.key"
+                >
+                  <template #label>
+                    <div class="flex items-center gap-x-1.5">
+                      <span>{{ param.label }}</span>
+                      <span
+                        v-if="param.required"
+                        class="text-[13px] font-semibold leading-none text-red-400"
+                      >
+                        *
+                      </span>
+                      <NTooltip
+                        v-if="shouldShowHelpTooltip(param)"
+                        placement="top"
+                        :style="{ maxWidth: '320px' }"
+                      >
+                        <template #trigger>
+                          <span
+                            class="help-trigger"
+                            tabindex="0"
+                          >
+                            <NIcon
+                              :component="HelpCircle"
+                              size="14"
+                            />
+                          </span>
+                        </template>
+                        <div class="whitespace-pre-wrap text-xs leading-relaxed">
+                          {{ param.help }}
+                        </div>
+                      </NTooltip>
+                    </div>
+                  </template>
+                  <NInput
+                    v-if="param.type === 'text'"
+                    :value="formTextValue(param)"
+                    :placeholder="param.placeholder"
+                    @update:value="onTextUpdate(param, $event)"
+                  />
 
-              <NInput
-                v-else-if="param.type === 'textarea'"
-                :value="formTextValue(param)"
-                type="textarea"
-                :placeholder="param.placeholder"
-                :autosize="{ minRows: 2, maxRows: 4 }"
-                @update:value="onTextUpdate(param, $event)"
-              />
+                  <div
+                    v-else-if="param.type === 'path'"
+                    class="flex w-full items-start gap-x-2"
+                  >
+                    <NInput
+                      :value="formTextValue(param)"
+                      type="textarea"
+                      :placeholder="param.placeholder"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                      class="flex-1"
+                      @update:value="onTextUpdate(param, $event)"
+                    />
+                    <div class="flex shrink-0 flex-col gap-2">
+                      <NButton
+                        v-for="button in pathDialogButtons(param)"
+                        :key="button.key"
+                        size="small"
+                        class="shrink-0"
+                        @click="emit('fileDialog', param, button.target)"
+                      >
+                        <template
+                          v-if="button.target === 'directory'"
+                          #icon
+                        >
+                          <NIcon :component="FolderOpen" />
+                        </template>
+                        {{ button.label }}
+                      </NButton>
+                    </div>
+                  </div>
 
-              <NInputNumber
-                v-else-if="param.type === 'number'"
-                :value="formNumberValue(param)"
-                :show-button="false"
-                class="w-full"
-                @update:value="onNumberUpdate(param, $event)"
-              />
+                  <NInput
+                    v-else-if="param.type === 'textarea'"
+                    :value="formTextValue(param)"
+                    type="textarea"
+                    :placeholder="param.placeholder"
+                    :autosize="{ minRows: 2, maxRows: 4 }"
+                    @update:value="onTextUpdate(param, $event)"
+                  />
 
-              <NSwitch
-                v-else-if="param.type === 'boolean'"
-                :value="formBoolValue(param)"
-                :style="switchStyle"
-                @update:value="onBoolUpdate(param, $event)"
-              />
+                  <NInputNumber
+                    v-else-if="param.type === 'number'"
+                    :value="formNumberValue(param)"
+                    :show-button="false"
+                    class="w-full"
+                    @update:value="onNumberUpdate(param, $event)"
+                  />
 
-              <NSelect
-                v-else-if="param.type === 'select'"
-                :value="formSelectValue(param)"
-                :options="selectOptions(param)"
-                @update:value="onSelectUpdate(param, $event)"
-              />
-            </NFormItem>
+                  <NSwitch
+                    v-else-if="param.type === 'boolean'"
+                    :value="formBoolValue(param)"
+                    :style="switchStyle"
+                    @update:value="onBoolUpdate(param, $event)"
+                  />
+
+                  <NSelect
+                    v-else-if="param.type === 'select'"
+                    :value="formSelectValue(param)"
+                    :options="selectOptions(param)"
+                    @update:value="onSelectUpdate(param, $event)"
+                  />
+                </NFormItem>
+              </div>
+            </section>
           </div>
         </NForm>
       </div>
@@ -364,44 +429,58 @@ async function copyCli() {
           >
             参数列表
           </NText>
-          <div class="mt-2 space-y-1.5">
-            <div
-              v-for="param in tool.params"
-              :key="param.key"
-              class="flex items-baseline gap-x-2 text-xs"
+          <div class="mt-2 space-y-3">
+            <section
+              v-for="group in groupedVisibleParams"
+              :key="`docs-${group.name || '__default__'}`"
             >
-              <code
-                class="parameter-panel-accent shrink-0 font-mono"
-              >
-                {{ param.argKey || param.key }}
-              </code>
-              <NText depth="2">
-                {{ param.label }}
-              </NText>
-              <NTag
-                v-if="param.required"
-                size="tiny"
-                :bordered="false"
-                type="error"
-                class="shrink-0"
-              >
-                必填
-              </NTag>
-              <NTag
-                v-else
-                size="tiny"
-                :bordered="false"
-                class="shrink-0 opacity-50"
-              >
-                可选
-              </NTag>
               <NText
+                v-if="group.name"
                 depth="3"
-                class="ml-auto text-[10px]"
+                class="text-[10px] uppercase tracking-wider"
               >
-                {{ param.type }}
+                {{ group.name }}
               </NText>
-            </div>
+              <div class="mt-1.5 space-y-1.5">
+                <div
+                  v-for="param in group.params"
+                  :key="param.key"
+                  class="flex items-baseline gap-x-2 text-xs"
+                >
+                  <code
+                    class="parameter-panel-accent shrink-0 font-mono"
+                  >
+                    {{ param.emit === false ? '(表单)' : `-${param.argKey || param.key}` }}
+                  </code>
+                  <NText depth="2">
+                    {{ param.label }}
+                  </NText>
+                  <NTag
+                    v-if="param.required"
+                    size="tiny"
+                    :bordered="false"
+                    type="error"
+                    class="shrink-0"
+                  >
+                    必填
+                  </NTag>
+                  <NTag
+                    v-else
+                    size="tiny"
+                    :bordered="false"
+                    class="shrink-0 opacity-50"
+                  >
+                    可选
+                  </NTag>
+                  <NText
+                    depth="3"
+                    class="ml-auto text-[10px]"
+                  >
+                    {{ param.type }}
+                  </NText>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>

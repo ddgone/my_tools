@@ -277,6 +277,20 @@ export namespace toolspec {
 	    }
 	}
 	
+	export class ParameterCondition {
+	    key: string;
+	    equals?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new ParameterCondition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.equals = source["equals"];
+	    }
+	}
 	export class ParameterOption {
 	    label: string;
 	    value: string;
@@ -291,32 +305,18 @@ export namespace toolspec {
 	        this.value = source["value"];
 	    }
 	}
-	export class ParameterSpec {
-	    key: string;
-	    argKey?: string;
-	    type: string;
-	    label: string;
-	    placeholder?: string;
-	    required?: boolean;
-	    default?: any;
-	    help?: string;
-	    options?: ParameterOption[];
+	export class ParameterVisibility {
+	    all?: ParameterCondition[];
+	    any?: ParameterCondition[];
 	
 	    static createFrom(source: any = {}) {
-	        return new ParameterSpec(source);
+	        return new ParameterVisibility(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.argKey = source["argKey"];
-	        this.type = source["type"];
-	        this.label = source["label"];
-	        this.placeholder = source["placeholder"];
-	        this.required = source["required"];
-	        this.default = source["default"];
-	        this.help = source["help"];
-	        this.options = this.convertValues(source["options"], ParameterOption);
+	        this.all = this.convertValues(source["all"], ParameterCondition);
+	        this.any = this.convertValues(source["any"], ParameterCondition);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -337,6 +337,61 @@ export namespace toolspec {
 		    return a;
 		}
 	}
+	export class ParameterSpec {
+	    key: string;
+	    argKey?: string;
+	    type: string;
+	    label: string;
+	    placeholder?: string;
+	    required?: boolean;
+	    default?: any;
+	    help?: string;
+	    options?: ParameterOption[];
+	    group?: string;
+	    pathMode?: string;
+	    emit?: boolean;
+	    visibleWhen?: ParameterVisibility;
+	
+	    static createFrom(source: any = {}) {
+	        return new ParameterSpec(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.argKey = source["argKey"];
+	        this.type = source["type"];
+	        this.label = source["label"];
+	        this.placeholder = source["placeholder"];
+	        this.required = source["required"];
+	        this.default = source["default"];
+	        this.help = source["help"];
+	        this.options = this.convertValues(source["options"], ParameterOption);
+	        this.group = source["group"];
+	        this.pathMode = source["pathMode"];
+	        this.emit = source["emit"];
+	        this.visibleWhen = this.convertValues(source["visibleWhen"], ParameterVisibility);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	
 	export class SourceSpec {
 	    entry: string;

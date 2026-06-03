@@ -8,7 +8,7 @@ import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
-import { OpenFileDialog, OpenSaveFileDialog } from '../../wailsjs/go/main/App'
+import { OpenFileDialog } from '../../wailsjs/go/main/App'
 import type { ParameterSpec, SSHConnection } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
@@ -17,6 +17,7 @@ import SSHDetailPanel from './SSHDetailPanel.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { findMissingRequiredParam } from '@/utils/toolParams'
 import gsap from 'gsap'
 
 const emit = defineEmits<{
@@ -267,6 +268,14 @@ async function handleExecute() {
     return
   }
 
+  if (config.panelMode !== 'cli') {
+    const missingParam = findMissingRequiredParam(tool, config.formModel)
+    if (missingParam) {
+      message.error(`请先填写“${missingParam.label}”`)
+      return
+    }
+  }
+
   if (tab.executionTarget === 'remote' && !tab.remoteConfig.connId) {
     message.error('请选择远程环境后再执行')
     return
@@ -301,45 +310,31 @@ async function handleCancel() {
   await execution.cancelExecution(task.id)
 }
 
-async function handleFileDialog(param: ParameterSpec) {
+async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directory') {
   const tab = activeToolTabComputed.value
   const config = workspace.activeExecutionConfig
   if (!tab) return
 
-  const key = param.key.toLowerCase()
-  const label = param.label.toLowerCase()
-  const placeholder = (param.placeholder || '').toLowerCase()
-  const help = (param.help || '').toLowerCase()
-  const isDir =
-    key.includes('dir') ||
-    key.includes('folder') ||
-    label.includes('目录') ||
-    label.includes('文件夹') ||
-    placeholder.includes('目录') ||
-    help.includes('目录')
-  const isSave = !isDir && (key.includes('output') || key.includes('save') || label.includes('输出') || label.includes('保存'))
+  const dialogTarget =
+    target ||
+    (param.pathMode === 'file'
+      ? 'file'
+      : 'directory')
   let result: string
 
-  if (isDir) {
+  if (dialogTarget === 'directory') {
     result = await OpenFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',
       filterGlob: '*.*',
       directory: true,
     })
-  } else if (isSave) {
-    result = await OpenSaveFileDialog({
-      title: `选择 ${param.label}`,
-      filterName: '所有文件',
-      filterGlob: '*.*',
-      directory: false,
-    })
   } else {
     result = await OpenFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',
       filterGlob: '*.*',
-      directory: isDir,
+      directory: false,
     })
   }
 

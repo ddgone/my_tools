@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
+import { getVisibleParams, shouldEmitParam } from '@/utils/toolParams'
 
 export interface ToolTabState {
   tabId: string
@@ -257,7 +258,11 @@ function snapshotToolState(tab: ToolTabState): PersistedToolState {
 
 function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | number | boolean | null>): string {
   const parts: string[] = []
-  for (const param of tool.params) {
+  for (const param of getVisibleParams(tool, formModel)) {
+    if (!shouldEmitParam(param)) {
+      continue
+    }
+
     const value = formModel[param.key]
     const argKey = param.argKey || param.key
 

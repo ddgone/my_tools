@@ -8,6 +8,16 @@ export interface ParameterOption {
   value: string
 }
 
+export interface ParameterCondition {
+  key: string
+  equals?: unknown
+}
+
+export interface ParameterVisibility {
+  all?: ParameterCondition[]
+  any?: ParameterCondition[]
+}
+
 export interface ParameterSpec {
   key: string
   argKey?: string
@@ -18,6 +28,10 @@ export interface ParameterSpec {
   default?: unknown
   help?: string
   options?: ParameterOption[]
+  group?: string
+  pathMode?: string
+  emit?: boolean
+  visibleWhen?: ParameterVisibility
 }
 
 export interface ExecutionSpec {

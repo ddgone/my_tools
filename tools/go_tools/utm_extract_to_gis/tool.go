@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"my_tools/libs/framework"
 
@@ -423,22 +422,123 @@ func writeGeoJSONLineSHP(ctx context.Context, shpPath string, trackFeatures map[
 	return fixDbfPath(shpPath)
 }
 
-func convertSingleFile(ctx context.Context, utmPath, trackID string, zone int, out io.Writer) error {
+const (
+	artifactGeoJSON = "geojson"
+	artifactSHP     = "shp"
+	artifactAll     = "all"
+
+	extractModeQuick = "quick"
+	extractModeFull  = "full"
+
+	cleanupKeep            = "keep"
+	cleanupDeleteExtracted = "delete-extracted"
+	cleanupDeleteArchive   = "delete-archive"
+	cleanupDeleteAll       = "delete-all"
+)
+
+func shouldWriteGeoJSON(artifactSet string) bool {
+	return artifactSet == artifactGeoJSON || artifactSet == artifactAll
+}
+
+func shouldWriteSHP(artifactSet string) bool {
+	return artifactSet == artifactSHP || artifactSet == artifactAll
+}
+
+func validateArtifactSet(artifactSet string) error {
+	switch artifactSet {
+	case artifactGeoJSON, artifactSHP, artifactAll:
+		return nil
+	default:
+		return fmt.Errorf("错误：-artifact-set 只能是 geojson、shp 或 all")
+	}
+}
+
+func validateExtractMode(mode string) error {
+	switch mode {
+	case extractModeQuick, extractModeFull:
+		return nil
+	default:
+		return fmt.Errorf("错误：-extract-mode 只能是 quick 或 full")
+	}
+}
+
+func validateCleanupPolicy(policy string) error {
+	switch policy {
+	case cleanupKeep, cleanupDeleteExtracted, cleanupDeleteArchive, cleanupDeleteAll:
+		return nil
+	default:
+		return fmt.Errorf("错误：-cleanup-policy 只能是 keep、delete-extracted、delete-archive 或 delete-all")
+	}
+}
+
+func isWithinDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func defaultOutputDir(inputPath string, isDir bool) string {
+	if isDir {
+		return filepath.Join(inputPath, "output")
+	}
+	return filepath.Join(filepath.Dir(inputPath), "output")
+}
+
+func deriveTrackIDFromUTMPath(utmPath string) string {
+	name := filepath.Base(utmPath)
+	lowerName := strings.ToLower(name)
+	if lowerName == "utm.txt" {
+		return filepath.Base(filepath.Dir(utmPath))
+	}
+	if strings.HasSuffix(lowerName, ".utm.txt") {
+		return name[:len(name)-len(".utm.txt")]
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+func allocateTrackID(base string, used map[string]int) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base = "track"
+	}
+	if used[base] == 0 {
+		used[base] = 1
+		return base
+	}
+	used[base]++
+	return fmt.Sprintf("%s_%d", base, used[base])
+}
+
+func loadTrackFeatures(ctx context.Context, utmPath, trackID string, zone int) ([]GeoJSONFeature, error) {
 	features, err := convertUTMToGeoJSON(ctx, utmPath, trackID, zone)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(features) == 0 {
-		return fmt.Errorf("无有效点")
+		return nil, fmt.Errorf("无有效点")
 	}
+	return features, nil
+}
 
-	ext := filepath.Ext(utmPath)
-	base := strings.TrimSuffix(utmPath, ext)
-	outFile := base + ".geojson"
-	if err := saveGeoJSON(features, outFile); err != nil {
+func writeTrackArtifacts(ctx context.Context, outputDir, trackID string, features []GeoJSONFeature, artifactSet string, out io.Writer) error {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "转换成功: %s (%d 点)\n", outFile, len(features))
+
+	base := filepath.Join(outputDir, trackID)
+	if shouldWriteGeoJSON(artifactSet) {
+		geojsonPath := base + ".geojson"
+		if err := saveGeoJSON(features, geojsonPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  [GeoJSON] %s (%d 点)\n", filepath.Base(geojsonPath), len(features))
+	}
+
+	if !shouldWriteSHP(artifactSet) {
+		return nil
+	}
 
 	select {
 	case <-ctx.Done():
@@ -448,9 +548,9 @@ func convertSingleFile(ctx context.Context, utmPath, trackID string, zone int, o
 
 	pointShp := base + "_point.shp"
 	if err := writeGeoJSONPointSHP(ctx, pointShp, features); err != nil {
-		fmt.Fprintf(out, "  点 SHP 错误: %v\n", err)
+		fmt.Fprintf(out, "  [警告] 点 SHP 失败: %v\n", err)
 	} else {
-		fmt.Fprintf(out, "点 SHP: %s\n", pointShp)
+		fmt.Fprintf(out, "  [SHP] %s\n", filepath.Base(pointShp))
 	}
 
 	select {
@@ -459,26 +559,95 @@ func convertSingleFile(ctx context.Context, utmPath, trackID string, zone int, o
 	default:
 	}
 
-	trackFeatures := map[string][]GeoJSONFeature{trackID: features}
 	lineShp := base + "_line.shp"
-	if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
-		fmt.Fprintf(out, "  线 SHP 错误: %v\n", err)
+	if err := writeGeoJSONLineSHP(ctx, lineShp, map[string][]GeoJSONFeature{trackID: features}); err != nil {
+		fmt.Fprintf(out, "  [警告] 线 SHP 失败: %v\n", err)
 	} else {
-		fmt.Fprintf(out, "线 SHP: %s\n", lineShp)
+		fmt.Fprintf(out, "  [SHP] %s\n", filepath.Base(lineShp))
 	}
 
 	return nil
 }
 
-func convertDirectory(ctx context.Context, dirPath string, zone int, out io.Writer) error {
+func writeMergedArtifacts(ctx context.Context, outputDir, baseName string, allFeatures []GeoJSONFeature, trackFeatures map[string][]GeoJSONFeature, artifactSet string, out io.Writer) error {
+	if len(allFeatures) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+
+	base := filepath.Join(outputDir, baseName)
+	if shouldWriteGeoJSON(artifactSet) {
+		geojsonPath := base + ".geojson"
+		if err := saveGeoJSON(allFeatures, geojsonPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  [合并 GeoJSON] %s (%d 点)\n", filepath.Base(geojsonPath), len(allFeatures))
+	}
+
+	if !shouldWriteSHP(artifactSet) {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
+	pointShp := base + "_point.shp"
+	if err := writeGeoJSONPointSHP(ctx, pointShp, allFeatures); err != nil {
+		fmt.Fprintf(out, "  [警告] 合并点 SHP 失败: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "  [合并 SHP] %s\n", filepath.Base(pointShp))
+	}
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
+	lineShp := base + "_line.shp"
+	if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
+		fmt.Fprintf(out, "  [警告] 合并线 SHP 失败: %v\n", err)
+	} else {
+		fmt.Fprintf(out, "  [合并 SHP] %s\n", filepath.Base(lineShp))
+	}
+
+	return nil
+}
+
+func convertSingleFile(ctx context.Context, utmPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
+	trackID := deriveTrackIDFromUTMPath(utmPath)
+	features, err := loadTrackFeatures(ctx, utmPath, trackID, zone)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "转换: %s (track_id: %s)\n", utmPath, trackID)
+	if err := writeTrackArtifacts(ctx, outputDir, trackID, features, artifactSet, out); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "\n完成！输出目录: %s\n", outputDir)
+	return nil
+}
+
+func convertDirectory(ctx context.Context, dirPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
 	var converted int
 	var allFeatures []GeoJSONFeature
 	trackFeatures := map[string][]GeoJSONFeature{}
+	usedTrackIDs := map[string]int{}
+
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
+			if path != dirPath && isWithinDir(path, outputDir) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -489,72 +658,61 @@ func convertDirectory(ctx context.Context, dirPath string, zone int, out io.Writ
 		}
 
 		name := strings.ToLower(info.Name())
-		if name == "utm.txt" || strings.HasSuffix(name, ".utm.txt") {
-			var trackID string
-			if name == "utm.txt" {
-				trackID = filepath.Base(filepath.Dir(path))
-			} else {
-				trackID = strings.TrimSuffix(name, ".utm.txt")
-			}
-			fmt.Fprintf(out, "转换: %s (track_id: %s)\n", path, trackID)
-			if err := convertSingleFile(ctx, path, trackID, zone, out); err != nil {
-				if err.Error() == "任务已被取消" {
-					return err
-				}
-				fmt.Fprintf(out, "  错误: %v\n", err)
-				return nil
-			}
-			features, _ := convertUTMToGeoJSON(ctx, path, trackID, zone)
-			if len(features) > 0 {
-				allFeatures = append(allFeatures, features...)
-				trackFeatures[trackID] = features
-			}
-			converted++
+		if name != "utm.txt" && !strings.HasSuffix(name, ".utm.txt") {
+			return nil
 		}
+
+		trackID := allocateTrackID(deriveTrackIDFromUTMPath(path), usedTrackIDs)
+		fmt.Fprintf(out, "转换: %s (track_id: %s)\n", path, trackID)
+		features, err := loadTrackFeatures(ctx, path, trackID, zone)
+		if err != nil {
+			if err.Error() == "任务已被取消" {
+				return err
+			}
+			fmt.Fprintf(out, "  [错误] %v\n", err)
+			return nil
+		}
+		if err := writeTrackArtifacts(ctx, outputDir, trackID, features, artifactSet, out); err != nil {
+			if err.Error() == "任务已被取消" {
+				return err
+			}
+			fmt.Fprintf(out, "  [错误] 输出失败: %v\n", err)
+			return nil
+		}
+		allFeatures = append(allFeatures, features...)
+		trackFeatures[trackID] = features
+		converted++
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	if converted == 0 {
+		return fmt.Errorf("未找到任何 utm.txt 文件")
+	}
+
 	fmt.Fprintf(out, "\n完成！共转换 %d 个文件\n", converted)
-
-	if len(allFeatures) > 0 {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		dirBase := filepath.Join(dirPath, "merged_utm")
-		pointShp := dirBase + "_point.shp"
-		if err := writeGeoJSONPointSHP(ctx, pointShp, allFeatures); err != nil {
-			fmt.Fprintf(out, "点 SHP 错误: %v\n", err)
-		} else {
-			fmt.Fprintf(out, "合并点 SHP: %s\n", pointShp)
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		lineShp := dirBase + "_line.shp"
-		if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
-			fmt.Fprintf(out, "线 SHP 错误: %v\n", err)
-		} else {
-			fmt.Fprintf(out, "合并线 SHP: %s\n", lineShp)
+	if converted > 1 {
+		if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", allFeatures, trackFeatures, artifactSet, out); err != nil {
+			return err
 		}
 	}
+	fmt.Fprintf(out, "输出目录: %s\n", outputDir)
 	return nil
 }
 
-func mergeGeoJSON(ctx context.Context, dirPath string, out io.Writer) error {
+func mergeGeoJSON(ctx context.Context, dirPath, outputDir, artifactSet string, out io.Writer) error {
 	var allFeatures []GeoJSONFeature
 	trackFeatures := map[string][]GeoJSONFeature{}
+
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
+			if path != dirPath && isWithinDir(path, outputDir) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -564,24 +722,26 @@ func mergeGeoJSON(ctx context.Context, dirPath string, out io.Writer) error {
 		default:
 		}
 
-		if strings.HasSuffix(strings.ToLower(path), ".geojson") {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				fmt.Fprintf(out, "读取失败 %s: %v\n", path, err)
-				return nil
-			}
-			var fc FeatureCollection
-			if err := json.Unmarshal(data, &fc); err != nil {
-				fmt.Fprintf(out, "解析失败 %s: %v\n", path, err)
-				return nil
-			}
-			allFeatures = append(allFeatures, fc.Features...)
-			for _, f := range fc.Features {
-				trackID, _ := f.Properties["track_id"].(string)
-				trackFeatures[trackID] = append(trackFeatures[trackID], f)
-			}
-			fmt.Fprintf(out, "合并: %s (%d 个特征点)\n", path, len(fc.Features))
+		if !strings.HasSuffix(strings.ToLower(path), ".geojson") {
+			return nil
 		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(out, "读取失败 %s: %v\n", path, err)
+			return nil
+		}
+		var fc FeatureCollection
+		if err := json.Unmarshal(data, &fc); err != nil {
+			fmt.Fprintf(out, "解析失败 %s: %v\n", path, err)
+			return nil
+		}
+		allFeatures = append(allFeatures, fc.Features...)
+		for _, f := range fc.Features {
+			trackID, _ := f.Properties["track_id"].(string)
+			trackFeatures[trackID] = append(trackFeatures[trackID], f)
+		}
+		fmt.Fprintf(out, "合并: %s (%d 个特征点)\n", path, len(fc.Features))
 		return nil
 	})
 	if err != nil {
@@ -590,39 +750,10 @@ func mergeGeoJSON(ctx context.Context, dirPath string, out io.Writer) error {
 	if len(allFeatures) == 0 {
 		return fmt.Errorf("未找到任何 GeoJSON 文件")
 	}
-	timestamp := time.Now().UnixMilli()
-	outFile := fmt.Sprintf("merged_%d.geojson", timestamp)
-	if err := saveGeoJSON(allFeatures, outFile); err != nil {
+	if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", allFeatures, trackFeatures, artifactSet, out); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\n合并完成！输出: %s (总共 %d 个特征点)\n", outFile, len(allFeatures))
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	pointShp := fmt.Sprintf("merged_%d_point.shp", timestamp)
-	if err := writeGeoJSONPointSHP(ctx, pointShp, allFeatures); err != nil {
-		fmt.Fprintf(out, "点 SHP 错误: %v\n", err)
-	} else {
-		fmt.Fprintf(out, "点 SHP: %s\n", pointShp)
-	}
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	lineShp := fmt.Sprintf("merged_%d_line.shp", timestamp)
-	if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
-		fmt.Fprintf(out, "线 SHP 错误: %v\n", err)
-	} else {
-		fmt.Fprintf(out, "线 SHP: %s\n", lineShp)
-	}
-
+	fmt.Fprintf(out, "\n合并完成！输出目录: %s\n", outputDir)
 	return nil
 }
 
@@ -642,15 +773,13 @@ func cleanExtractedFile(extractedFile, folderPath string, out io.Writer) {
 	}
 }
 
-func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bool, workers int, cleanupLevel int, out io.Writer) error {
+func runBatchMode(ctx context.Context, inputDir, outputDir string, zone int, extractMode string, workers int, cleanupPolicy string, artifactSet string, out io.Writer) error {
 	if workers <= 0 {
-		workers = 1
+		return fmt.Errorf("错误：-workers 必须大于 0")
 	}
 	if _, err := os.Stat(inputDir); os.IsNotExist(err) {
 		return fmt.Errorf("输入目录不存在: %s", inputDir)
 	}
-	timestamp := time.Now().UnixMilli()
-	outputDir := fmt.Sprintf("output_%d", timestamp)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("创建输出目录失败: %w", err)
 	}
@@ -683,6 +812,7 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 		mu               sync.Mutex
 		allFeatures      []GeoJSONFeature
 		trackFeatures    = map[string][]GeoJSONFeature{}
+		usedTrackIDs     = map[string]int{}
 		processedFolders []string
 		sem              = make(chan struct{}, workers)
 	)
@@ -700,6 +830,7 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 
 			folderPath := filepath.Join(inputDir, folder)
 			trackID := getIDFromFolder(folder)
+			uniqueTrackID := trackID
 
 			utmFile := findUTMFile(folderPath)
 			var extractedFile string
@@ -707,8 +838,8 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 			if utmFile == "" {
 				tarPath := filepath.Join(folderPath, "process_result_0.tar.gz")
 				if _, err := os.Stat(tarPath); err == nil {
-					if fullExtract {
-						fmt.Fprintf(out, "  [完全解压] %s ...\n", filepath.Base(tarPath))
+					if extractMode == extractModeFull {
+						fmt.Fprintf(out, "  [完整解压] %s ...\n", filepath.Base(tarPath))
 						os.RemoveAll(filepath.Join(folderPath, "process_result_0"))
 						if err := extractTarGz(tarPath, folderPath); err != nil {
 							fmt.Fprintf(out, "  [错误] 解压失败 %s: %v\n", folder, err)
@@ -745,41 +876,36 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 			default:
 			}
 
-			features, err := convertUTMToGeoJSON(ctx, utmFile, trackID, zone)
+			mu.Lock()
+			uniqueTrackID = allocateTrackID(trackID, usedTrackIDs)
+			mu.Unlock()
+
+			features, err := loadTrackFeatures(ctx, utmFile, uniqueTrackID, zone)
 			if err != nil {
 				if err.Error() == "任务已被取消" {
 					cleanExtractedFile(extractedFile, folderPath, out)
 					return
 				}
-				fmt.Fprintf(out, "  [错误] %s: %v\n", trackID, err)
+				fmt.Fprintf(out, "  [错误] %s: %v\n", uniqueTrackID, err)
 				cleanExtractedFile(extractedFile, folderPath, out)
 				return
 			}
-			if len(features) == 0 {
-				fmt.Fprintf(out, "  [警告] %s: 无有效点\n", trackID)
-				cleanExtractedFile(extractedFile, folderPath, out)
-				return
-			}
-
-			outFile := filepath.Join(outputDir, trackID+".geojson")
-			if err := saveGeoJSON(features, outFile); err != nil {
-				fmt.Fprintf(out, "  [错误] 保存 geojson 失败 %s: %v\n", trackID, err)
+			if err := writeTrackArtifacts(ctx, outputDir, uniqueTrackID, features, artifactSet, out); err != nil {
+				fmt.Fprintf(out, "  [错误] 保存输出失败 %s: %v\n", uniqueTrackID, err)
 				cleanExtractedFile(extractedFile, folderPath, out)
 				return
 			}
 
-			dstUtm := filepath.Join(utmBackupDir, trackID+".utm.txt")
+			dstUtm := filepath.Join(utmBackupDir, uniqueTrackID+".utm.txt")
 			if err := copyFile(utmFile, dstUtm); err != nil {
-				fmt.Fprintf(out, "  [警告] 备份 utm 失败 %s: %v\n", trackID, err)
+				fmt.Fprintf(out, "  [警告] 备份 utm 失败 %s: %v\n", uniqueTrackID, err)
 			}
-
-			fmt.Fprintf(out, "  [OK] %s.geojson (%d 点)\n", trackID, len(features))
 
 			cleanExtractedFile(extractedFile, folderPath, out)
 
 			mu.Lock()
 			allFeatures = append(allFeatures, features...)
-			trackFeatures[trackID] = features
+			trackFeatures[uniqueTrackID] = features
 			processedFolders = append(processedFolders, folderPath)
 			mu.Unlock()
 		}(folder)
@@ -788,40 +914,8 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 	wg.Wait()
 
 	if len(allFeatures) > 0 {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		mergeFile := filepath.Join(outputDir, "merged_tracks.geojson")
-		if err := saveGeoJSON(allFeatures, mergeFile); err != nil {
-			fmt.Fprintf(out, "  [警告] 合并 geojson 失败: %v\n", err)
-		} else {
-			fmt.Fprintf(out, "\n  [合并] merged_tracks.geojson (%d 点)\n", len(allFeatures))
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		pointShp := filepath.Join(outputDir, "merged_tracks_point.shp")
-		if err := writeGeoJSONPointSHP(ctx, pointShp, allFeatures); err != nil {
-			fmt.Fprintf(out, "  [警告] 点 SHP 失败: %v\n", err)
-		} else {
-			fmt.Fprintf(out, "  [SHP] merged_tracks_point.shp (%d 点)\n", len(allFeatures))
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		lineShp := filepath.Join(outputDir, "merged_tracks_line.shp")
-		if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
-			fmt.Fprintf(out, "  [警告] 线 SHP 失败: %v\n", err)
-		} else {
-			fmt.Fprintf(out, "  [SHP] merged_tracks_line.shp (%d 条线)\n", len(trackFeatures))
+		if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", allFeatures, trackFeatures, artifactSet, out); err != nil {
+			return err
 		}
 	}
 
@@ -829,8 +923,8 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 	fmt.Fprintf(out, "输出目录: %s\n", outputDir)
 	fmt.Fprintf(out, "UTM 备份目录: %s\n", utmBackupDir)
 
-	if fullExtract {
-		if cleanupLevel == 2 {
+	if extractMode == extractModeFull {
+		if cleanupPolicy == cleanupDeleteExtracted || cleanupPolicy == cleanupDeleteAll {
 			fmt.Fprintln(out, "\n正在删除解压产生的文件...")
 			for _, folder := range processedFolders {
 				processDir := filepath.Join(folder, "process_result_0")
@@ -846,7 +940,8 @@ func runBatchMode(ctx context.Context, inputDir string, zone int, fullExtract bo
 					}
 				}
 			}
-		} else if cleanupLevel == 3 {
+		}
+		if cleanupPolicy == cleanupDeleteArchive || cleanupPolicy == cleanupDeleteAll {
 			fmt.Fprintln(out, "\n正在删除压缩包...")
 			for _, folder := range processedFolders {
 				tarFile := filepath.Join(folder, "process_result_0.tar.gz")
@@ -872,38 +967,54 @@ func (t *UTMTool) Name() string     { return "点云UTM提取&UTM转换GeoJSON+S
 func (t *UTMTool) Category() string { return "KD测试工具 > 点云处理工具" }
 
 func (t *UTMTool) Execute(ctx framework.AppContext) {
-	usage := `[yellow]线下点云资料编译输出压缩文件解包与 UTM-GeoJSON-Shapefile 转换工具[-]
+	usage := `[yellow]UTM 轨迹提取与 GIS 转换工具[-]
 
-[cyan]说明:[-]
-本工具用于将无人车/点云编译系统输出的 UTM 坐标文本转换为标准的 GeoJSON 格式和 Shapefile（点+线），便于在 GIS 软件中查看。
+[cyan]工具用途:[-]
+将点云/无人车资料中的 UTM 轨迹文本转换为 GIS 可直接使用的 GeoJSON 与 Shapefile。
+支持三种工作模式：
+  1. 批量处理 out_source 目录，自动从 process_result_0.tar.gz 中提取或解压 utm.txt
+  2. 直接转换单个 utm.txt，或转换包含多个 utm.txt 的目录
+  3. 合并已有的 GeoJSON 结果，重新输出 merged_tracks 结果
 
-[cyan]使用方法 (注意：不需要输入 .exe，直接输入参数即可):[-]
-在下方输入框中直接输入你想要的参数组合，然后按下 Enter 键执行。
+[cyan]输出规则:[-]
+  - 所有模式都支持 -output 指定输出目录
+  - 不指定时，默认在输入路径旁边创建 output 目录
+  - 输出内容由 -artifact-set 控制：
+      geojson = 仅输出 .geojson
+      shp     = 仅输出点/线 Shapefile
+      all     = 同时输出 GeoJSON 和 Shapefile
 
-[cyan]参数详解:[-]
-  -input <目录路径>          [批量模式] 指定 out_source 目录路径。
-                             程序会遍历该目录下的子文件夹进行解压和转换。
-  -convert <文件/目录路径>   [单独模式] 单独转换一个 utm.txt，或包含该文件的目录。
-  -merge <目录路径>          [合并模式] 将指定目录下所有的 .geojson 文件合并成一个。
-  -zone <int>                指定 UTM Zone 编号。默认: 50 (适用于东经 114°-120°)。
-  -workers <int>             [批量模式] 并发处理的工作线程数。默认: 4。
-  -full-extract              [批量模式] 是否完全解压 process_result_0.tar.gz。
-                             如果不带此参数，默认只提取 utm.txt，速度更快且用后即清。
-  -cleanup <int>             [批量模式] 清理级别 (仅完全解压模式有效):
-                               0 = 不清理
-                               2 = 删除解压出的文件
-                               3 = 删除原始压缩包
+[cyan]参数说明:[-]
+  -input <目录路径>             [批量模式] 批量处理 out_source 目录
+  -convert <文件/目录路径>      [转换模式] 转换一个 utm.txt，或扫描目录内所有 utm.txt
+  -merge <目录路径>             [合并模式] 合并目录内所有 .geojson 文件
+  -output <目录路径>            可选，指定输出目录
+  -artifact-set <geojson|shp|all>
+                               可选，控制输出产物，默认 all
+  -zone <int>                   [批量/转换] UTM Zone，默认 50
+  -workers <int>                [批量模式] 并发数，默认 4
+  -extract-mode <quick|full>    [批量模式] 提取策略，默认 quick
+                               quick = 只提取 utm.txt，速度快，临时文件自动清理
+                               full  = 完整解压 process_result_0.tar.gz 后再转换
+  -cleanup-policy <keep|delete-extracted|delete-archive|delete-all>
+                               [批量模式] 仅在 extract-mode=full 时生效
+                               keep             = 保留解压结果和压缩包
+                               delete-extracted = 删除解压出的文件
+                               delete-archive   = 删除原始压缩包
+                               delete-all       = 同时删除两者
 
-[cyan]实际运行示例 (可以直接复制到下方输入):[-]
+[cyan]常用示例:[-]
+1. 批量处理 out_source，快速提取并输出全部产物:
+   -input "<out_source目录>" -workers 4 -extract-mode quick -artifact-set all
 
-1. 批量处理一个目录 (常用，注意路径中有空格请用引号包裹):
-   -input "<你的输入目录>" -workers 4
+2. 批量处理并完整解压，转换后删除解压目录:
+   -input "<out_source目录>" -extract-mode full -cleanup-policy delete-extracted
 
-2. 单独转换某一个文件:
-   -convert <你的utm.txt文件路径> -zone 50
+3. 转换单个 utm.txt 到指定目录:
+   -convert "<utm.txt文件路径>" -output "<输出目录>" -zone 50
 
-3. 将分散的 GeoJSON 文件合并:
-   -merge <你的geoJSON文件所在目录>
+4. 合并目录内已有 GeoJSON:
+   -merge "<geojson目录>" -output "<输出目录>" -artifact-set shp
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
@@ -920,19 +1031,35 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 		var zone int
 		var convertPath string
 		var mergeDir string
-		var fullExtract bool
+		var outputDir string
+		var artifactSet string
+		var extractMode string
 		var workers int
-		var cleanupLevel int
+		var cleanupPolicy string
 
 		fs.StringVar(&inputDir, "input", "", "")
 		fs.IntVar(&zone, "zone", 50, "")
 		fs.StringVar(&convertPath, "convert", "", "")
 		fs.StringVar(&mergeDir, "merge", "", "")
-		fs.BoolVar(&fullExtract, "full-extract", false, "")
+		fs.StringVar(&outputDir, "output", "", "")
+		fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
+		fs.StringVar(&extractMode, "extract-mode", extractModeQuick, "")
 		fs.IntVar(&workers, "workers", 4, "")
-		fs.IntVar(&cleanupLevel, "cleanup", 0, "")
+		fs.StringVar(&cleanupPolicy, "cleanup-policy", cleanupKeep, "")
 
 		if err := fs.Parse(parsedArgs); err != nil {
+			return err
+		}
+		if zone < 1 || zone > 60 {
+			return fmt.Errorf("错误：-zone 必须在 1 到 60 之间")
+		}
+		if err := validateArtifactSet(artifactSet); err != nil {
+			return err
+		}
+		if err := validateExtractMode(extractMode); err != nil {
+			return err
+		}
+		if err := validateCleanupPolicy(cleanupPolicy); err != nil {
 			return err
 		}
 
@@ -952,23 +1079,34 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 		if modeCount == 0 {
 			return fmt.Errorf("错误：必须指定一个运行模式 (-input / -convert / -merge)")
 		}
+		if extractMode != extractModeFull && cleanupPolicy != cleanupKeep {
+			return fmt.Errorf("错误：只有在 -extract-mode full 时才能使用非 keep 的 -cleanup-policy")
+		}
 
 		if inputDir != "" {
-			return runBatchMode(runCtx, inputDir, zone, fullExtract, workers, cleanupLevel, out)
+			if outputDir == "" {
+				outputDir = defaultOutputDir(inputDir, true)
+			}
+			return runBatchMode(runCtx, inputDir, outputDir, zone, extractMode, workers, cleanupPolicy, artifactSet, out)
 		}
 		if convertPath != "" {
 			info, err := os.Stat(convertPath)
 			if err != nil {
 				return fmt.Errorf("路径不存在: %s", convertPath)
 			}
-			if !info.IsDir() && strings.HasSuffix(strings.ToLower(convertPath), ".txt") {
-				trackID := strings.TrimSuffix(filepath.Base(convertPath), filepath.Ext(convertPath))
-				return convertSingleFile(runCtx, convertPath, trackID, zone, out)
+			if outputDir == "" {
+				outputDir = defaultOutputDir(convertPath, info.IsDir())
 			}
-			return convertDirectory(runCtx, convertPath, zone, out)
+			if !info.IsDir() && strings.HasSuffix(strings.ToLower(convertPath), ".txt") {
+				return convertSingleFile(runCtx, convertPath, outputDir, zone, artifactSet, out)
+			}
+			return convertDirectory(runCtx, convertPath, outputDir, zone, artifactSet, out)
 		}
 		if mergeDir != "" {
-			return mergeGeoJSON(runCtx, mergeDir, out)
+			if outputDir == "" {
+				outputDir = defaultOutputDir(mergeDir, true)
+			}
+			return mergeGeoJSON(runCtx, mergeDir, outputDir, artifactSet, out)
 		}
 		return nil
 	})

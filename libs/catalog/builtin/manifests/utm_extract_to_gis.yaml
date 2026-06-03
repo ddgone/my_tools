@@ -1,47 +1,185 @@
 id: utm_geojson_converter
-name: 点云UTM提取&UTM转换GeoJSON+Shapefile
+name: UTM轨迹提取与GIS转换
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go
-description: 批量处理点云目录中的 UTM 轨迹，输出 GeoJSON 与 Shapefile。
+description: 批量提取或直接转换 UTM 轨迹，输出 GeoJSON 与 Shapefile。
 docs:
-  summary: 面向点云资料编译输出目录的批量转换工具，支持快速提取、完整解压与合并输出。
+  summary: 支持批量提取、直接转换、GeoJSON 合并三种模式，统一输出到指定目录。
   usage: |
-    默认结构化表单覆盖最常用的批量模式。
-    如果需要单文件转换或合并 GeoJSON，请切换到原始参数模式。
+    本工具用于把 UTM 轨迹数据转换为 GIS 可直接使用的 GeoJSON 与 Shapefile。
+
+    运行模式：
+    1. 批量处理：扫描 out_source 目录下的子文件夹，自动寻找 utm.txt 或 process_result_0.tar.gz
+    2. 直接转换：转换单个 utm.txt，或扫描目录内所有 utm.txt
+    3. 合并 GeoJSON：合并已有 GeoJSON 文件，重新生成 merged_tracks 结果
+
+    输出规则：
+    - 所有模式都支持输出目录
+    - 不填写时，默认在输入路径旁边创建 output 目录
+    - 输出内容由“输出内容”控制，可选 GeoJSON、Shapefile 或两者都输出
+
+    批量模式说明：
+    - 快速提取：只从压缩包中取出 utm.txt，速度快，临时文件自动清理
+    - 完整解压：完整解压 process_result_0.tar.gz 后再转换，可配合清理策略删除解压目录或压缩包
+
+    常用示例：
+    - 批量处理：-input "D:\out_source" -workers 4 -extract-mode quick -artifact-set all
+    - 单文件转换：-convert "D:\track\utm.txt" -output "D:\track\output" -zone 50
+    - 合并已有结果：-merge "D:\track\geojson" -output "D:\track\output" -artifact-set shp
 params:
-  - key: input
+  - key: mode
+    type: select
+    label: 运行模式
+    default: batch
+    emit: false
+    group: 运行模式
+    help: |
+      选择当前要执行的任务类型：
+      - 批量处理：从 out_source 子目录中提取或解压 utm.txt 后统一转换
+      - 直接转换：转换一个 utm.txt，或扫描目录内已有 utm.txt
+      - 合并 GeoJSON：合并目录内现有 GeoJSON 文件并输出 merged_tracks
+    options:
+      - label: 批量处理
+        value: batch
+      - label: 直接转换
+        value: convert
+      - label: 合并 GeoJSON
+        value: merge
+  - key: inputDir
     argKey: input
     type: path
+    pathMode: directory
     label: 输入目录
-    placeholder: 选择 out_source 或点云结果目录
+    placeholder: 选择 out_source 目录
     required: true
-    help: 最常用的是批量处理目录模式，对应旧版 TUI 的 -input。
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+    help: |
+      批量模式会遍历该目录下的子文件夹。
+      每个子文件夹会优先寻找 utm.txt，不存在时再查找 process_result_0.tar.gz。
+  - key: convertPath
+    argKey: convert
+    type: path
+    pathMode: fileOrDirectory
+    label: 转换路径
+    placeholder: 选择 utm.txt 文件，或选择包含多个 utm.txt 的目录
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: convert
+    help: |
+      选择单个 utm.txt 时，只输出当前轨迹。
+      选择目录时，会扫描目录内所有 utm.txt，并在有多条轨迹时额外生成 merged_tracks。
+  - key: mergeDir
+    argKey: merge
+    type: path
+    pathMode: directory
+    label: GeoJSON目录
+    placeholder: 选择包含 .geojson 文件的目录
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: merge
+    help: 合并模式会读取目录内所有 .geojson 文件，并输出 merged_tracks 结果。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: 输出目录
+    placeholder: 留空则默认在输入路径旁创建 output 目录
+    group: 输入输出
+    help: |
+      可选。默认规则如下：
+      - 批量处理：<输入目录>/output
+      - 单文件转换：<文件所在目录>/output
+      - 目录转换：<目录>/output
+      - 合并 GeoJSON：<GeoJSON目录>/output
+  - key: artifactSet
+    argKey: artifact-set
+    type: select
+    label: 输出内容
+    default: all
+    group: 输入输出
+    help: 选择要输出 GeoJSON、Shapefile，还是两者都输出。
+    options:
+      - label: GeoJSON + Shapefile
+        value: all
+      - label: 仅 GeoJSON
+        value: geojson
+      - label: 仅 Shapefile
+        value: shp
+  - key: zone
+    argKey: zone
+    type: number
+    label: UTM Zone
+    default: 50
+    group: 转换设置
+    visibleWhen:
+      any:
+        - key: mode
+          equals: batch
+        - key: mode
+          equals: convert
+    help: 批量处理和直接转换模式需要指定 UTM Zone。默认 50，适用于东经 114°-120°附近区域。
   - key: workers
     argKey: workers
     type: number
     label: 并发数
     default: 4
-    help: 并发处理的 worker 数量。
-  - key: fullExtract
-    argKey: full-extract
-    type: boolean
-    label: 完整解压
-    default: false
-    help: 是否先执行完整解压流程。
-  - key: cleanup
-    argKey: cleanup
+    group: 批量提取
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+    help: 批量模式的并发处理线程数。
+  - key: extractMode
+    argKey: extract-mode
     type: select
-    label: 清理级别
-    default: "0"
-    help: 仅在完整解压时有意义。
+    label: 提取策略
+    default: quick
+    group: 批量提取
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+    help: |
+      quick：只提取 utm.txt，速度快，临时文件自动清理。
+      full：完整解压 process_result_0.tar.gz 后再转换，适合排查或保留中间结果。
     options:
-      - label: 不清理
-        value: "0"
-      - label: 删除解压文件
-        value: "2"
-      - label: 删除原始压缩包
-        value: "3"
+      - label: 快速提取
+        value: quick
+      - label: 完整解压
+        value: full
+  - key: cleanupPolicy
+    argKey: cleanup-policy
+    type: select
+    label: 清理策略
+    default: keep
+    group: 批量提取
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+        - key: extractMode
+          equals: full
+    help: 仅在“完整解压”时生效，用于控制转换完成后是否删除解压目录或原始压缩包。
+    options:
+      - label: 保留全部
+        value: keep
+      - label: 删除解压目录
+        value: delete-extracted
+      - label: 删除压缩包
+        value: delete-archive
+      - label: 全部删除
+        value: delete-all
 execution:
   local:
     adapter: go-binary
