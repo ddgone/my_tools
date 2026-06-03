@@ -198,14 +198,20 @@ const showSearchModal = computed({
   set: (v) => (workspace.showSearch = v),
 })
 
-const initialTop = Math.max(280, Math.min(600, Math.floor(window.innerHeight * 0.42)))
+const terminalMinHeight = 96
+const topPanelMinHeight = 200
+const workspaceBodyHeight = ref(Math.max(320, window.innerHeight - 180))
+let layoutResizeObserver: ResizeObserver | null = null
 
-const { size: topHeight, dividerProps: hDividerProps } = useResizable({
+const initialTerminalHeight = Math.max(160, Math.min(420, Math.floor(window.innerHeight * 0.3)))
+
+const { size: terminalHeight, dividerProps: hDividerProps } = useResizable({
   axis: 'y',
-  min: 200,
-  max: Math.max(400, Math.floor(window.innerHeight * 0.78)),
-  initial: initialTop,
-  storageKey: 'fire-salamander:panel-split',
+  min: terminalMinHeight,
+  max: () => Math.max(terminalMinHeight, workspaceBodyHeight.value - topPanelMinHeight),
+  initial: initialTerminalHeight,
+  reverse: true,
+  storageKey: 'fire-salamander:terminal-height',
 })
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
@@ -219,6 +225,15 @@ const activeExecutionTheme = computed(() =>
 const workspaceThemeStyle = computed<CSSProperties>(() => ({
   ...makeExecutionThemeVars(activeExecutionTheme.value, 'workspace-tabs'),
 }))
+
+function syncWorkspaceBodyHeight() {
+  const contentHeight = contentRef.value?.clientHeight ?? 0
+  const tabBarHeight = tabBarRef.value?.clientHeight ?? 0
+  const nextHeight = contentHeight - tabBarHeight
+  if (nextHeight > 0) {
+    workspaceBodyHeight.value = nextHeight
+  }
+}
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
@@ -731,10 +746,23 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
+  syncWorkspaceBodyHeight()
   document.addEventListener('keydown', onKeydown)
   window.addEventListener('pointermove', handleGlobalPointerMove)
   window.addEventListener('pointerup', handleGlobalPointerUp)
   window.addEventListener('pointercancel', handleGlobalPointerCancel)
+
+  if (typeof ResizeObserver !== 'undefined') {
+    layoutResizeObserver = new ResizeObserver(() => {
+      syncWorkspaceBodyHeight()
+    })
+    if (contentRef.value) {
+      layoutResizeObserver.observe(contentRef.value)
+    }
+    if (tabBarRef.value) {
+      layoutResizeObserver.observe(tabBarRef.value)
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -742,6 +770,7 @@ onUnmounted(() => {
   window.removeEventListener('pointermove', handleGlobalPointerMove)
   window.removeEventListener('pointerup', handleGlobalPointerUp)
   window.removeEventListener('pointercancel', handleGlobalPointerCancel)
+  layoutResizeObserver?.disconnect()
   clearTabTransforms()
 })
 
@@ -870,8 +899,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
       <div class="flex flex-1 flex-col overflow-hidden">
         <div
           class="overflow-y-auto p-4"
-          :class="isTerminalVisible ? 'shrink-0 border-b border-white/15' : 'min-h-0 flex-1'"
-          :style="isTerminalVisible ? { height: topHeight + 'px' } : undefined"
+          :class="isTerminalVisible ? 'min-h-0 flex-1 border-b border-white/15' : 'min-h-0 flex-1'"
         >
           <ToolDetailPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
@@ -909,7 +937,10 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             />
           </div>
 
-          <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            class="flex min-h-0 shrink-0 flex-col overflow-hidden"
+            :style="{ height: `${terminalHeight}px` }"
+          >
             <ExecutionTerminal
               :task-id="activeTabTaskId"
               :execution-target="workspace.activeToolTab.executionTarget"

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 
 	"fire-salamander-desktop/internal/runtimeenv"
@@ -35,6 +34,55 @@ type WindowState struct {
 	Y          int  `json:"y"`
 	Maximised  bool `json:"maximised"`
 	Fullscreen bool `json:"fullscreen"`
+}
+
+var topLevelCategoryOrder = map[string]int{
+	"通用测试工具": 0,
+	"KD测试工具": 1,
+}
+
+func compareCategoryPath(left, right toolspec.CategoryPath) int {
+	leftTop := ""
+	rightTop := ""
+	if len(left) > 0 {
+		leftTop = left[0]
+	}
+	if len(right) > 0 {
+		rightTop = right[0]
+	}
+
+	leftOrder, leftHasOrder := topLevelCategoryOrder[leftTop]
+	rightOrder, rightHasOrder := topLevelCategoryOrder[rightTop]
+	switch {
+	case leftHasOrder && rightHasOrder && leftOrder != rightOrder:
+		return leftOrder - rightOrder
+	case leftHasOrder && !rightHasOrder:
+		return -1
+	case !leftHasOrder && rightHasOrder:
+		return 1
+	}
+
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
+	for i := 0; i < limit; i++ {
+		if left[i] == right[i] {
+			continue
+		}
+		if left[i] < right[i] {
+			return -1
+		}
+		return 1
+	}
+	switch {
+	case len(left) < len(right):
+		return -1
+	case len(left) > len(right):
+		return 1
+	default:
+		return 0
+	}
 }
 
 const defaultAppConfigJSON = `{
@@ -192,12 +240,10 @@ func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
 		tools = append(tools, tool)
 	}
 	sort.Slice(tools, func(i, j int) bool {
-		ci := strings.Join(tools[i].Category, " > ")
-		cj := strings.Join(tools[j].Category, " > ")
-		if ci == cj {
+		if compareCategoryPath(tools[i].Category, tools[j].Category) == 0 {
 			return tools[i].Name < tools[j].Name
 		}
-		return ci < cj
+		return compareCategoryPath(tools[i].Category, tools[j].Category) < 0
 	})
 
 	return &WorkbenchBootstrap{

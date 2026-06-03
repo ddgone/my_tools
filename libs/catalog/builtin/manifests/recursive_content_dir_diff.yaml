@@ -1,0 +1,75 @@
+id: recursive_content_dir_diff
+name: 递归目录内容比对
+kind: go
+category: 通用测试工具 > 文件操作
+icon: go
+description: 递归比对两个目录的结构、文件大小与文件内容差异。
+docs:
+  summary: 适合验证两个目录是否完全一致，支持忽略规则、并发比较和进度输出。
+  usage: |
+    递归比较两个目录是否完全一致，检查目录结构、文件名、文件大小和文件内容。
+
+    常用场景：
+    - 比较两份测试产物是否完全一致
+    - 校验拷贝、同步或解压前后的目录内容
+    - 排除 logs、cache 等噪声目录后做差异检查
+
+    忽略规则说明：
+    - 只写名称（如 logs）时，忽略任意层级下同名目录或文件
+    - 包含路径分隔符（如 logs/access.log）时，忽略指定相对路径
+    - 结构化表单支持用逗号、分号或换行一次输入多条规则
+params:
+  - key: leftDir
+    argKey: dir-a
+    type: path
+    pathMode: directory
+    label: 对比目录A
+    placeholder: 选择第一个待比较目录
+    required: true
+    help: 参与对比的第一个目录。
+  - key: rightDir
+    argKey: dir-b
+    type: path
+    pathMode: directory
+    label: 对比目录B
+    placeholder: 选择第二个待比较目录
+    required: true
+    help: 参与对比的第二个目录。
+  - key: ignoreRules
+    argKey: ignore
+    type: textarea
+    label: 忽略规则
+    placeholder: |
+      logs
+      cache
+      temp/output
+    help: |
+      可选。支持逗号、分号或换行分隔多条规则。
+      规则既可写纯名称，也可写相对路径。
+  - key: workers
+    argKey: workers
+    type: number
+    label: 并发数
+    default: 4
+    help: 默认 4；可按机器性能增减。
+  - key: noProgress
+    argKey: no-progress
+    type: boolean
+    label: 禁用进度输出
+    default: false
+    help: 关闭扫描和比较过程中的进度日志，只保留最终结果。
+  - key: showAllDiffs
+    argKey: show-all-diffs
+    type: boolean
+    label: 显示全部差异
+    default: false
+    help: 默认最多显示 50 条差异；开启后输出全部差异明细。
+execution:
+  local:
+    adapter: go-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/go_tools/recursive_content_dir_diff/tool.go

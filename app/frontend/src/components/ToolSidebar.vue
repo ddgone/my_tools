@@ -130,6 +130,8 @@ const treeThemeOverrides = computed(() => ({
 const categoryPathStr = (tool: ToolManifest) =>
   tool.category.length > 0 ? tool.category.join(' > ') : '未分类'
 
+const topLevelCategoryOrder = ['通用测试工具', 'KD测试工具']
+
 const filteredTools = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return allTools.value
@@ -149,7 +151,42 @@ function buildCategoryTree(tools: ToolManifest[]): TreeOption[] {
     insertIntoTree(root, path, tool, 0)
   }
 
+  sortTreeNodes(root)
   return root
+}
+
+function isBranchNode(node: TreeOption): boolean {
+  return Array.isArray(node.children) && node.children.length > 0
+}
+
+function compareTreeNodes(a: TreeOption, b: TreeOption, depth: number): number {
+  const aBranch = isBranchNode(a)
+  const bBranch = isBranchNode(b)
+
+  if (aBranch !== bBranch) {
+    return aBranch ? -1 : 1
+  }
+
+  if (depth === 0) {
+    const aPriority = topLevelCategoryOrder.indexOf(String(a.label))
+    const bPriority = topLevelCategoryOrder.indexOf(String(b.label))
+    const normalizedAPriority = aPriority === -1 ? Number.MAX_SAFE_INTEGER : aPriority
+    const normalizedBPriority = bPriority === -1 ? Number.MAX_SAFE_INTEGER : bPriority
+    if (normalizedAPriority !== normalizedBPriority) {
+      return normalizedAPriority - normalizedBPriority
+    }
+  }
+
+  return String(a.label).localeCompare(String(b.label), 'zh-CN')
+}
+
+function sortTreeNodes(nodes: TreeOption[], depth = 0) {
+  nodes.sort((a, b) => compareTreeNodes(a, b, depth))
+  for (const node of nodes) {
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      sortTreeNodes(node.children as TreeOption[], depth + 1)
+    }
+  }
 }
 
 function insertIntoTree(nodes: TreeOption[], path: string[], tool: ToolManifest, depth: number) {

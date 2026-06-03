@@ -1,14 +1,24 @@
-import { onUnmounted, ref, watch, type Ref } from 'vue'
+import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
 
 export type Axis = 'x' | 'y'
 
 interface ResizableOptions {
   axis: Axis
-  min: number
-  max: number
+  min: number | Ref<number> | (() => number)
+  max: number | Ref<number> | (() => number)
   initial: number
   reverse?: boolean
   storageKey?: string
+}
+
+function resolveBound(bound: number | Ref<number> | (() => number)): number {
+  if (typeof bound === 'function') {
+    return bound()
+  }
+  if (typeof bound === 'object' && bound !== null && 'value' in bound) {
+    return bound.value
+  }
+  return bound
 }
 
 function loadSize(key: string, fallback: number): number {
@@ -45,18 +55,32 @@ export function useResizable(options: ResizableOptions): {
     ? loadSize(options.storageKey, options.initial)
     : options.initial
 
-  const clamped = (v: number) => Math.max(options.min, Math.min(options.max, v))
+  const clamped = (v: number) => {
+    const min = resolveBound(options.min)
+    const max = resolveBound(options.max)
+    const safeMin = Math.min(min, max)
+    const safeMax = Math.max(min, max)
+    return Math.max(safeMin, Math.min(safeMax, v))
+  }
 
-  const size = ref(clamped(initialValue))
+  const rawSize = ref(initialValue)
   const dragging = ref(false)
 
+  const size = computed<number>({
+    get: () => clamped(rawSize.value),
+    set: (value) => {
+      rawSize.value = value
+    },
+  })
+
   if (options.storageKey) {
-    watch(size, (v) => saveSize(options.storageKey!, v))
+    watch(rawSize, (v) => saveSize(options.storageKey!, v))
   }
 
   function onPointerdown(e: PointerEvent) {
     e.preventDefault()
     dragging.value = true
+    rawSize.value = size.value
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     document.body.style.cursor = options.axis === 'x' ? 'col-resize' : 'row-resize'
     document.body.style.userSelect = 'none'
