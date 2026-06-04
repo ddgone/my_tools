@@ -41,6 +41,20 @@ func TestParseArgs(t *testing.T) {
 			want:  []string{"-input", `C:\my path with spaces\data.txt`},
 		},
 		{
+			name:  "windows path ending with slash before next flag",
+			input: `-input /production/file -output C:\Users\zhangzijiang\Desktop\260602新分类\ -client 10.11.5.136:50070 -user hdfs`,
+			want: []string{
+				"-input",
+				"/production/file",
+				"-output",
+				`C:\Users\zhangzijiang\Desktop\260602新分类\`,
+				"-client",
+				"10.11.5.136:50070",
+				"-user",
+				"hdfs",
+			},
+		},
+		{
 			name:    "unterminated double quote",
 			input:   `-input "unterminated`,
 			wantErr: "双引号未闭合",

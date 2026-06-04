@@ -6,6 +6,15 @@ import (
 	"unicode"
 )
 
+func nextNonSpaceRune(runes []rune, start int) rune {
+	for i := start; i < len(runes); i++ {
+		if !unicode.IsSpace(runes[i]) {
+			return runes[i]
+		}
+	}
+	return 0
+}
+
 // ParseArgs parses a CLI-like argument string into argv tokens.
 // It supports:
 // - spaces as separators
@@ -45,7 +54,13 @@ func ParseArgs(input string) ([]string, error) {
 			next := runes[i+1]
 			switch quote {
 			case 0:
-				if unicode.IsSpace(next) || next == '"' || next == '\'' || next == '\\' {
+				// 在 Windows 场景里，未加引号的目录参数常写成：
+				//   -output C:\path\to\dir\ -next-flag value
+				// 此时结尾的 `\ ` 实际上只是路径分隔符 + 参数间空格，
+				// 不应把后续 `-next-flag` 吞进当前 token。
+				if unicode.IsSpace(next) && tokenStarted && nextNonSpaceRune(runes, i+1) == '-' {
+					current.WriteRune(r)
+				} else if unicode.IsSpace(next) || next == '"' || next == '\'' || next == '\\' {
 					current.WriteRune(next)
 					i++
 				} else {
