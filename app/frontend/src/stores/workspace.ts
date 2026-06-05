@@ -340,6 +340,12 @@ export interface SSHTabState {
   openedAt: number
 }
 
+export interface ArtifactCenterTabState {
+  tabId: string
+  label: string
+  openedAt: number
+}
+
 function formatNewSSHLabel(savedCount: number): string {
   return savedCount <= 0 ? '新建连接' : `新建连接 ${savedCount + 1}`
 }
@@ -349,6 +355,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeTabIndex = ref(-1)
   const sshTabs = ref<SSHTabState[]>([])
   const activeSSHTabIndex = ref(-1)
+  const artifactTabs = ref<ArtifactCenterTabState[]>([])
+  const activeArtifactTabIndex = ref(-1)
   const showSearch = ref(false)
   const showHotkeyHelp = ref(false)
   const showSettings = ref(false)
@@ -384,6 +392,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   )
 
   const activeTabType = computed(() => {
+    if (activeArtifactTabIndex.value >= 0) return 'artifact'
     if (activeSSHTabIndex.value >= 0) return 'ssh'
     if (activeTabIndex.value >= 0) return 'tool'
     return 'none'
@@ -408,10 +417,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeSSHTabIndex.value >= 0 ? sshTabs.value[activeSSHTabIndex.value] : undefined,
   )
 
+  const activeArtifactTab = computed(() =>
+    activeArtifactTabIndex.value >= 0 ? artifactTabs.value[activeArtifactTabIndex.value] : undefined,
+  )
+
   const activeTab = () => (activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined)
 
   interface UnifiedTabItem {
-    type: 'tool' | 'ssh'
+    type: 'tool' | 'ssh' | 'artifact'
     key: string
     label: string
     openedAt: number
@@ -420,6 +433,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function isPersistentTabLayoutKey(key: string): boolean {
+    if (key === 'artifact:artifact_center') {
+      return true
+    }
     if (key.startsWith('tool:tool_')) {
       return true
     }
@@ -428,6 +444,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function buildCurrentTabKeys(): string[] {
     return [
+      ...artifactTabs.value.map((tab) => `artifact:${tab.tabId}`),
       ...openTabs.value.map((tab) => `tool:${tab.tabId}`),
       ...sshTabs.value.map((tab) => `ssh:${tab.tabId}`),
     ]
@@ -454,7 +471,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  watch([openTabs, sshTabs], () => {
+  watch([artifactTabs, openTabs, sshTabs], () => {
     reconcileTabLayout()
   }, { deep: true, immediate: true })
 
@@ -462,6 +479,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const orderIndex = new Map(tabOrder.value.map((key, index) => [key, index]))
     const pinnedKeySet = new Set(pinnedTabs.value)
     const items: UnifiedTabItem[] = [
+      ...artifactTabs.value.map((tab, i) => ({
+        type: 'artifact' as const,
+        key: `artifact:${tab.tabId}`,
+        label: tab.label,
+        openedAt: tab.openedAt,
+        arrayIndex: i,
+        pinned: pinnedKeySet.has(`artifact:${tab.tabId}`),
+      })),
       ...openTabs.value.map((t, i) => ({
         type: 'tool' as const,
         key: `tool:${t.tabId}`,
@@ -572,9 +597,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (item.type === 'tool') {
       activeTabIndex.value = item.arrayIndex
       activeSSHTabIndex.value = -1
-    } else {
+      activeArtifactTabIndex.value = -1
+    } else if (item.type === 'ssh') {
       activeSSHTabIndex.value = item.arrayIndex
       activeTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
+    } else {
+      activeArtifactTabIndex.value = item.arrayIndex
+      activeTabIndex.value = -1
+      activeSSHTabIndex.value = -1
     }
   }
 
@@ -590,7 +621,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       } else if (item.arrayIndex < activeTabIndex.value) {
         activeTabIndex.value--
       }
-    } else {
+    } else if (item.type === 'ssh') {
       sshTabs.value.splice(item.arrayIndex, 1)
       if (item.arrayIndex === activeSSHTabIndex.value) {
         if (sshTabs.value.length === 0) {
@@ -601,7 +632,36 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       } else if (item.arrayIndex < activeSSHTabIndex.value) {
         activeSSHTabIndex.value--
       }
+    } else {
+      artifactTabs.value.splice(item.arrayIndex, 1)
+      if (item.arrayIndex === activeArtifactTabIndex.value) {
+        if (artifactTabs.value.length === 0) {
+          activeArtifactTabIndex.value = -1
+        } else if (item.arrayIndex >= artifactTabs.value.length) {
+          activeArtifactTabIndex.value = artifactTabs.value.length - 1
+        }
+      } else if (item.arrayIndex < activeArtifactTabIndex.value) {
+        activeArtifactTabIndex.value--
+      }
     }
+  }
+
+  function openArtifactCenter() {
+    const existing = artifactTabs.value.findIndex((tab) => tab.tabId === 'artifact_center')
+    if (existing >= 0) {
+      activeArtifactTabIndex.value = existing
+      activeTabIndex.value = -1
+      activeSSHTabIndex.value = -1
+      return
+    }
+    artifactTabs.value.push({
+      tabId: 'artifact_center',
+      label: '产物中心',
+      openedAt: Date.now(),
+    })
+    activeArtifactTabIndex.value = artifactTabs.value.length - 1
+    activeTabIndex.value = -1
+    activeSSHTabIndex.value = -1
   }
 
   function openTool(tool: ToolManifest) {
@@ -609,6 +669,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (existing >= 0) {
       activeTabIndex.value = existing
       activeSSHTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
       return
     }
 
@@ -620,6 +681,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openTabs.value.push(tab)
     activeTabIndex.value = openTabs.value.length - 1
     activeSSHTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
   }
 
   function closeTab(index: number) {
@@ -767,6 +829,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (existing >= 0) {
       activeSSHTabIndex.value = existing
       activeTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
       return
     }
     const openedAt = Date.now()
@@ -780,6 +843,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     sshTabs.value.push(tab)
     activeSSHTabIndex.value = sshTabs.value.length - 1
     activeTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
   }
 
   function openSSHEdit(connId: string, label: string) {
@@ -855,6 +919,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         continue
       }
 
+      if (key === 'artifact:artifact_center') {
+        openArtifactCenter()
+        continue
+      }
+
       if (key.startsWith('ssh:ssh_')) {
         const connId = key.slice('ssh:ssh_'.length)
         const conn = sshById.get(connId)
@@ -869,6 +938,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (index >= 0 && index < sshTabs.value.length) {
       activeSSHTabIndex.value = index
       activeTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
     }
   }
 
@@ -876,6 +946,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (index >= 0 && index < openTabs.value.length) {
       activeTabIndex.value = index
       activeSSHTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
     }
   }
 
@@ -884,12 +955,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeTabIndex,
     sshTabs,
     activeSSHTabIndex,
+    artifactTabs,
+    activeArtifactTabIndex,
     activeTabType,
     activeToolTab,
     activeToolTerminalVisible,
     activeToolTerminalHeight,
     activeExecutionConfig,
     activeSSHTab,
+    activeArtifactTab,
     activeTab,
     unifiedTabs,
     activateUnifiedTab,
@@ -921,6 +995,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setActiveTab,
     setActiveSSHTab,
     activateToolTab,
+    openArtifactCenter,
     openSSHNew,
     openSSHEdit,
     restorePinnedTabs,

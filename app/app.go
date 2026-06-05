@@ -18,13 +18,14 @@ import (
 )
 
 type App struct {
-	ctx       context.Context
-	mu        sync.RWMutex
-	legacy    map[string]*legacyTool
-	manifests map[string]toolspec.ToolManifest
-	tasks     map[string]*ExecutionTask
-	cancels   map[string]context.CancelFunc
-	sshStore  *ssh.Store
+	ctx           context.Context
+	mu            sync.RWMutex
+	legacy        map[string]*legacyTool
+	manifests     map[string]toolspec.ToolManifest
+	tasks         map[string]*ExecutionTask
+	artifactTasks map[string]*ArtifactBatchTask
+	cancels       map[string]context.CancelFunc
+	sshStore      *ssh.Store
 }
 
 type WindowState struct {
@@ -117,11 +118,12 @@ const defaultAppConfigJSON = `{
 
 func NewApp() *App {
 	return &App{
-		legacy:    map[string]*legacyTool{},
-		manifests: map[string]toolspec.ToolManifest{},
-		tasks:     map[string]*ExecutionTask{},
-		cancels:   map[string]context.CancelFunc{},
-		sshStore:  ssh.NewStore(),
+		legacy:        map[string]*legacyTool{},
+		manifests:     map[string]toolspec.ToolManifest{},
+		tasks:         map[string]*ExecutionTask{},
+		artifactTasks: map[string]*ArtifactBatchTask{},
+		cancels:       map[string]context.CancelFunc{},
+		sshStore:      ssh.NewStore(),
 	}
 }
 

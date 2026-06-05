@@ -113,6 +113,55 @@ export interface ExportToolResult {
   targetArch?: string
 }
 
+export interface ArtifactBatchSelection {
+  toolId: string
+  targetOS: string
+  targetArch: string
+}
+
+export interface ArtifactBatchRequest {
+  mode: string
+  exportRootDir?: string
+  concurrency: number
+  skipUnchanged: boolean
+  preferCache: boolean
+  forceRebuild: boolean
+  continueOnError: boolean
+  items: ArtifactBatchSelection[]
+}
+
+export interface ArtifactBatchItemResult {
+  key: string
+  toolId: string
+  toolName: string
+  kind: string
+  targetOS: string
+  targetArch: string
+  status: string
+  message: string
+  outputPath?: string
+  cacheHit: boolean
+  startedAt: number
+  endedAt?: number
+}
+
+export interface ArtifactBatchTask {
+  id: string
+  mode: string
+  status: string
+  exportRootDir?: string
+  totalCount: number
+  successCount: number
+  errorCount: number
+  cachedCount: number
+  skippedCount: number
+  startedAt: number
+  endedAt?: number
+  currentItem?: string
+  exitMessage?: string
+  items: ArtifactBatchItemResult[]
+}
+
 export interface TaskLogEvent {
   taskId: string
   message: string

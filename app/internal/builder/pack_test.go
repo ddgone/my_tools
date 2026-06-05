@@ -115,3 +115,37 @@ func TestBuildPackageReusesPythonCache(t *testing.T) {
 		t.Fatalf("cached output mismatch: got %q want %q", string(secondBytes), string(firstBytes))
 	}
 }
+
+func TestCacheArtifactFileNameUsesStableToolID(t *testing.T) {
+	req := BuildRequest{
+		ToolID:     "recursive_content_dir_diff",
+		ToolName:   "递归目录内容比对",
+		Kind:       KindGo,
+		TargetOS:   "linux",
+		TargetArch: "amd64",
+	}
+
+	gotChinese := cacheArtifactFileName(req, "递归目录内容比对")
+	gotEnglish := cacheArtifactFileName(req, "recursive_content_dir_diff_linux_amd64")
+	if gotChinese != "recursive_content_dir_diff_linux_amd64" {
+		t.Fatalf("unexpected cache artifact name for localized output: %s", gotChinese)
+	}
+	if gotEnglish != gotChinese {
+		t.Fatalf("cache artifact name should ignore output display name: %s vs %s", gotEnglish, gotChinese)
+	}
+}
+
+func TestCacheArtifactFileNameKeepsWindowsExeSuffix(t *testing.T) {
+	req := BuildRequest{
+		ToolID:     "recursive_content_dir_diff",
+		ToolName:   "递归目录内容比对",
+		Kind:       KindGo,
+		TargetOS:   "windows",
+		TargetArch: "amd64",
+	}
+
+	got := cacheArtifactFileName(req, "递归目录内容比对.exe")
+	if got != "recursive_content_dir_diff_windows_amd64.exe" {
+		t.Fatalf("unexpected windows cache artifact name: %s", got)
+	}
+}

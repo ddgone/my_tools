@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick, type CSSProperties } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp } from '@vicons/ionicons5'
+import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -15,6 +15,7 @@ import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
 import SSHDetailPanel from './SSHDetailPanel.vue'
+import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
@@ -39,7 +40,7 @@ const contentRef = ref<HTMLElement | null>(null)
 const tabBarRef = ref<HTMLElement | null>(null)
 let disposeExportProgress: (() => void) | null = null
 type UnifiedTabItem = {
-  type: 'tool' | 'ssh'
+  type: 'tool' | 'ssh' | 'artifact'
   key: string
   label: string
   openedAt: number
@@ -533,6 +534,7 @@ function toolNameStyleForTool(id: string): CSSProperties {
 function isUnifiedTabActive(item: { type: string; arrayIndex: number }) {
   return (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex)
     || (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
+    || (item.type === 'artifact' && workspace.activeTabType === 'artifact' && item.arrayIndex === workspace.activeArtifactTabIndex)
 }
 
 function unifiedTabDisplayName(item: UnifiedTabItem) {
@@ -966,6 +968,13 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             color="#8be9fd"
             class="shrink-0"
           />
+          <NIcon
+            v-if="item.type === 'artifact'"
+            :component="CloudUploadOutline"
+            size="12"
+            color="#ffb86c"
+            class="shrink-0"
+          />
           <NTag
             v-if="item.type === 'tool'"
             :bordered="false"
@@ -1098,6 +1107,10 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
       />
     </template>
 
+    <template v-else-if="workspace.activeTabType === 'artifact' && workspace.activeArtifactTab">
+      <ArtifactCenterPanel />
+    </template>
+
     <div
       v-else
       class="flex flex-1 items-center justify-center bg-dracula-bg"
@@ -1147,7 +1160,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         :x="tabContextMenuX"
         :y="tabContextMenuY"
         :title="tabContextMenuItem ? unifiedTabDisplayName(tabContextMenuItem) : ''"
-        :subtitle="tabContextMenuItem?.type === 'tool' ? '工具标签' : tabContextMenuItem?.type === 'ssh' ? 'SSH 标签' : ''"
+        :subtitle="tabContextMenuItem?.type === 'tool' ? '工具标签' : tabContextMenuItem?.type === 'ssh' ? 'SSH 标签' : tabContextMenuItem?.type === 'artifact' ? '产物中心' : ''"
         :items="tabContextMenuOptions"
         @select="handleTabContextMenuSelect"
         @close="closeTabContextMenu"

@@ -27,23 +27,26 @@ const (
 )
 
 type BuildRequest struct {
-	ToolID      string
-	ToolName    string
-	Kind        ToolKind
-	OutputDir   string
-	CacheDir    string
-	OutputName  string
-	RepoRoot    string
-	SourceEntry string
-	TargetOS    string
-	TargetArch  string
-	Progress    io.Writer
+	ToolID           string
+	ToolName         string
+	Kind             ToolKind
+	OutputDir        string
+	CacheDir         string
+	OutputName       string
+	RepoRoot         string
+	SourceEntry      string
+	TargetOS         string
+	TargetArch       string
+	ForceRebuild     bool
+	UseCacheAsOutput bool
+	Progress         io.Writer
 }
 
 type BuildResult struct {
-	Path     string
-	CacheKey string
-	CacheHit bool
+	Path      string
+	CachePath string
+	CacheKey  string
+	CacheHit  bool
 }
 
 func BuildPackage(req BuildRequest) (BuildResult, error) {
@@ -97,8 +100,11 @@ func buildPythonPackage(req BuildRequest) (BuildResult, error) {
 	if err != nil {
 		return BuildResult{}, err
 	}
-	cachePath := filepath.Join(req.CacheDir, cacheArtifactName(req.ToolID, "", "", cacheKey, ".py"))
-	if fileExists(cachePath) {
+	cachePath, sourceCachePath, cacheKeyPath, err := resolveCachePaths(req, "script", outputName, scriptPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	if !req.ForceRebuild && cacheEntryMatches(cachePath, cacheKeyPath, cacheKey) {
 		logBuildProgress(req, "命中构建缓存")
 		return finalizeBuildOutput(req, outFile, cachePath, 0644, cacheKey, true)
 	}
@@ -106,6 +112,12 @@ func buildPythonPackage(req BuildRequest) (BuildResult, error) {
 	logBuildProgress(req, "写入 Python 脚本缓存")
 	if err := copyFile(scriptPath, cachePath, 0644); err != nil {
 		return BuildResult{}, fmt.Errorf("复制 Python 脚本失败: %w", err)
+	}
+	if err := copySourceSnapshot(scriptPath, sourceCachePath); err != nil {
+		return BuildResult{}, err
+	}
+	if err := writeCacheKeyFile(cacheKeyPath, cacheKey); err != nil {
+		return BuildResult{}, err
 	}
 
 	return finalizeBuildOutput(req, outFile, cachePath, 0644, cacheKey, false)
@@ -142,8 +154,15 @@ func buildGoPackage(req BuildRequest) (BuildResult, error) {
 	if err != nil {
 		return BuildResult{}, err
 	}
-	cachePath := filepath.Join(req.CacheDir, cacheArtifactName(req.ToolID, targetOS, targetArch, cacheKey, filepath.Ext(outputName)))
-	if fileExists(cachePath) {
+	sourcePath, err := resolveSourceEntryPath(req)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	cachePath, sourceCachePath, cacheKeyPath, err := resolveCachePaths(req, targetOS+"_"+targetArch, outputName, sourcePath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	if !req.ForceRebuild && cacheEntryMatches(cachePath, cacheKeyPath, cacheKey) {
 		logBuildProgress(req, "命中构建缓存")
 		return finalizeBuildOutput(req, outFile, cachePath, 0755, cacheKey, true)
 	}
@@ -178,6 +197,12 @@ func buildGoPackage(req BuildRequest) (BuildResult, error) {
 
 	if err := os.Chmod(cachePath, 0755); err != nil {
 		return BuildResult{}, fmt.Errorf("设置可执行权限失败: %w", err)
+	}
+	if err := copySourceSnapshot(sourcePath, sourceCachePath); err != nil {
+		return BuildResult{}, err
+	}
+	if err := writeCacheKeyFile(cacheKeyPath, cacheKey); err != nil {
+		return BuildResult{}, err
 	}
 
 	logBuildProgress(req, "构建完成，已写入缓存")
@@ -286,11 +311,12 @@ func dedupeStrings(values []string) []string {
 }
 
 func finalizeBuildOutput(req BuildRequest, outFile string, cachePath string, mode os.FileMode, cacheKey string, cacheHit bool) (BuildResult, error) {
-	if sameCleanPath(outFile, cachePath) {
+	if req.UseCacheAsOutput || sameCleanPath(outFile, cachePath) {
 		return BuildResult{
-			Path:     cachePath,
-			CacheKey: cacheKey,
-			CacheHit: cacheHit,
+			Path:      cachePath,
+			CachePath: cachePath,
+			CacheKey:  cacheKey,
+			CacheHit:  cacheHit,
 		}, nil
 	}
 	logBuildProgress(req, "写入目标产物")
@@ -298,9 +324,10 @@ func finalizeBuildOutput(req BuildRequest, outFile string, cachePath string, mod
 		return BuildResult{}, fmt.Errorf("写入目标产物失败: %w", err)
 	}
 	return BuildResult{
-		Path:     outFile,
-		CacheKey: cacheKey,
-		CacheHit: cacheHit,
+		Path:      outFile,
+		CachePath: cachePath,
+		CacheKey:  cacheKey,
+		CacheHit:  cacheHit,
 	}, nil
 }
 
@@ -417,43 +444,111 @@ func writeCacheToken(digest hash.Hash, value string) {
 	_, _ = io.WriteString(digest, "\n")
 }
 
-func cacheArtifactName(toolID string, targetOS string, targetArch string, cacheKey string, ext string) string {
-	base := sanitizeCacheToken(toolID)
-	parts := []string{base}
-	if targetOS != "" {
-		parts = append(parts, sanitizeCacheToken(targetOS))
+func resolveCachePaths(req BuildRequest, platformKey string, outputName string, sourcePath string) (artifactPath string, sourceCachePath string, cacheKeyPath string, err error) {
+	toolDir := filepath.Join(req.CacheDir, sanitizeCachePathSegment(cacheToolName(req)))
+	platformDir := filepath.Join(toolDir, sanitizeCachePathSegment(platformKey))
+	artifactDir := filepath.Join(platformDir, "artifact")
+	sourceDir := filepath.Join(platformDir, "source")
+	for _, dir := range []string{artifactDir, sourceDir} {
+		if mkErr := os.MkdirAll(dir, 0755); mkErr != nil {
+			return "", "", "", fmt.Errorf("创建结构化缓存目录失败: %w", mkErr)
+		}
 	}
-	if targetArch != "" {
-		parts = append(parts, sanitizeCacheToken(targetArch))
-	}
-	shortKey := cacheKey
-	if len(shortKey) > 16 {
-		shortKey = shortKey[:16]
-	}
-	parts = append(parts, shortKey)
-	return strings.Join(parts, "_") + ext
+	artifactPath = filepath.Join(artifactDir, cacheArtifactFileName(req, outputName))
+	sourceCachePath = filepath.Join(sourceDir, filepath.Base(sourcePath))
+	cacheKeyPath = filepath.Join(platformDir, ".cachekey")
+	return artifactPath, sourceCachePath, cacheKeyPath, nil
 }
 
-func sanitizeCacheToken(value string) string {
+func cacheArtifactFileName(req BuildRequest, outputName string) string {
+	ext := filepath.Ext(outputName)
+	base := sanitizeCachePathSegment(req.ToolID)
+	if base == "" || base == "artifact" {
+		base = sanitizeCachePathSegment(cacheToolName(req))
+	}
+	if req.Kind == KindPython {
+		if ext == "" {
+			ext = ".py"
+		}
+		return base + ext
+	}
+	if req.TargetOS != "" {
+		base += "_" + sanitizeCachePathSegment(req.TargetOS)
+	}
+	if req.TargetArch != "" {
+		base += "_" + sanitizeCachePathSegment(req.TargetArch)
+	}
+	if req.TargetOS == "windows" && ext == "" {
+		ext = ".exe"
+	}
+	return base + ext
+}
+
+func cacheEntryMatches(artifactPath string, cacheKeyPath string, cacheKey string) bool {
+	if !fileExists(artifactPath) || !fileExists(cacheKeyPath) {
+		return false
+	}
+	storedKey, err := os.ReadFile(cacheKeyPath)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(storedKey)) == strings.TrimSpace(cacheKey)
+}
+
+func writeCacheKeyFile(cacheKeyPath string, cacheKey string) error {
+	if err := os.MkdirAll(filepath.Dir(cacheKeyPath), 0755); err != nil {
+		return fmt.Errorf("创建缓存元数据目录失败: %w", err)
+	}
+	if err := os.WriteFile(cacheKeyPath, []byte(cacheKey+"\n"), 0644); err != nil {
+		return fmt.Errorf("写入缓存元数据失败: %w", err)
+	}
+	return nil
+}
+
+func copySourceSnapshot(sourcePath string, snapshotPath string) error {
+	if err := copyFile(sourcePath, snapshotPath, 0644); err != nil {
+		return fmt.Errorf("写入源码缓存失败: %w", err)
+	}
+	return nil
+}
+
+func resolveSourceEntryPath(req BuildRequest) (string, error) {
+	entry := strings.TrimSpace(req.SourceEntry)
+	if entry == "" {
+		return "", fmt.Errorf("缺少源码入口")
+	}
+	if filepath.IsAbs(entry) {
+		return entry, nil
+	}
+	if strings.TrimSpace(req.RepoRoot) == "" {
+		return "", fmt.Errorf("缺少仓库根目录，无法解析源码入口")
+	}
+	return filepath.Join(req.RepoRoot, filepath.FromSlash(entry)), nil
+}
+
+func cacheToolName(req BuildRequest) string {
+	if strings.TrimSpace(req.ToolName) != "" {
+		return req.ToolName
+	}
+	return req.ToolID
+}
+
+func sanitizeCachePathSegment(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return "artifact"
 	}
 	safe := strings.Map(func(r rune) rune {
 		switch {
-		case r >= 'a' && r <= 'z':
-			return r
-		case r >= 'A' && r <= 'Z':
-			return r
-		case r >= '0' && r <= '9':
-			return r
-		case r == '_' || r == '-':
-			return r
-		default:
+		case r < 32:
+			return -1
+		case strings.ContainsRune(`<>:"/\|?*`, r):
 			return '_'
+		default:
+			return r
 		}
 	}, trimmed)
-	safe = strings.Trim(safe, "._-")
+	safe = strings.Trim(safe, ". ")
 	if safe == "" {
 		return "artifact"
 	}
@@ -481,6 +576,9 @@ func logBuildProgress(req BuildRequest, message string) {
 }
 
 func copyFile(srcPath, dstPath string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return err
+	}
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return err

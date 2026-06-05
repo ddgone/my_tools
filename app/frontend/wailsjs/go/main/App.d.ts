@@ -19,6 +19,8 @@ export function GetWorkbenchBootstrap():Promise<main.WorkbenchBootstrap>;
 
 export function IsWindowRectVisible(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
 
+export function ListArtifactBatchTasks():Promise<Array<main.ArtifactBatchTask>>;
+
 export function ListSSHConnections():Promise<Array<ssh.Connection>>;
 
 export function ListTasks():Promise<Array<main.ExecutionTask>>;
@@ -36,6 +38,8 @@ export function SaveSSHConnection(arg1:ssh.Connection):Promise<ssh.Connection>;
 export function SaveTextFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveWindowState(arg1:main.WindowState):Promise<void>;
+
+export function StartArtifactBatch(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchTask>;
 
 export function StartLocalExecution(arg1:main.ExecutionRequest):Promise<main.ExecutionTask>;
 

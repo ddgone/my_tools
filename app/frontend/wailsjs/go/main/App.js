@@ -34,6 +34,10 @@ export function IsWindowRectVisible(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['IsWindowRectVisible'](arg1, arg2, arg3, arg4);
 }
 
+export function ListArtifactBatchTasks() {
+  return window['go']['main']['App']['ListArtifactBatchTasks']();
+}
+
 export function ListSSHConnections() {
   return window['go']['main']['App']['ListSSHConnections']();
 }
@@ -68,6 +72,10 @@ export function SaveTextFile(arg1, arg2) {
 
 export function SaveWindowState(arg1) {
   return window['go']['main']['App']['SaveWindowState'](arg1);
+}
+
+export function StartArtifactBatch(arg1) {
+  return window['go']['main']['App']['StartArtifactBatch'](arg1);
 }
 
 export function StartLocalExecution(arg1) {

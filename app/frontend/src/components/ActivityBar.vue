@@ -3,13 +3,16 @@ import { NButton, NIcon, NTooltip } from 'naive-ui'
 import { Apps, ServerOutline, Star, TimeOutline, List, CloudUpload, Settings } from '@vicons/ionicons5'
 
 export type ActivityBarView = 'tools' | 'ssh' | 'favorites' | 'recent'
+export type ActivityBarSpecial = 'artifact'
 
 const props = defineProps<{
   activeView: ActivityBarView | null
+  activeSpecial?: ActivityBarSpecial | null
 }>()
 
 const emit = defineEmits<{
   'update:activeView': [view: ActivityBarView | null]
+  openArtifactCenter: []
   'openSettings': []
 }>()
 
@@ -31,16 +34,27 @@ const topItems: { key: ActivityBarView | 'tasks' | 'export'; icon: typeof Apps; 
   { key: 'favorites', icon: Star, label: '收藏夹' },
   { key: 'recent', icon: TimeOutline, label: '最近使用' },
   { key: 'tasks', icon: List, label: '任务中心（开发中）' },
-  { key: 'export', icon: CloudUpload, label: '导出中心（开发中）' },
+  { key: 'export', icon: CloudUpload, label: '产物中心' },
 ]
 
 function isComingSoon(key: ActivityBarView | 'tasks' | 'export'): boolean {
-  return key === 'tasks' || key === 'export'
+  return key === 'tasks'
 }
 
 function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
+  if (key === 'export') {
+    emit('openArtifactCenter')
+    return
+  }
   if (isComingSoon(key)) return
   toggleView(key as ActivityBarView)
+}
+
+function isItemActive(key: ActivityBarView | 'tasks' | 'export') {
+  if (key === 'export') {
+    return props.activeSpecial === 'artifact'
+  }
+  return props.activeView === key
 }
 </script>
 
@@ -55,7 +69,7 @@ function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
         <template #trigger>
           <div class="relative flex justify-center">
             <div
-              v-if="activeView === item.key"
+              v-if="isItemActive(item.key)"
               class="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r-sm bg-dracula-cyan"
             />
             <NButton
@@ -64,7 +78,7 @@ function handleItemClick(key: ActivityBarView | 'tasks' | 'export') {
               class="h-10 w-10"
               :disabled="isComingSoon(item.key)"
               :class="[
-                activeView === item.key ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text',
+                isItemActive(item.key) ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text',
                 isComingSoon(item.key) ? 'cursor-not-allowed opacity-35 hover:text-dracula-soft' : '',
               ]"
               @click="handleItemClick(item.key)"

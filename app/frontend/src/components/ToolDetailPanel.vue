@@ -360,7 +360,7 @@ onBeforeUnmount(() => {
             <template #icon>
               <NIcon :component="CloudUpload" />
             </template>
-          {{ exportButtonLabel }}
+            {{ exportButtonLabel }}
           </NButton>
           <template v-if="showExportTargetSelector">
             <span class="mx-2 h-5 w-px bg-white/10" />

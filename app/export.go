@@ -104,7 +104,7 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 		FilterGlob:       exportFilterGlob(string(manifest.Kind), exportMode, targetOS),
 		Directory:        false,
 		DefaultDirectory: defaultDir,
-		DefaultFilename:  exportDefaultFileName(manifest.Name, req.ToolID, string(manifest.Kind), exportMode, targetOS),
+		DefaultFilename:  exportDefaultFileName(manifest.Name, req.ToolID, string(manifest.Kind), exportMode, targetOS, targetArch),
 	})
 	if err != nil {
 		return nil, err
@@ -429,10 +429,10 @@ func exportFilterGlob(kind string, mode string, targetOS string) string {
 	return "*"
 }
 
-func exportDefaultFileName(toolName string, toolID string, kind string, mode string, targetOS string) string {
-	base := sanitizeExportBaseName(toolName)
+func exportDefaultFileName(toolName string, toolID string, kind string, mode string, targetOS string, targetArch string) string {
+	base := sanitizeExportBaseName(toolID)
 	if base == "" {
-		base = sanitizeExportBaseName(toolID)
+		base = sanitizeExportBaseName(toolName)
 	}
 	if base == "" {
 		base = "tool"
@@ -442,6 +442,14 @@ func exportDefaultFileName(toolName string, toolID string, kind string, mode str
 	}
 	if mode == exportModeSource {
 		return base + ".go"
+	}
+	if targetOS != "" {
+		base += "_" + sanitizeExportBaseName(targetOS)
+	}
+	if kind == "go" && mode == exportModeBinary {
+		if targetArch != "" {
+			base += "_" + sanitizeExportBaseName(targetArch)
+		}
 	}
 	if targetOS == "windows" {
 		return base + ".exe"

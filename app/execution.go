@@ -355,16 +355,17 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 
 	fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
 	buildResult, err := builder.BuildPackage(builder.BuildRequest{
-		ToolID:      params.toolID,
-		ToolName:    params.toolName,
-		Kind:        builderKind(params.kind),
-		OutputDir:   layout.BuildCacheDir(),
-		CacheDir:    layout.BuildCacheDir(),
-		RepoRoot:    repoRoot,
-		SourceEntry: params.sourceEntry,
-		TargetOS:    platform.OS,
-		TargetArch:  platform.Arch,
-		Progress:    writer,
+		ToolID:           params.toolID,
+		ToolName:         params.toolName,
+		Kind:             builderKind(params.kind),
+		OutputDir:        layout.BuildCacheDir(),
+		CacheDir:         layout.BuildCacheDir(),
+		RepoRoot:         repoRoot,
+		SourceEntry:      params.sourceEntry,
+		TargetOS:         platform.OS,
+		TargetArch:       platform.Arch,
+		UseCacheAsOutput: true,
+		Progress:         writer,
 	})
 	if err != nil {
 		return err
