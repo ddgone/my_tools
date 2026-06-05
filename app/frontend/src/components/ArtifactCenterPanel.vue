@@ -24,6 +24,7 @@ import {
   LayersOutline,
   RocketOutline,
   RefreshOutline,
+  SearchOutline,
   StarOutline,
   TimeOutline,
   TrashOutline,
@@ -45,6 +46,7 @@ const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 const goTools = computed(() => allTools.value.filter((tool) => tool.kind === 'go'))
 const pythonTools = computed(() => allTools.value.filter((tool) => tool.kind !== 'go'))
 const toolFilter = ref<ToolFilterMode>('all')
+const toolSearch = ref('')
 const selectedCount = computed(() => artifactCenter.selectedKeys.length)
 const taskLabel = computed(() => artifactCenter.mode === 'build_cache' ? '批量构建缓存' : '批量导出')
 const scrollContainerRef = ref<HTMLElement | null>(null)
@@ -105,6 +107,19 @@ watch(
 )
 
 function matchesToolFilter(tool: ToolManifest) {
+  const query = toolSearch.value.trim().toLowerCase()
+  if (query) {
+    const haystacks = [
+      tool.name,
+      tool.id,
+      tool.description,
+      ...tool.category,
+    ]
+    const matched = haystacks.some((value) => value.toLowerCase().includes(query))
+    if (!matched) {
+      return false
+    }
+  }
   if (toolFilter.value === 'favorites') {
     return favoriteToolIdSet.value.has(tool.id)
   }
@@ -146,7 +161,7 @@ function isPlatformFullySelected(platformKey: string) {
 
 function isPlatformPartiallySelected(platformKey: string) {
   const count = selectedForPlatform(platformKey)
-  return count > 0 && count < goTools.value.length
+  return count > 0 && count < filteredGoTools.value.length
 }
 
 async function pickExportRootDir() {
@@ -392,35 +407,6 @@ function openContainingDirectory(path?: string) {
             </div>
           </div>
         </div>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <NButton
-            size="small"
-            :type="toolFilter === 'all' ? 'primary' : 'default'"
-            @click="toolFilter = 'all'"
-          >
-            全部工具
-          </NButton>
-          <NButton
-            size="small"
-            :type="toolFilter === 'favorites' ? 'primary' : 'default'"
-            @click="toolFilter = 'favorites'"
-          >
-            <template #icon>
-              <StarOutline />
-            </template>
-            仅收藏
-          </NButton>
-          <NButton
-            size="small"
-            :type="toolFilter === 'recent' ? 'primary' : 'default'"
-            @click="toolFilter = 'recent'"
-          >
-            <template #icon>
-              <TimeOutline />
-            </template>
-            仅最近使用
-          </NButton>
-        </div>
         <div class="mt-3 grid gap-3 lg:grid-cols-2">
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs leading-6 text-slate-300">
             <div class="font-medium text-slate-100">
@@ -601,11 +587,56 @@ function openContainingDirectory(path?: string) {
     </NAlert>
 
     <NCard
-      title="工具 × 平台矩阵"
       size="small"
       :bordered="false"
       class="bg-[#151923]/90"
     >
+      <template #header>
+        <div class="flex w-full flex-wrap items-center justify-between gap-3">
+          <span class="shrink-0">工具 × 平台矩阵</span>
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <div class="w-[312px] max-w-full shrink-0">
+              <NInput
+                v-model:value="toolSearch"
+                size="small"
+                clearable
+                placeholder="搜索工具"
+              >
+                <template #prefix>
+                  <NIcon :component="SearchOutline" />
+                </template>
+              </NInput>
+            </div>
+            <NButton
+              size="small"
+              :type="toolFilter === 'all' ? 'primary' : 'default'"
+              @click="toolFilter = 'all'"
+            >
+              全部工具
+            </NButton>
+            <NButton
+              size="small"
+              :type="toolFilter === 'favorites' ? 'primary' : 'default'"
+              @click="toolFilter = 'favorites'"
+            >
+              <template #icon>
+                <StarOutline />
+              </template>
+              仅收藏
+            </NButton>
+            <NButton
+              size="small"
+              :type="toolFilter === 'recent' ? 'primary' : 'default'"
+              @click="toolFilter = 'recent'"
+            >
+              <template #icon>
+                <TimeOutline />
+              </template>
+              仅最近使用
+            </NButton>
+          </div>
+        </div>
+      </template>
       <div class="overflow-x-auto">
         <table class="min-w-full border-collapse text-sm">
           <thead>

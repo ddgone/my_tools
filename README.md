@@ -1,13 +1,19 @@
-﻿# 火蜥蜴工具箱
+# 火蜥蜴工具箱
 
-火蜥蜴工具箱是一个桌面宿主型工具平台：用一个单页工作台统一承载 Go/Python 工具的本地执行、基础远程执行、日志导出和后续的单工具导出。
+火蜥蜴工具箱是一个桌面宿主型工具平台：用一个单页工作台统一承载 Go/Python 工具的本地执行、基础远程执行、日志导出、单工具导出，以及面向多工具多平台的产物中心。
 
 ## 当前状态
 
 - 已接通本地执行链路，前后端事件流、日志面板、参数表单和页签工作区均可用。
 - 已接通基础远程执行链路，包含 SSH 连接管理、远端上传、执行和清理。
-- 工具导出仍处于未闭环状态，UI 中相关入口仍是占位或半成品。
+- 已接通单工具导出与产物中心，支持批量构建缓存、批量导出、任务历史持久化、任务快照回看，以及与远程执行共享构建缓存。
 - 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错和文档真相源漂移。
+
+## 主要能力
+
+- 单工具工作台：支持本地执行、远程执行、参数表单、终端日志和单工具导出。
+- 产物中心：支持工具 × 平台矩阵选择、批量构建缓存、批量导出、缓存命中预估、失败项重试和结果摘要导出。
+- 产物工作流：左侧侧栏提供产物工作台入口与任务历史卡片，右侧支持完整工作台页面和单次任务快照页。
 
 ## 仓库结构
 
@@ -67,6 +73,7 @@ cd app/frontend && npm run typecheck
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：当前产品定位、能力边界和文档索引。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：当前真实落地架构、模块边界、执行链路和约束。
 - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)：最新开发环境、启动方式、校验命令和入口文件。
+- [docs/adr/0022-host-owned-background-artifact-preparation.md](docs/adr/0022-host-owned-background-artifact-preparation.md)：后台产物准备、缓存复用与产物中心工作区形态。
 - [docs/ISSUES_AND_REMEDIATION_PLAN.md](docs/ISSUES_AND_REMEDIATION_PLAN.md)：本轮梳理出的全部问题，以及严格按 1 到 2 个问题拆分的修复步骤。
 - [docs/archive/README.md](docs/archive/README.md)：历史计划、旧版说明和归档原因。
 - [docs/adr/](docs/adr/)：仍有效的架构决策记录。

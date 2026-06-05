@@ -273,6 +273,7 @@ const runningArtifactTask = computed(() =>
 const historicalArtifactTasks = computed(() =>
   artifactCenter.recentTasks.filter((task) => task.id !== runningArtifactTask.value?.id),
 )
+const isCompactArtifactSidebar = computed(() => props.width < 272)
 
 function isToolRunning(toolId: string) {
   return execution.tasks.some((t) => t.toolId === toolId && t.status === 'running')
@@ -325,6 +326,22 @@ function openArtifactWorkbench() {
 
 function openArtifactTaskSnapshot(task: ArtifactBatchTask) {
   workspace.openArtifactSnapshot(task.id, artifactSnapshotLabel(task))
+}
+
+async function clearArtifactHistory() {
+  if (runningArtifactTask.value) {
+    message.warning('当前有产物任务正在执行，暂时不能清空历史')
+    return
+  }
+  if (historicalArtifactTasks.value.length === 0) {
+    return
+  }
+  try {
+    await artifactCenter.clearTasks()
+    message.success('产物历史已清空')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '清空产物历史失败')
+  }
 }
 
 function isToolActive(toolId: string) {
@@ -862,16 +879,28 @@ defineExpose({
                     : {}"
                   @click="openArtifactWorkbench"
                 >
-                  <div class="flex items-start gap-3">
-                    <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400/12 text-amber-300">
+                  <div
+                    class="gap-3"
+                    :class="isCompactArtifactSidebar ? 'flex-col' : 'flex items-start'"
+                  >
+                    <div
+                      class="flex shrink-0 items-center justify-center rounded-lg bg-amber-400/12 text-amber-300"
+                      :class="isCompactArtifactSidebar ? 'h-8 w-8' : 'mt-0.5 h-9 w-9'"
+                    >
                       <NIcon
                         :component="CloudUploadOutline"
-                        size="18"
+                        :size="isCompactArtifactSidebar ? 16 : 18"
                       />
                     </div>
                     <div class="min-w-0 flex-1">
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="truncate text-sm font-medium text-slate-100">
+                      <div
+                        class="gap-2"
+                        :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
+                      >
+                        <div
+                          class="text-sm font-medium text-slate-100"
+                          :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
+                        >
                           产物工作台
                         </div>
                         <NTag
@@ -883,7 +912,9 @@ defineExpose({
                         </NTag>
                       </div>
                       <div class="mt-1 text-[11px] leading-5 text-slate-400">
-                        打开工作台后可继续配置平台矩阵、启动批量任务，并查看完整结果列表。
+                        {{ isCompactArtifactSidebar
+                          ? '打开后可继续配置矩阵、启动批量任务，并查看完整结果。'
+                          : '打开工作台后可继续配置平台矩阵、启动批量任务，并查看完整结果列表。' }}
                       </div>
                       <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-500">
                         <span class="rounded border border-white/10 px-2 py-0.5">
@@ -897,8 +928,14 @@ defineExpose({
                         v-if="runningArtifactTask"
                         class="mt-3 rounded-lg border border-amber-300/15 bg-black/15 px-2.5 py-2"
                       >
-                        <div class="flex items-center justify-between gap-2 text-[11px]">
-                          <span class="truncate text-amber-200">
+                        <div
+                          class="gap-1.5 text-[11px]"
+                          :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
+                        >
+                          <span
+                            class="text-amber-200"
+                            :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
+                          >
                             正在执行 · {{ artifactTaskTitle(runningArtifactTask) }}
                           </span>
                           <span class="text-slate-400">
@@ -927,8 +964,18 @@ defineExpose({
               </div>
 
               <div>
-                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                  任务历史
+                <div class="flex items-center justify-between gap-2 px-1 pb-2">
+                  <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                    任务历史
+                  </div>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    :disabled="historicalArtifactTasks.length === 0 || !!runningArtifactTask"
+                    @click.stop="clearArtifactHistory"
+                  >
+                    清空历史
+                  </NButton>
                 </div>
                 <div
                   v-if="historicalArtifactTasks.length === 0"
@@ -958,8 +1005,14 @@ defineExpose({
                   >
                     <div class="flex items-start gap-2">
                       <div class="min-w-0 flex-1">
-                        <div class="flex items-center justify-between gap-2">
-                          <div class="truncate text-sm font-medium text-slate-100">
+                        <div
+                          class="gap-2"
+                          :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
+                        >
+                          <div
+                            class="text-sm font-medium text-slate-100"
+                            :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
+                          >
                             {{ artifactTaskTitle(task) }}
                           </div>
                           <NTag
