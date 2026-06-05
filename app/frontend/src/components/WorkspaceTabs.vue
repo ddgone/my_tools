@@ -6,6 +6,7 @@ import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, Bookm
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 import { ExportTool, OpenFileDialog, OpenPath } from '../../wailsjs/go/main/App'
@@ -31,10 +32,12 @@ const message = useMessage()
 
 const launching = ref(false)
 const exporting = ref(false)
+const exportProgressText = ref('')
 const searchInput = ref('')
 const activeSearchIndex = ref(0)
 const contentRef = ref<HTMLElement | null>(null)
 const tabBarRef = ref<HTMLElement | null>(null)
+let disposeExportProgress: (() => void) | null = null
 type UnifiedTabItem = {
   type: 'tool' | 'ssh'
   key: string
@@ -283,6 +286,9 @@ const activeExportTarget = computed({
 })
 
 const activeExportButtonLabel = computed(() => {
+  if (exporting.value) {
+    return exportProgressText.value || '导出中'
+  }
   const tool = toolById(activeToolId.value)
   if (!tool) return '导出'
   if (tool.kind === 'python') return '导出脚本'
@@ -401,6 +407,7 @@ async function handleExport() {
   }
 
   exporting.value = true
+  exportProgressText.value = '准备导出'
   try {
     const mode = tool.kind === 'go' ? activeGoExportMode.value : 'source'
     const target = tool.kind === 'go' && mode === 'binary' ? parseExportTarget(activeExportTarget.value) : {}
@@ -427,6 +434,7 @@ async function handleExport() {
     message.error(detail || '工具导出失败')
   } finally {
     exporting.value = false
+    exportProgressText.value = ''
   }
 }
 
@@ -859,6 +867,12 @@ onMounted(() => {
   window.addEventListener('pointermove', handleGlobalPointerMove)
   window.addEventListener('pointerup', handleGlobalPointerUp)
   window.addEventListener('pointercancel', handleGlobalPointerCancel)
+  disposeExportProgress = EventsOn('export:progress', (event: { toolId?: string, message?: string }) => {
+    if (event.toolId !== activeToolId.value) {
+      return
+    }
+    exportProgressText.value = String(event.message ?? '').trim()
+  })
 
   if (typeof ResizeObserver !== 'undefined') {
     layoutResizeObserver = new ResizeObserver(() => {
@@ -879,7 +893,14 @@ onUnmounted(() => {
   window.removeEventListener('pointerup', handleGlobalPointerUp)
   window.removeEventListener('pointercancel', handleGlobalPointerCancel)
   layoutResizeObserver?.disconnect()
+  disposeExportProgress?.()
   clearTabTransforms()
+})
+
+watch(activeToolId, () => {
+  if (!exporting.value) {
+    exportProgressText.value = ''
+  }
 })
 
 watch(searchInput, () => {

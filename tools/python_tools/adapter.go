@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/framework"
 )
 
@@ -120,9 +121,9 @@ arg1 "arg 2 with space" --flag value
 
 			var cmd *exec.Cmd
 			if runtime.GOOS == "windows" {
-				cmd = exec.Command(env, cmdArgs...)
+				cmd = procutil.Command(env, cmdArgs...)
 			} else {
-				cmd = exec.CommandContext(runCtx, env, cmdArgs...)
+				cmd = procutil.CommandContext(runCtx, env, cmdArgs...)
 			}
 
 			cmd.Stdout = out
@@ -140,7 +141,7 @@ arg1 "arg 2 with space" --flag value
 					select {
 					case <-runCtx.Done():
 						if cmd.Process != nil {
-							_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+							_ = procutil.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
 						}
 					case <-done:
 					}
@@ -178,9 +179,9 @@ arg1 "arg 2 with space" --flag value
 		cmdArgs := append([]string{"-u", tempPath}, parsedArgs...)
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.Command(env, cmdArgs...)
+			cmd = procutil.Command(env, cmdArgs...)
 		} else {
-			cmd = exec.CommandContext(runCtx, env, cmdArgs...)
+			cmd = procutil.CommandContext(runCtx, env, cmdArgs...)
 		}
 
 		// Fallback logic is removed because user explicitly specified the env
@@ -201,7 +202,7 @@ arg1 "arg 2 with space" --flag value
 				select {
 				case <-runCtx.Done():
 					if cmd.Process != nil {
-						_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+						_ = procutil.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
 					}
 				case <-done:
 				}

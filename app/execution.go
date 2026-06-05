@@ -354,19 +354,22 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 	}
 
 	fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
-	pkgPath, err := builder.BuildPackage(builder.BuildRequest{
+	buildResult, err := builder.BuildPackage(builder.BuildRequest{
 		ToolID:      params.toolID,
 		ToolName:    params.toolName,
 		Kind:        builderKind(params.kind),
 		OutputDir:   layout.BuildCacheDir(),
+		CacheDir:    layout.BuildCacheDir(),
 		RepoRoot:    repoRoot,
 		SourceEntry: params.sourceEntry,
 		TargetOS:    platform.OS,
 		TargetArch:  platform.Arch,
+		Progress:    writer,
 	})
 	if err != nil {
 		return err
 	}
+	pkgPath := buildResult.Path
 	fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
 
 	remoteDir, err := executor.RunOutput(ctx, "mktemp -d /tmp/fire-salamander-XXXXXX")

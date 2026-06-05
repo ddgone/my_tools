@@ -1,8 +1,12 @@
 package builder
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -10,6 +14,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"my_tools/libs/core/procutil"
 )
 
 type ToolKind string
@@ -25,16 +31,35 @@ type BuildRequest struct {
 	ToolName    string
 	Kind        ToolKind
 	OutputDir   string
+	CacheDir    string
 	OutputName  string
 	RepoRoot    string
 	SourceEntry string
 	TargetOS    string
 	TargetArch  string
+	Progress    io.Writer
 }
 
-func BuildPackage(req BuildRequest) (string, error) {
+type BuildResult struct {
+	Path     string
+	CacheKey string
+	CacheHit bool
+}
+
+func BuildPackage(req BuildRequest) (BuildResult, error) {
+	if strings.TrimSpace(req.OutputDir) == "" {
+		return BuildResult{}, fmt.Errorf("缺少输出目录")
+	}
 	if err := os.MkdirAll(req.OutputDir, 0755); err != nil {
-		return "", fmt.Errorf("创建输出目录失败: %w", err)
+		return BuildResult{}, fmt.Errorf("创建输出目录失败: %w", err)
+	}
+
+	req.CacheDir = strings.TrimSpace(req.CacheDir)
+	if req.CacheDir == "" {
+		req.CacheDir = req.OutputDir
+	}
+	if err := os.MkdirAll(req.CacheDir, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("创建构建缓存目录失败: %w", err)
 	}
 
 	switch req.Kind {
@@ -43,23 +68,23 @@ func BuildPackage(req BuildRequest) (string, error) {
 	case KindGo:
 		return buildGoPackage(req)
 	default:
-		return "", fmt.Errorf("不支持的工具类型: %s", req.Kind)
+		return BuildResult{}, fmt.Errorf("不支持的工具类型: %s", req.Kind)
 	}
 }
 
-func buildPythonPackage(req BuildRequest) (string, error) {
+func buildPythonPackage(req BuildRequest) (BuildResult, error) {
 	scriptPath := req.SourceEntry
 	if scriptPath == "" {
-		return "", fmt.Errorf("工具 %s 缺少 Python 脚本入口", req.ToolID)
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少 Python 脚本入口", req.ToolID)
 	}
 	if !filepath.IsAbs(scriptPath) {
 		if req.RepoRoot == "" {
-			return "", fmt.Errorf("工具 %s 缺少仓库根目录，无法解析脚本入口", req.ToolID)
+			return BuildResult{}, fmt.Errorf("工具 %s 缺少仓库根目录，无法解析脚本入口", req.ToolID)
 		}
 		scriptPath = filepath.Join(req.RepoRoot, filepath.FromSlash(scriptPath))
 	}
 	if _, err := os.Stat(scriptPath); err != nil {
-		return "", fmt.Errorf("Python 脚本不存在: %w", err)
+		return BuildResult{}, fmt.Errorf("Python 脚本不存在: %w", err)
 	}
 
 	outputName := strings.TrimSpace(req.OutputName)
@@ -67,19 +92,31 @@ func buildPythonPackage(req BuildRequest) (string, error) {
 		outputName = req.ToolID + ".py"
 	}
 	outFile := filepath.Join(req.OutputDir, filepath.Base(outputName))
-	if err := copyFile(scriptPath, outFile, 0644); err != nil {
-		return "", fmt.Errorf("复制 Python 脚本失败: %w", err)
+
+	cacheKey, err := computePythonCacheKey(req, scriptPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	cachePath := filepath.Join(req.CacheDir, cacheArtifactName(req.ToolID, "", "", cacheKey, ".py"))
+	if fileExists(cachePath) {
+		logBuildProgress(req, "命中构建缓存")
+		return finalizeBuildOutput(req, outFile, cachePath, 0644, cacheKey, true)
 	}
 
-	return outFile, nil
+	logBuildProgress(req, "写入 Python 脚本缓存")
+	if err := copyFile(scriptPath, cachePath, 0644); err != nil {
+		return BuildResult{}, fmt.Errorf("复制 Python 脚本失败: %w", err)
+	}
+
+	return finalizeBuildOutput(req, outFile, cachePath, 0644, cacheKey, false)
 }
 
-func buildGoPackage(req BuildRequest) (string, error) {
+func buildGoPackage(req BuildRequest) (BuildResult, error) {
 	if req.SourceEntry == "" {
-		return "", fmt.Errorf("工具 %s 缺少 Go 源码入口", req.ToolID)
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少 Go 源码入口", req.ToolID)
 	}
 	if req.RepoRoot == "" {
-		return "", fmt.Errorf("工具 %s 缺少仓库根目录，无法生成单工具产物", req.ToolID)
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少仓库根目录，无法生成单工具产物", req.ToolID)
 	}
 
 	targetOS := req.TargetOS
@@ -91,18 +128,6 @@ func buildGoPackage(req BuildRequest) (string, error) {
 		targetArch = runtime.GOARCH
 	}
 
-	importPath := buildImportPath(req.SourceEntry)
-	buildDir, err := os.MkdirTemp("", req.ToolID+"_"+targetOS+"_"+targetArch+"_src_")
-	if err != nil {
-		return "", fmt.Errorf("创建构建目录失败: %w", err)
-	}
-	defer os.RemoveAll(buildDir)
-
-	wrapperPath := filepath.Join(buildDir, "main.go")
-	if err := os.WriteFile(wrapperPath, []byte(renderGoWrapper(req.ToolID, importPath)), 0644); err != nil {
-		return "", fmt.Errorf("写入构建入口失败: %w", err)
-	}
-
 	outputName := strings.TrimSpace(req.OutputName)
 	if outputName == "" {
 		outputName = req.ToolID + "_" + targetOS + "_" + targetArch
@@ -112,12 +137,34 @@ func buildGoPackage(req BuildRequest) (string, error) {
 	}
 	outFile := filepath.Join(req.OutputDir, filepath.Base(outputName))
 
-	goBinary, err := resolveGoBinary()
+	importPath := buildImportPath(req.SourceEntry)
+	cacheKey, err := computeGoCacheKey(req, importPath, targetOS, targetArch)
 	if err != nil {
-		return "", err
+		return BuildResult{}, err
+	}
+	cachePath := filepath.Join(req.CacheDir, cacheArtifactName(req.ToolID, targetOS, targetArch, cacheKey, filepath.Ext(outputName)))
+	if fileExists(cachePath) {
+		logBuildProgress(req, "命中构建缓存")
+		return finalizeBuildOutput(req, outFile, cachePath, 0755, cacheKey, true)
+	}
+	buildDir, err := os.MkdirTemp("", req.ToolID+"_"+targetOS+"_"+targetArch+"_src_")
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("创建构建目录失败: %w", err)
+	}
+	defer os.RemoveAll(buildDir)
+
+	wrapperPath := filepath.Join(buildDir, "main.go")
+	if err := os.WriteFile(wrapperPath, []byte(renderGoWrapper(req.ToolID, importPath)), 0644); err != nil {
+		return BuildResult{}, fmt.Errorf("写入构建入口失败: %w", err)
 	}
 
-	cmd := exec.Command(goBinary, "build", "-o", outFile, wrapperPath)
+	goBinary, err := resolveGoBinary()
+	if err != nil {
+		return BuildResult{}, err
+	}
+
+	logBuildProgress(req, "正在构建工具产物")
+	cmd := procutil.Command(goBinary, "build", "-o", cachePath, wrapperPath)
 	cmd.Dir = req.RepoRoot
 	cmd.Env = append(os.Environ(),
 		"CGO_ENABLED=0",
@@ -126,14 +173,15 @@ func buildGoPackage(req BuildRequest) (string, error) {
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("构建单工具产物失败: %w\n%s", err, strings.TrimSpace(string(output)))
+		return BuildResult{}, fmt.Errorf("构建单工具产物失败: %w\n%s", err, strings.TrimSpace(string(output)))
 	}
 
-	if err := os.Chmod(outFile, 0755); err != nil {
-		return "", fmt.Errorf("设置可执行权限失败: %w", err)
+	if err := os.Chmod(cachePath, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("设置可执行权限失败: %w", err)
 	}
 
-	return outFile, nil
+	logBuildProgress(req, "构建完成，已写入缓存")
+	return finalizeBuildOutput(req, outFile, cachePath, 0755, cacheKey, false)
 }
 
 func buildImportPath(sourceEntry string) string {
@@ -235,6 +283,201 @@ func dedupeStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+func finalizeBuildOutput(req BuildRequest, outFile string, cachePath string, mode os.FileMode, cacheKey string, cacheHit bool) (BuildResult, error) {
+	if sameCleanPath(outFile, cachePath) {
+		return BuildResult{
+			Path:     cachePath,
+			CacheKey: cacheKey,
+			CacheHit: cacheHit,
+		}, nil
+	}
+	logBuildProgress(req, "写入目标产物")
+	if err := copyFile(cachePath, outFile, mode); err != nil {
+		return BuildResult{}, fmt.Errorf("写入目标产物失败: %w", err)
+	}
+	return BuildResult{
+		Path:     outFile,
+		CacheKey: cacheKey,
+		CacheHit: cacheHit,
+	}, nil
+}
+
+func computePythonCacheKey(req BuildRequest, scriptPath string) (string, error) {
+	digest := sha256.New()
+	writeCacheToken(digest, "python-cache-v1")
+	writeCacheToken(digest, req.ToolID)
+	writeCacheToken(digest, filepath.Base(scriptPath))
+	if err := hashSingleFile(digest, scriptPath, filepath.Base(scriptPath)); err != nil {
+		return "", fmt.Errorf("计算 Python 产物缓存失败: %w", err)
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+func computeGoCacheKey(req BuildRequest, importPath string, targetOS string, targetArch string) (string, error) {
+	digest := sha256.New()
+	writeCacheToken(digest, "go-cache-v1")
+	writeCacheToken(digest, req.ToolID)
+	writeCacheToken(digest, importPath)
+	writeCacheToken(digest, targetOS)
+	writeCacheToken(digest, targetArch)
+	writeCacheToken(digest, renderGoWrapper(req.ToolID, importPath))
+
+	files, err := collectGoRelevantFiles(req.RepoRoot)
+	if err != nil {
+		return "", fmt.Errorf("扫描 Go 构建输入失败: %w", err)
+	}
+	for _, relPath := range files {
+		if err := hashSingleFile(digest, filepath.Join(req.RepoRoot, filepath.FromSlash(relPath)), relPath); err != nil {
+			return "", fmt.Errorf("计算 Go 产物缓存失败: %w", err)
+		}
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+func collectGoRelevantFiles(repoRoot string) ([]string, error) {
+	files := make([]string, 0, 64)
+	err := filepath.WalkDir(repoRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relPath, err := filepath.Rel(repoRoot, currentPath)
+		if err != nil {
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+		if entry.IsDir() {
+			if shouldSkipGoCacheDir(relPath, entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isGoCacheInput(relPath) {
+			files = append(files, relPath)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func shouldSkipGoCacheDir(relPath string, base string) bool {
+	switch relPath {
+	case ".", "":
+		return false
+	case "app/frontend":
+		return true
+	}
+	switch base {
+	case ".git", ".trae", "build", "node_modules", "dist":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGoCacheInput(relPath string) bool {
+	ext := strings.ToLower(filepath.Ext(relPath))
+	switch ext {
+	case ".go", ".mod", ".sum", ".work":
+		return true
+	default:
+		return false
+	}
+}
+
+func hashSingleFile(digest hash.Hash, filePath string, label string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("路径不是文件: %s", filePath)
+	}
+	writeCacheToken(digest, label)
+	writeCacheToken(digest, fmt.Sprintf("%d", info.Size()))
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := io.Copy(digest, file); err != nil {
+		return err
+	}
+	writeCacheToken(digest, "")
+	return nil
+}
+
+func writeCacheToken(digest hash.Hash, value string) {
+	_, _ = io.WriteString(digest, value)
+	_, _ = io.WriteString(digest, "\n")
+}
+
+func cacheArtifactName(toolID string, targetOS string, targetArch string, cacheKey string, ext string) string {
+	base := sanitizeCacheToken(toolID)
+	parts := []string{base}
+	if targetOS != "" {
+		parts = append(parts, sanitizeCacheToken(targetOS))
+	}
+	if targetArch != "" {
+		parts = append(parts, sanitizeCacheToken(targetArch))
+	}
+	shortKey := cacheKey
+	if len(shortKey) > 16 {
+		shortKey = shortKey[:16]
+	}
+	parts = append(parts, shortKey)
+	return strings.Join(parts, "_") + ext
+}
+
+func sanitizeCacheToken(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "artifact"
+	}
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '_' || r == '-':
+			return r
+		default:
+			return '_'
+		}
+	}, trimmed)
+	safe = strings.Trim(safe, "._-")
+	if safe == "" {
+		return "artifact"
+	}
+	return safe
+}
+
+func sameCleanPath(left string, right string) bool {
+	return filepath.Clean(left) == filepath.Clean(right)
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func logBuildProgress(req BuildRequest, message string) {
+	if req.Progress == nil {
+		return
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	_, _ = io.WriteString(req.Progress, message+"\n")
 }
 
 func copyFile(srcPath, dstPath string, mode os.FileMode) error {

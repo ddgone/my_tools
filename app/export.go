@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,9 +10,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"fire-salamander-desktop/internal/builder"
 	"fire-salamander-desktop/internal/runtimeenv"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type ExportToolRequest struct {
@@ -32,8 +36,21 @@ type ExportToolResult struct {
 	TargetArch string `json:"targetArch,omitempty"`
 }
 
+type ExportProgressEvent struct {
+	ToolID   string `json:"toolId"`
+	Message  string `json:"message"`
+	Recorded int64  `json:"recorded"`
+}
+
 type exportConfig struct {
 	LastDirectory string `json:"lastDirectory"`
+}
+
+type exportProgressWriter struct {
+	toolID string
+	app    *App
+	mu     sync.Mutex
+	buffer bytes.Buffer
 }
 
 const (
@@ -45,6 +62,9 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 	if err := a.ensureTooling(); err != nil {
 		return nil, err
 	}
+	progress := &exportProgressWriter{toolID: req.ToolID, app: a}
+	defer progress.Flush()
+	a.emitExportProgress(req.ToolID, "准备导出")
 
 	a.mu.RLock()
 	manifest, ok := a.manifests[req.ToolID]
@@ -57,6 +77,7 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("初始化运行时目录失败: %w", err)
 	}
+	a.emitExportProgress(req.ToolID, "准备运行时目录")
 	if err := layout.Ensure(); err != nil {
 		return nil, fmt.Errorf("准备运行时目录失败: %w", err)
 	}
@@ -100,6 +121,7 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 		return nil, err
 	}
 
+	a.emitExportProgress(req.ToolID, "准备工具产物")
 	exportedPath, err := exportArtifact(exportArtifactRequest{
 		toolID:      manifest.ID,
 		toolName:    manifest.Name,
@@ -110,10 +132,13 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 		sourceEntry: manifest.Source.Entry,
 		targetOS:    targetOS,
 		targetArch:  targetArch,
+		cacheDir:    layout.BuildCacheDir(),
+		progress:    progress,
 	})
 	if err != nil {
 		return nil, err
 	}
+	a.emitExportProgress(req.ToolID, "导出完成")
 
 	return &ExportToolResult{
 		ToolID:     manifest.ID,
@@ -125,6 +150,44 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 		TargetOS:   targetOS,
 		TargetArch: targetArch,
 	}, nil
+}
+
+func (w *exportProgressWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buffer.Write(p)
+	for {
+		line, err := w.buffer.ReadString('\n')
+		if err != nil {
+			w.buffer.WriteString(line)
+			break
+		}
+		w.app.emitExportProgress(w.toolID, strings.TrimRight(line, "\r\n"))
+	}
+
+	return len(p), nil
+}
+
+func (w *exportProgressWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.buffer.Len() == 0 {
+		return
+	}
+	w.app.emitExportProgress(w.toolID, strings.TrimRight(w.buffer.String(), "\r\n"))
+	w.buffer.Reset()
+}
+
+func (a *App) emitExportProgress(toolID string, message string) {
+	if strings.TrimSpace(message) == "" || a.ctx == nil {
+		return
+	}
+	wailsruntime.EventsEmit(a.ctx, "export:progress", ExportProgressEvent{
+		ToolID:   toolID,
+		Message:  message,
+		Recorded: time.Now().UnixMilli(),
+	})
 }
 
 func (a *App) OpenPath(path string) error {
@@ -226,6 +289,8 @@ type exportArtifactRequest struct {
 	sourceEntry      string
 	targetOS         string
 	targetArch       string
+	cacheDir         string
+	progress         io.Writer
 }
 
 func exportArtifact(req exportArtifactRequest) (string, error) {
@@ -238,16 +303,23 @@ func exportArtifact(req exportArtifactRequest) (string, error) {
 		ToolName:    req.toolName,
 		Kind:        builderKind(req.kind),
 		OutputDir:   filepath.Dir(req.outputPath),
+		CacheDir:    req.cacheDir,
 		OutputName:  filepath.Base(req.outputPath),
 		RepoRoot:    req.repoRoot,
 		SourceEntry: req.sourceEntry,
 		TargetOS:    req.targetOS,
 		TargetArch:  req.targetArch,
+		Progress:    req.progress,
 	}
-	return builder.BuildPackage(buildReq)
+	result, err := builder.BuildPackage(buildReq)
+	if err != nil {
+		return "", err
+	}
+	return result.Path, nil
 }
 
 func exportSourceArtifact(req exportArtifactRequest) (string, error) {
+	reportExportProgress(req.progress, "复制源码产物")
 	sourcePath, err := resolveSourceEntryPath(req.repoRoot, req.sourceEntry)
 	if err != nil {
 		return "", err
@@ -256,6 +328,17 @@ func exportSourceArtifact(req exportArtifactRequest) (string, error) {
 		return "", fmt.Errorf("导出源码失败: %w", err)
 	}
 	return req.outputPath, nil
+}
+
+func reportExportProgress(writer io.Writer, message string) {
+	if writer == nil {
+		return
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	_, _ = io.WriteString(writer, message+"\n")
 }
 
 func resolveSourceEntryPath(repoRoot string, sourceEntry string) (string, error) {
