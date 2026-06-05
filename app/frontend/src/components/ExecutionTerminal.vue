@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
+import { computed, nextTick, ref, watch, type CSSProperties } from 'vue'
 import { NButton, NIcon, NScrollbar, NText, NTooltip, useMessage } from 'naive-ui'
 import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
-import gsap from 'gsap'
-import { ANIM } from '@/utils/animation'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
 
 const props = defineProps<{
@@ -20,7 +18,8 @@ const workspace = useWorkspaceStore()
 const message = useMessage()
 const terminalRef = ref<InstanceType<typeof NScrollbar> | null>(null)
 const autoScroll = ref(true)
-let detachScrollListener: (() => void) | null = null
+let autoScrollResetFrame: number | null = null
+let isProgrammaticScroll = false
 const terminalTheme = computed(() => getExecutionTheme(props.toolKind, props.executionTarget))
 const terminalThemeStyle = computed<CSSProperties>(() => ({
   ...makeExecutionThemeVars(terminalTheme.value, 'execution-terminal'),
@@ -131,36 +130,41 @@ async function exportLogs() {
 }
 
 function getScrollbarContainer(): HTMLElement | null {
-  return terminalRef.value?.$el.querySelector('.n-scrollbar-container') ?? null
+  const exposedInst = (terminalRef.value as (InstanceType<typeof NScrollbar> & {
+    scrollbarInstRef?: {
+      containerRef?: HTMLElement | null
+    } | null
+  }) | null)?.scrollbarInstRef
+
+  return exposedInst?.containerRef ?? terminalRef.value?.$el.querySelector('.n-scrollbar-container') ?? null
 }
 
 async function scrollToBottom() {
   await nextTick()
   const el = getScrollbarContainer()
   if (!el) return
-  gsap.to(el, {
-    scrollTop: el.scrollHeight,
-    duration: ANIM.duration.slow,
-    ease: ANIM.ease.out,
-    overwrite: 'auto',
+
+  isProgrammaticScroll = true
+  el.scrollTop = el.scrollHeight
+
+  if (autoScrollResetFrame !== null) {
+    cancelAnimationFrame(autoScrollResetFrame)
+  }
+  autoScrollResetFrame = requestAnimationFrame(() => {
+    autoScrollResetFrame = requestAnimationFrame(() => {
+      isProgrammaticScroll = false
+      syncAutoScrollState()
+      autoScrollResetFrame = null
+    })
   })
 }
 
 function syncAutoScrollState() {
+  if (isProgrammaticScroll) return
   const el = getScrollbarContainer()
   if (!el) return
   const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
   autoScroll.value = distanceToBottom <= 24
-}
-
-async function bindScrollListener() {
-  await nextTick()
-  detachScrollListener?.()
-  const el = getScrollbarContainer()
-  if (!el) return
-  const handleScroll = () => syncAutoScrollState()
-  el.addEventListener('scroll', handleScroll, { passive: true })
-  detachScrollListener = () => el.removeEventListener('scroll', handleScroll)
 }
 
 async function toggleAutoScroll() {
@@ -176,17 +180,13 @@ watch(
     if (!autoScroll.value) return
     await scrollToBottom()
   },
+  { flush: 'post' },
 )
 
 watch(() => props.taskId, async () => {
   autoScroll.value = true
-  await bindScrollListener()
   await scrollToBottom()
-}, { immediate: true })
-
-onBeforeUnmount(() => {
-  detachScrollListener?.()
-})
+}, { immediate: true, flush: 'post' })
 </script>
 
 <template>
@@ -296,6 +296,7 @@ onBeforeUnmount(() => {
     <NScrollbar
       ref="terminalRef"
       class="flex-1"
+      @scroll="syncAutoScrollState"
     >
       <div class="p-3 font-mono text-sm leading-relaxed">
         <template v-if="logs.length === 0">
