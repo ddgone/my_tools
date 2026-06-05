@@ -9,10 +9,12 @@ import (
 )
 
 type FileDialogRequest struct {
-	Title      string `json:"title"`
-	FilterName string `json:"filterName"`
-	FilterGlob string `json:"filterGlob"`
-	Directory  bool   `json:"directory"`
+	Title            string `json:"title"`
+	FilterName       string `json:"filterName"`
+	FilterGlob       string `json:"filterGlob"`
+	Directory        bool   `json:"directory"`
+	DefaultDirectory string `json:"defaultDirectory"`
+	DefaultFilename  string `json:"defaultFilename"`
 }
 
 func (a *App) OpenFileDialog(req FileDialogRequest) (string, error) {
@@ -52,7 +54,9 @@ func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
 	}
 
 	file, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title: req.Title,
+		Title:            req.Title,
+		DefaultDirectory: strings.TrimSpace(req.DefaultDirectory),
+		DefaultFilename:  strings.TrimSpace(req.DefaultFilename),
 		Filters: []wailsruntime.FileFilter{
 			{
 				DisplayName: req.FilterName,

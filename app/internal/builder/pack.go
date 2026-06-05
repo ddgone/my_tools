@@ -25,6 +25,7 @@ type BuildRequest struct {
 	ToolName    string
 	Kind        ToolKind
 	OutputDir   string
+	OutputName  string
 	RepoRoot    string
 	SourceEntry string
 	TargetOS    string
@@ -61,7 +62,11 @@ func buildPythonPackage(req BuildRequest) (string, error) {
 		return "", fmt.Errorf("Python 脚本不存在: %w", err)
 	}
 
-	outFile := filepath.Join(req.OutputDir, req.ToolID+".py")
+	outputName := strings.TrimSpace(req.OutputName)
+	if outputName == "" {
+		outputName = req.ToolID + ".py"
+	}
+	outFile := filepath.Join(req.OutputDir, filepath.Base(outputName))
 	if err := copyFile(scriptPath, outFile, 0644); err != nil {
 		return "", fmt.Errorf("复制 Python 脚本失败: %w", err)
 	}
@@ -87,21 +92,25 @@ func buildGoPackage(req BuildRequest) (string, error) {
 	}
 
 	importPath := buildImportPath(req.SourceEntry)
-	buildDir := filepath.Join(req.OutputDir, req.ToolID+"_"+targetOS+"_"+targetArch+"_src")
-	if err := os.MkdirAll(buildDir, 0755); err != nil {
+	buildDir, err := os.MkdirTemp("", req.ToolID+"_"+targetOS+"_"+targetArch+"_src_")
+	if err != nil {
 		return "", fmt.Errorf("创建构建目录失败: %w", err)
 	}
+	defer os.RemoveAll(buildDir)
 
 	wrapperPath := filepath.Join(buildDir, "main.go")
 	if err := os.WriteFile(wrapperPath, []byte(renderGoWrapper(req.ToolID, importPath)), 0644); err != nil {
 		return "", fmt.Errorf("写入构建入口失败: %w", err)
 	}
 
-	outputName := req.ToolID + "_" + targetOS + "_" + targetArch
-	if targetOS == "windows" {
-		outputName += ".exe"
+	outputName := strings.TrimSpace(req.OutputName)
+	if outputName == "" {
+		outputName = req.ToolID + "_" + targetOS + "_" + targetArch
+		if targetOS == "windows" {
+			outputName += ".exe"
+		}
 	}
-	outFile := filepath.Join(req.OutputDir, outputName)
+	outFile := filepath.Join(req.OutputDir, filepath.Base(outputName))
 
 	goBinary, err := resolveGoBinary()
 	if err != nil {

@@ -7,6 +7,8 @@ export function CancelExecution(arg1:string):Promise<void>;
 
 export function DeleteSSHConnection(arg1:string):Promise<void>;
 
+export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolResult>;
+
 export function GetCurrentWindowState():Promise<main.WindowState>;
 
 export function GetSSHConnection(arg1:string):Promise<ssh.Connection>;
@@ -22,6 +24,8 @@ export function ListSSHConnections():Promise<Array<ssh.Connection>>;
 export function ListTasks():Promise<Array<main.ExecutionTask>>;
 
 export function OpenFileDialog(arg1:main.FileDialogRequest):Promise<string>;
+
+export function OpenPath(arg1:string):Promise<void>;
 
 export function OpenSaveFileDialog(arg1:main.FileDialogRequest):Promise<string>;
 

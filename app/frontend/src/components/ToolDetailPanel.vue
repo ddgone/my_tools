@@ -23,14 +23,21 @@ const props = defineProps<{
   activeTaskId: string
   isRunning: boolean
   isLaunching: boolean
+  isExporting: boolean
+  exportTarget: string
+  exportTargetOptions: SelectOption[]
+  exportButtonLabel: string
+  showExportTargetSelector: boolean
 }>()
 
 const emit = defineEmits<{
   execute: []
   cancel: []
+  export: []
   'update:execution-target': [value: ExecutionTarget]
   'update:python-env': [value: string]
   'update:remote-conn-id': [value: string]
+  'update:export-target': [value: string]
 }>()
 
 const sshConnections = ref<SSHConnection[]>([])
@@ -107,6 +114,7 @@ const remoteConnectionOptions = computed<SelectOption[]>(() =>
     value: conn.id,
   })),
 )
+const canExport = computed(() => Boolean(props.tool?.export?.strategy))
 
 async function animateSwitchThumb(immediate = false) {
   await nextTick()
@@ -338,17 +346,40 @@ onBeforeUnmount(() => {
           停止
         </NButton>
 
-        <NButton
-          v-press
-          size="small"
-          disabled
-          secondary
+        <div
+          class="flex items-center rounded-md border border-white/10 bg-black/10 px-1 py-1"
         >
-          <template #icon>
-            <NIcon :component="CloudUpload" />
+          <NButton
+            v-press
+            size="small"
+            secondary
+            :disabled="!canExport || isLaunching || isExporting"
+            :loading="isExporting"
+            @click="emit('export')"
+          >
+            <template #icon>
+              <NIcon :component="CloudUpload" />
+            </template>
+            {{ isExporting ? '导出中' : exportButtonLabel }}
+          </NButton>
+          <template v-if="showExportTargetSelector">
+            <span class="mx-2 h-5 w-px bg-white/10" />
+            <NText
+              depth="3"
+              class="shrink-0 text-[11px]"
+            >
+              导出到
+            </NText>
+            <NSelect
+              :value="exportTarget"
+              :options="exportTargetOptions"
+              size="small"
+              class="ml-2 w-[208px]"
+              :disabled="isExporting"
+              @update:value="(value) => emit('update:export-target', String(value ?? ''))"
+            />
           </template>
-          导出
-        </NButton>
+        </div>
       </div>
     </div>
 

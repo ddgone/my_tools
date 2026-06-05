@@ -11,11 +11,14 @@ export interface ToolTabState {
   remoteConfig: RemoteExecutionConfig
   terminalVisible: boolean
   terminalHeight?: number
+  exportTarget: string
   openedAt: number
 }
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
+export type SettingsTab = 'general' | 'export'
+export type GoExportMode = 'binary' | 'source'
 
 export interface ToolExecutionConfig {
   panelMode: ToolPanelMode
@@ -38,6 +41,9 @@ export interface UserSettings {
   autoExpandAll: boolean
   verboseShortcuts: boolean
   bgmEnabled: boolean
+  autoOpenExportDir: boolean
+  goExportMode: GoExportMode
+  lastSettingsTab: SettingsTab
 }
 
 const STORAGE_KEYS = {
@@ -74,6 +80,9 @@ const defaultSettings: UserSettings = {
   autoExpandAll: false,
   verboseShortcuts: true,
   bgmEnabled: false,
+  autoOpenExportDir: true,
+  goExportMode: 'binary',
+  lastSettingsTab: 'general',
 }
 
 interface HistoryEntry {
@@ -89,7 +98,26 @@ interface PersistedToolState {
   remoteConfig: RemoteExecutionConfig
   terminalVisible: boolean
   terminalHeight?: number
+  exportTarget: string
   updatedAt: number
+}
+
+function normalizeSettingsTab(value: unknown): SettingsTab {
+  return value === 'export' ? 'export' : 'general'
+}
+
+function normalizeGoExportMode(value: unknown): GoExportMode {
+  return value === 'source' ? 'source' : 'binary'
+}
+
+function normalizeUserSettings(source?: Partial<UserSettings>): UserSettings {
+  return {
+    ...defaultSettings,
+    ...source,
+    autoOpenExportDir: source?.autoOpenExportDir !== false,
+    goExportMode: normalizeGoExportMode(source?.goExportMode),
+    lastSettingsTab: normalizeSettingsTab(source?.lastSettingsTab),
+  }
 }
 
 interface RecentEntry {
@@ -135,6 +163,7 @@ function createTabState(
       typeof persistedState?.terminalHeight === 'number' && persistedState.terminalHeight > 0
         ? persistedState.terminalHeight
         : undefined,
+    exportTarget: typeof persistedState?.exportTarget === 'string' ? persistedState.exportTarget : '',
     openedAt: Date.now(),
   }
 }
@@ -263,6 +292,7 @@ function snapshotToolState(tab: ToolTabState): PersistedToolState {
     remoteConfig: cloneRemoteExecutionConfig(tab.remoteConfig),
     terminalVisible: tab.terminalVisible,
     terminalHeight: tab.terminalHeight,
+    exportTarget: tab.exportTarget,
     updatedAt: Date.now(),
   }
 }
@@ -326,7 +356,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const favorites = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.favorites, []))
   const recentTools = ref<RecentEntry[]>(loadJSON<RecentEntry[]>(STORAGE_KEYS.recent, []))
   const toolHistory = ref<Record<string, HistoryEntry[]>>(loadJSON<Record<string, HistoryEntry[]>>(STORAGE_KEYS.history, {}))
-  const settings = ref<UserSettings>({ ...defaultSettings, ...loadJSON<Partial<UserSettings>>(STORAGE_KEYS.settings, {}) })
+  const settings = ref<UserSettings>(normalizeUserSettings(loadJSON<Partial<UserSettings>>(STORAGE_KEYS.settings, {})))
   const persistedToolStates = ref<Record<string, PersistedToolState>>(
     loadJSON<Record<string, PersistedToolState>>(STORAGE_KEYS.toolState, {}),
   )
@@ -633,6 +663,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     config.pythonEnv = value
   }
 
+  function setExportTarget(index: number, value: string) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].exportTarget = value
+  }
+
   function setPanelMode(index: number, value: ToolPanelMode) {
     if (index < 0 || index >= openTabs.value.length) {
       return
@@ -721,7 +758,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     persistedToolStates.value = {}
     pinnedTabs.value = []
     tabOrder.value = []
-    settings.value = { ...defaultSettings }
+    settings.value = normalizeUserSettings()
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
 
@@ -876,6 +913,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setExecutionTarget,
     setRemoteConnection,
     setPythonEnv,
+    setExportTarget,
     setPanelMode,
     setTerminalVisible,
     toggleTerminalVisible,

@@ -8,7 +8,7 @@ import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
-import { OpenFileDialog } from '../../wailsjs/go/main/App'
+import { ExportTool, OpenFileDialog, OpenPath } from '../../wailsjs/go/main/App'
 import type { ParameterSpec, SSHConnection } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
@@ -30,6 +30,7 @@ const workspace = useWorkspaceStore()
 const message = useMessage()
 
 const launching = ref(false)
+const exporting = ref(false)
 const searchInput = ref('')
 const activeSearchIndex = ref(0)
 const contentRef = ref<HTMLElement | null>(null)
@@ -263,6 +264,35 @@ function toolById(id: string) {
 }
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
+const exportTargetOptions = [
+  { label: 'Windows x64', value: 'windows/amd64' },
+  { label: 'Windows ARM64', value: 'windows/arm64' },
+  { label: 'Linux x64', value: 'linux/amd64' },
+  { label: 'Linux ARM64', value: 'linux/arm64' },
+  { label: 'macOS x64', value: 'darwin/amd64' },
+  { label: 'macOS ARM64', value: 'darwin/arm64' },
+]
+const currentExportTarget = computed(() => workbench.bootstrap?.platform || 'windows/amd64')
+const activeGoExportMode = computed(() => workspace.settings.goExportMode)
+const activeExportTarget = computed({
+  get: () => workspace.activeToolTab?.exportTarget || currentExportTarget.value,
+  set: (value: string) => {
+    if (workspace.activeTabIndex < 0 || !value) return
+    workspace.setExportTarget(workspace.activeTabIndex, value)
+  },
+})
+
+const activeExportButtonLabel = computed(() => {
+  const tool = toolById(activeToolId.value)
+  if (!tool) return '导出'
+  if (tool.kind === 'python') return '导出脚本'
+  return activeGoExportMode.value === 'source' ? '导出源码' : '导出二进制'
+})
+
+const showExportTargetSelector = computed(() => {
+  const tool = toolById(activeToolId.value)
+  return tool?.kind === 'go' && activeGoExportMode.value === 'binary'
+})
 
 const searchResults = computed(() => {
   const q = searchInput.value.trim().toLowerCase()
@@ -353,6 +383,53 @@ async function handleCancel() {
   await execution.cancelExecution(task.id)
 }
 
+function parseExportTarget(value: string) {
+  const [targetOS, targetArch] = value.split('/')
+  return {
+    targetOS: targetOS || undefined,
+    targetArch: targetArch || undefined,
+  }
+}
+
+async function handleExport() {
+  const tab = workspace.activeToolTab
+  const tool = tab ? toolById(tab.toolId) : null
+  if (!tool) return
+  if (!tool.export?.strategy) {
+    message.error('当前工具没有可用的导出能力')
+    return
+  }
+
+  exporting.value = true
+  try {
+    const mode = tool.kind === 'go' ? activeGoExportMode.value : 'source'
+    const target = tool.kind === 'go' && mode === 'binary' ? parseExportTarget(activeExportTarget.value) : {}
+    const result = await ExportTool({
+      toolId: tool.id,
+      mode,
+      ...target,
+    })
+    if (!result?.filePath) {
+      return
+    }
+
+    message.success(`已导出 ${result.toolName}`)
+    if (workspace.settings.autoOpenExportDir) {
+      try {
+        await OpenPath(result.directory)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        message.warning(`导出成功，但打开目录失败：${detail}`)
+      }
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '工具导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directory') {
   const tab = activeToolTabComputed.value
   const config = workspace.activeExecutionConfig
@@ -371,6 +448,8 @@ async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directo
       filterName: '所有文件',
       filterGlob: '*.*',
       directory: true,
+      defaultDirectory: '',
+      defaultFilename: '',
     })
   } else {
     result = await OpenFileDialog({
@@ -378,6 +457,8 @@ async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directo
       filterName: '所有文件',
       filterGlob: '*.*',
       directory: false,
+      defaultDirectory: '',
+      defaultFilename: '',
     })
   }
 
@@ -404,6 +485,10 @@ function onRemoteConnIdUpdate(value: string) {
   if (workspace.activeTabIndex >= 0) {
     workspace.setRemoteConnection(workspace.activeTabIndex, value)
   }
+}
+
+function onExportTargetUpdate(value: string) {
+  activeExportTarget.value = value
 }
 
 function toolTabStateByToolId(id: string) {
@@ -930,11 +1015,18 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             :active-task-id="activeTabTaskId"
             :is-running="activeTask?.status === 'running'"
             :is-launching="launching"
+            :is-exporting="exporting"
+            :export-target="activeExportTarget"
+            :export-target-options="exportTargetOptions"
+            :export-button-label="activeExportButtonLabel"
+            :show-export-target-selector="showExportTargetSelector"
             @execute="handleExecute"
             @cancel="handleCancel"
+            @export="handleExport"
             @update:execution-target="onExecutionTargetUpdate"
             @update:python-env="onPythonEnvUpdate"
             @update:remote-conn-id="onRemoteConnIdUpdate"
+            @update:export-target="onExportTargetUpdate"
           />
           <div
             class="mx-4 mt-3 h-px"

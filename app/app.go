@@ -95,6 +95,11 @@ const defaultAppConfigJSON = `{
     "maxHistory": 50,
     "remoteTimeoutSec": 30
   },
+  "export": {
+    "lastDirectory": "",
+    "goMode": "binary",
+    "autoOpenDir": true
+  },
   "ui": {
     "theme": "dracula",
     "verboseShortcuts": false

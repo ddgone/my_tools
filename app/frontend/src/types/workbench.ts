@@ -95,6 +95,24 @@ export interface ExecutionTask {
   exitMessage?: string
 }
 
+export interface ExportToolRequest {
+  toolId: string
+  mode?: string
+  targetOS?: string
+  targetArch?: string
+}
+
+export interface ExportToolResult {
+  toolId: string
+  toolName: string
+  strategy: string
+  mode: string
+  filePath: string
+  directory: string
+  targetOS?: string
+  targetArch?: string
+}
+
 export interface TaskLogEvent {
   taskId: string
   message: string
@@ -126,4 +144,6 @@ export interface FileDialogRequest {
   filterName: string
   filterGlob: string
   directory: boolean
+  defaultDirectory?: string
+  defaultFilename?: string
 }

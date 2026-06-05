@@ -10,6 +10,10 @@ export function DeleteSSHConnection(arg1) {
   return window['go']['main']['App']['DeleteSSHConnection'](arg1);
 }
 
+export function ExportTool(arg1) {
+  return window['go']['main']['App']['ExportTool'](arg1);
+}
+
 export function GetCurrentWindowState() {
   return window['go']['main']['App']['GetCurrentWindowState']();
 }
@@ -40,6 +44,10 @@ export function ListTasks() {
 
 export function OpenFileDialog(arg1) {
   return window['go']['main']['App']['OpenFileDialog'](arg1);
+}
+
+export function OpenPath(arg1) {
+  return window['go']['main']['App']['OpenPath'](arg1);
 }
 
 export function OpenSaveFileDialog(arg1) {

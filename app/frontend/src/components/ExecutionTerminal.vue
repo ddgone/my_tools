@@ -120,6 +120,8 @@ async function exportLogs() {
       filterName: '日志文件',
       filterGlob: '*.log',
       directory: false,
+      defaultDirectory: '',
+      defaultFilename: '',
     })
     if (!filePath) return
     await SaveTextFile(filePath, text)

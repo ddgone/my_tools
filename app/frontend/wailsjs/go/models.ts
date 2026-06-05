@@ -48,11 +48,57 @@ export namespace main {
 	        this.exitMessage = source["exitMessage"];
 	    }
 	}
+	export class ExportToolRequest {
+	    toolId: string;
+	    mode?: string;
+	    targetOS?: string;
+	    targetArch?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportToolRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toolId = source["toolId"];
+	        this.mode = source["mode"];
+	        this.targetOS = source["targetOS"];
+	        this.targetArch = source["targetArch"];
+	    }
+	}
+	export class ExportToolResult {
+	    toolId: string;
+	    toolName: string;
+	    strategy: string;
+	    mode: string;
+	    filePath: string;
+	    directory: string;
+	    targetOS?: string;
+	    targetArch?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportToolResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.strategy = source["strategy"];
+	        this.mode = source["mode"];
+	        this.filePath = source["filePath"];
+	        this.directory = source["directory"];
+	        this.targetOS = source["targetOS"];
+	        this.targetArch = source["targetArch"];
+	    }
+	}
 	export class FileDialogRequest {
 	    title: string;
 	    filterName: string;
 	    filterGlob: string;
 	    directory: boolean;
+	    defaultDirectory: string;
+	    defaultFilename: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileDialogRequest(source);
@@ -64,6 +110,8 @@ export namespace main {
 	        this.filterName = source["filterName"];
 	        this.filterGlob = source["filterGlob"];
 	        this.directory = source["directory"];
+	        this.defaultDirectory = source["defaultDirectory"];
+	        this.defaultFilename = source["defaultFilename"];
 	    }
 	}
 	export class RemoteExecRequest {
