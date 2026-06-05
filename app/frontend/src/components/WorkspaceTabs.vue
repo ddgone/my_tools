@@ -16,6 +16,7 @@ import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
 import SSHDetailPanel from './SSHDetailPanel.vue'
 import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
+import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
 import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
@@ -1108,7 +1109,11 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
     </template>
 
     <template v-else-if="workspace.activeTabType === 'artifact' && workspace.activeArtifactTab">
-      <ArtifactCenterPanel />
+      <ArtifactCenterPanel v-if="workspace.activeArtifactTab.view === 'center'" />
+      <ArtifactTaskSnapshotView
+        v-else-if="workspace.activeArtifactTab.taskId"
+        :task-id="workspace.activeArtifactTab.taskId"
+      />
     </template>
 
     <div

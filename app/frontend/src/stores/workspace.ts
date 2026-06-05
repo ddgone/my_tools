@@ -343,6 +343,8 @@ export interface SSHTabState {
 export interface ArtifactCenterTabState {
   tabId: string
   label: string
+  view: 'center' | 'snapshot'
+  taskId?: string
   openedAt: number
 }
 
@@ -657,6 +659,29 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     artifactTabs.value.push({
       tabId: 'artifact_center',
       label: '产物中心',
+      view: 'center',
+      openedAt: Date.now(),
+    })
+    activeArtifactTabIndex.value = artifactTabs.value.length - 1
+    activeTabIndex.value = -1
+    activeSSHTabIndex.value = -1
+  }
+
+  function openArtifactSnapshot(taskId: string, label: string) {
+    const tabId = `artifact_task_${taskId}`
+    const existing = artifactTabs.value.findIndex((tab) => tab.tabId === tabId)
+    if (existing >= 0) {
+      artifactTabs.value[existing].label = label
+      activeArtifactTabIndex.value = existing
+      activeTabIndex.value = -1
+      activeSSHTabIndex.value = -1
+      return
+    }
+    artifactTabs.value.push({
+      tabId,
+      label,
+      view: 'snapshot',
+      taskId,
       openedAt: Date.now(),
     })
     activeArtifactTabIndex.value = artifactTabs.value.length - 1
@@ -996,6 +1021,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setActiveSSHTab,
     activateToolTab,
     openArtifactCenter,
+    openArtifactSnapshot,
     openSSHNew,
     openSSHEdit,
     restorePinnedTabs,

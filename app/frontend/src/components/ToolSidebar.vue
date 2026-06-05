@@ -6,6 +6,7 @@ import {
   NDropdown,
   NIcon,
   NInput,
+  NProgress,
   NScrollbar,
   NTag,
   NTree,
@@ -25,12 +26,14 @@ import {
   Play,
   LaptopOutline,
   OpenOutline,
+  CloudUploadOutline,
 } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useArtifactCenterStore } from '@/stores/artifactCenter'
 import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
-import type { SSHConnection, ToolManifest } from '@/types/workbench'
+import type { ArtifactBatchTask, SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { ANIM } from '@/utils/animation'
@@ -53,6 +56,7 @@ const message = useMessage()
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
+const artifactCenter = useArtifactCenterStore()
 
 const { tooltipText, tooltipX, tooltipY, tooltipShow, onEnter: onTooltipEnter, onLeave: onTooltipLeave } = useTruncationTooltip({ placement: 'right' })
 
@@ -108,6 +112,11 @@ function copyHost(conn: SSHConnection) {
 watch(() => props.activeView, (view) => {
   if (view === 'ssh') {
     loadSSHConnections()
+    return
+  }
+  if (view === 'artifact') {
+    artifactCenter.ensureSubscriptions()
+    void artifactCenter.hydrate()
   }
 }, { immediate: true })
 
@@ -257,8 +266,65 @@ const recentToolList = computed(() => {
     .filter(Boolean) as { tool: ToolManifest; args: string }[]
 })
 
+const runningArtifactTask = computed(() =>
+  artifactCenter.recentTasks.find((task) => task.status === 'running') ?? null,
+)
+
+const historicalArtifactTasks = computed(() =>
+  artifactCenter.recentTasks.filter((task) => task.id !== runningArtifactTask.value?.id),
+)
+
 function isToolRunning(toolId: string) {
   return execution.tasks.some((t) => t.toolId === toolId && t.status === 'running')
+}
+
+function isArtifactCenterActive() {
+  return workspace.activeTabType === 'artifact' && workspace.activeArtifactTab?.view === 'center'
+}
+
+function isArtifactSnapshotActive(taskId: string) {
+  return workspace.activeTabType === 'artifact'
+    && workspace.activeArtifactTab?.view === 'snapshot'
+    && workspace.activeArtifactTab?.taskId === taskId
+}
+
+function artifactTaskTitle(task: ArtifactBatchTask) {
+  return task.mode === 'build_cache' ? '批量构建缓存' : '批量导出'
+}
+
+function artifactTaskFinishedCount(task: ArtifactBatchTask) {
+  return task.items.filter((item) =>
+    item.endedAt || ['success', 'error', 'cached', 'skipped'].includes(item.status),
+  ).length
+}
+
+function artifactTaskProgress(task: ArtifactBatchTask) {
+  if (task.totalCount <= 0) {
+    return 0
+  }
+  return Math.min(100, Math.round((artifactTaskFinishedCount(task) / task.totalCount) * 100))
+}
+
+function artifactTaskTime(task: ArtifactBatchTask) {
+  return new Date(task.startedAt).toLocaleString()
+}
+
+function artifactSnapshotLabel(task: ArtifactBatchTask) {
+  const timestamp = new Date(task.startedAt).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  return `${artifactTaskTitle(task)} · ${timestamp}`
+}
+
+function openArtifactWorkbench() {
+  workspace.openArtifactCenter()
+}
+
+function openArtifactTaskSnapshot(task: ArtifactBatchTask) {
+  workspace.openArtifactSnapshot(task.id, artifactSnapshotLabel(task))
 }
 
 function isToolActive(toolId: string) {
@@ -769,6 +835,152 @@ defineExpose({
                   </div>
                 </div>
               </NCard>
+            </div>
+          </div>
+
+          <div
+            v-else-if="activeView === 'artifact'"
+            key="artifact"
+            class="p-2"
+          >
+            <div class="space-y-3">
+              <div>
+                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  产物工作台
+                </div>
+                <NCard
+                  size="small"
+                  :bordered="true"
+                  hoverable
+                  class="ui-surface-hover"
+                  :content-style="{ padding: '12px' }"
+                  :style="isArtifactCenterActive()
+                    ? {
+                      borderColor: 'rgba(255, 184, 108, 0.45)',
+                      backgroundColor: 'rgba(255, 184, 108, 0.08)',
+                    }
+                    : {}"
+                  @click="openArtifactWorkbench"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400/12 text-amber-300">
+                      <NIcon
+                        :component="CloudUploadOutline"
+                        size="18"
+                      />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="truncate text-sm font-medium text-slate-100">
+                          产物工作台
+                        </div>
+                        <NTag
+                          size="small"
+                          :bordered="false"
+                          type="warning"
+                        >
+                          {{ artifactCenter.mode === 'build_cache' ? '缓存模式' : '导出模式' }}
+                        </NTag>
+                      </div>
+                      <div class="mt-1 text-[11px] leading-5 text-slate-400">
+                        打开工作台后可继续配置平台矩阵、启动批量任务，并查看完整结果列表。
+                      </div>
+                      <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                        <span class="rounded border border-white/10 px-2 py-0.5">
+                          已选 {{ artifactCenter.selectedKeys.length }} 项
+                        </span>
+                        <span class="rounded border border-white/10 px-2 py-0.5">
+                          历史 {{ artifactCenter.recentTasks.length }} 条
+                        </span>
+                      </div>
+                      <div
+                        v-if="runningArtifactTask"
+                        class="mt-3 rounded-lg border border-amber-300/15 bg-black/15 px-2.5 py-2"
+                      >
+                        <div class="flex items-center justify-between gap-2 text-[11px]">
+                          <span class="truncate text-amber-200">
+                            正在执行 · {{ artifactTaskTitle(runningArtifactTask) }}
+                          </span>
+                          <span class="text-slate-400">
+                            {{ artifactTaskFinishedCount(runningArtifactTask) }}/{{ runningArtifactTask.totalCount }}
+                          </span>
+                        </div>
+                        <NProgress
+                          class="mt-2"
+                          type="line"
+                          :percentage="artifactTaskProgress(runningArtifactTask)"
+                          :height="6"
+                          :show-indicator="false"
+                          status="warning"
+                          processing
+                        />
+                        <div
+                          v-if="runningArtifactTask.currentItem"
+                          class="mt-2 truncate text-[10px] text-slate-400"
+                        >
+                          {{ runningArtifactTask.currentItem }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </NCard>
+              </div>
+
+              <div>
+                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  任务历史
+                </div>
+                <div
+                  v-if="historicalArtifactTasks.length === 0"
+                  class="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs leading-5 text-slate-500"
+                >
+                  暂无历史任务
+                </div>
+                <div
+                  v-else
+                  class="space-y-2"
+                >
+                  <NCard
+                    v-for="task in historicalArtifactTasks"
+                    :key="task.id"
+                    size="small"
+                    :bordered="true"
+                    hoverable
+                    class="ui-surface-hover"
+                    :content-style="{ padding: '10px 12px' }"
+                    :style="isArtifactSnapshotActive(task.id)
+                      ? {
+                        borderColor: 'rgba(139, 233, 253, 0.38)',
+                        backgroundColor: 'rgba(139, 233, 253, 0.08)',
+                      }
+                      : {}"
+                    @click="openArtifactTaskSnapshot(task)"
+                  >
+                    <div class="flex items-start gap-2">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="truncate text-sm font-medium text-slate-100">
+                            {{ artifactTaskTitle(task) }}
+                          </div>
+                          <NTag
+                            size="small"
+                            :bordered="false"
+                            :type="task.status === 'success' ? 'success' : task.status === 'failed' ? 'error' : task.status === 'partial' ? 'warning' : 'info'"
+                          >
+                            {{ task.status }}
+                          </NTag>
+                        </div>
+                        <div class="mt-1 text-[10px] text-slate-500">
+                          {{ artifactTaskTime(task) }}
+                        </div>
+                        <div class="mt-2 text-[11px] leading-5 text-slate-400">
+                          成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
+                        </div>
+                      </div>
+                    </div>
+                  </NCard>
+                </div>
+              </div>
             </div>
           </div>
 

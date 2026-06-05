@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import gsap from 'gsap'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -9,7 +9,7 @@ import { ANIM } from '@/utils/animation'
 import type { SSHConnection } from '@/types/workbench'
 import AppHeader from './AppHeader.vue'
 import ActivityBar from './ActivityBar.vue'
-import type { ActivityBarSpecial, ActivityBarView } from './ActivityBar.vue'
+import type { ActivityBarView } from './ActivityBar.vue'
 import ToolSidebar from './ToolSidebar.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
 import StatusBar from './StatusBar.vue'
@@ -22,9 +22,6 @@ const execution = useExecutionStore()
 const workspace = useWorkspaceStore()
 
 const activityBarActiveView = ref<ActivityBarView | null>('tools')
-const activityBarActiveSpecial = computed<ActivityBarSpecial | null>(() =>
-  workspace.activeTabType === 'artifact' ? 'artifact' : null,
-)
 
 const { size: sidebarWidth, dividerProps } = useResizable({
   axis: 'x',
@@ -57,11 +54,6 @@ async function handleRefreshSSHList() {
 
 function handleOpenSettings() {
   workspace.showSettings = true
-}
-
-function handleOpenArtifactCenter() {
-  activityBarActiveView.value = null
-  workspace.openArtifactCenter()
 }
 
 onMounted(async () => {
@@ -102,9 +94,7 @@ function onSidebarLeave(el: Element, done: () => void) {
     <div class="flex flex-1 overflow-hidden">
       <ActivityBar
         :active-view="activityBarActiveView"
-        :active-special="activityBarActiveSpecial"
         @update:active-view="activityBarActiveView = $event"
-        @open-artifact-center="handleOpenArtifactCenter"
         @open-settings="handleOpenSettings"
       />
       <Transition
