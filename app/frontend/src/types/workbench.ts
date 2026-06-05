@@ -150,6 +150,11 @@ export interface ArtifactBatchTask {
   mode: string
   status: string
   exportRootDir?: string
+  concurrency: number
+  skipUnchanged: boolean
+  preferCache: boolean
+  forceRebuild: boolean
+  continueOnError: boolean
   totalCount: number
   successCount: number
   errorCount: number
@@ -160,6 +165,13 @@ export interface ArtifactBatchTask {
   currentItem?: string
   exitMessage?: string
   items: ArtifactBatchItemResult[]
+}
+
+export interface ArtifactBatchEstimate {
+  totalCount: number
+  cachedCount: number
+  buildCount: number
+  invalidCount: number
 }
 
 export interface TaskLogEvent {

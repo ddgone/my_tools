@@ -5,7 +5,11 @@ import {ssh} from '../models';
 
 export function CancelExecution(arg1:string):Promise<void>;
 
+export function ClearArtifactBatchTasks():Promise<void>;
+
 export function DeleteSSHConnection(arg1:string):Promise<void>;
+
+export function EstimateArtifactBatchCache(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchEstimate>;
 
 export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolResult>;
 

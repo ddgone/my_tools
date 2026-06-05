@@ -149,3 +149,68 @@ func TestCacheArtifactFileNameKeepsWindowsExeSuffix(t *testing.T) {
 		t.Fatalf("unexpected windows cache artifact name: %s", got)
 	}
 }
+
+func TestResolveCachePathsUsesStableEnglishToolDirectory(t *testing.T) {
+	cacheDir := t.TempDir()
+	req := BuildRequest{
+		ToolID:     "recursive_content_dir_diff",
+		ToolName:   "递归目录内容比对",
+		Kind:       KindGo,
+		CacheDir:   cacheDir,
+		TargetOS:   "linux",
+		TargetArch: "amd64",
+	}
+
+	artifactPath, sourcePath, cacheKeyPath, err := resolveCachePaths(req, "linux_amd64", "递归目录内容比对", filepath.Join(cacheDir, "tool.go"))
+	if err != nil {
+		t.Fatalf("resolveCachePaths returned error: %v", err)
+	}
+	toolDir := filepath.Join(cacheDir, "recursive_content_dir_diff")
+	if filepath.Dir(filepath.Dir(filepath.Dir(artifactPath))) != toolDir {
+		t.Fatalf("artifact path should use stable toolID directory: %s", artifactPath)
+	}
+	if filepath.Dir(filepath.Dir(filepath.Dir(sourcePath))) != toolDir {
+		t.Fatalf("source path should use stable toolID directory: %s", sourcePath)
+	}
+	if filepath.Dir(cacheKeyPath) != filepath.Join(toolDir, "linux_amd64") {
+		t.Fatalf("cache key path should use stable toolID directory: %s", cacheKeyPath)
+	}
+}
+
+func TestProbeBuildCacheReportsHitAfterPythonBuild(t *testing.T) {
+	repoRoot := t.TempDir()
+	scriptPath := filepath.Join(repoRoot, "tool.py")
+	if err := os.WriteFile(scriptPath, []byte("print('cache')\n"), 0644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	cacheDir := filepath.Join(repoRoot, "cache")
+
+	_, err := BuildPackage(BuildRequest{
+		ToolID:      "probe_python",
+		Kind:        KindPython,
+		OutputDir:   filepath.Join(repoRoot, "out"),
+		CacheDir:    cacheDir,
+		OutputName:  "probe.py",
+		RepoRoot:    repoRoot,
+		SourceEntry: scriptPath,
+	})
+	if err != nil {
+		t.Fatalf("build package: %v", err)
+	}
+
+	probe, err := ProbeBuildCache(BuildRequest{
+		ToolID:      "probe_python",
+		Kind:        KindPython,
+		OutputDir:   filepath.Join(repoRoot, "out"),
+		CacheDir:    cacheDir,
+		OutputName:  "probe.py",
+		RepoRoot:    repoRoot,
+		SourceEntry: scriptPath,
+	})
+	if err != nil {
+		t.Fatalf("probe cache: %v", err)
+	}
+	if !probe.CacheHit {
+		t.Fatal("expected probe to report cache hit")
+	}
+}

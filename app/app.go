@@ -131,6 +131,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	_ = a.ensureTooling()
 	_ = a.sshStore.LoadConfig()
+	_ = a.loadArtifactBatchTasks()
 }
 
 func (a *App) GetWindowConfig() WindowState {

@@ -1,36 +1,127 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
   NCard,
   NCheckbox,
   NEmpty,
+  NIcon,
   NInput,
   NInputNumber,
   NTag,
+  NTooltip,
   useMessage,
 } from 'naive-ui'
-import { FolderOpenOutline, LayersOutline, RocketOutline } from '@vicons/ionicons5'
+import {
+  ArrowDownOutline,
+  ArrowUpOutline,
+  CaretDownOutline,
+  CaretForwardOutline,
+  DownloadOutline,
+  FolderOpenOutline,
+  HelpCircle,
+  LayersOutline,
+  RocketOutline,
+  RefreshOutline,
+  StarOutline,
+  TimeOutline,
+  TrashOutline,
+} from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { artifactPlatforms, useArtifactCenterStore } from '@/stores/artifactCenter'
-import { OpenFileDialog, OpenPath } from '../../wailsjs/go/main/App'
+import type { ArtifactBatchTask, ToolManifest } from '@/types/workbench'
+import { OpenFileDialog, OpenPath, OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
 
 const workbench = useWorkbenchStore()
+const workspace = useWorkspaceStore()
 const artifactCenter = useArtifactCenterStore()
 const message = useMessage()
+
+type ToolFilterMode = 'all' | 'favorites' | 'recent'
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 const goTools = computed(() => allTools.value.filter((tool) => tool.kind === 'go'))
 const pythonTools = computed(() => allTools.value.filter((tool) => tool.kind !== 'go'))
+const toolFilter = ref<ToolFilterMode>('all')
 const selectedCount = computed(() => artifactCenter.selectedKeys.length)
 const taskLabel = computed(() => artifactCenter.mode === 'build_cache' ? '批量构建缓存' : '批量导出')
+const scrollContainerRef = ref<HTMLElement | null>(null)
+const resultsSectionRef = ref<HTMLElement | null>(null)
+const scrollTop = ref(0)
+const scrollHeight = ref(0)
+const clientHeight = ref(0)
+const hasLongScrollableContent = computed(() => scrollHeight.value - clientHeight.value > 720)
+const showJumpTop = computed(() => hasLongScrollableContent.value && scrollTop.value > 240)
+const showJumpBottom = computed(() => hasLongScrollableContent.value && scrollHeight.value - clientHeight.value - scrollTop.value > 240)
+const favoriteToolIdSet = computed(() => new Set(workspace.favorites))
+const recentToolIdSet = computed(() => new Set(workspace.recentTools.map((entry) => entry.toolId)))
+const filteredGoTools = computed(() => goTools.value.filter((tool) => matchesToolFilter(tool)))
+const filteredPythonTools = computed(() => pythonTools.value.filter((tool) => matchesToolFilter(tool)))
+const estimatedCachedCount = computed(() => artifactCenter.estimate?.cachedCount ?? 0)
+const estimatedBuildCount = computed(() => artifactCenter.estimate?.buildCount ?? 0)
+let estimateTimer: ReturnType<typeof window.setTimeout> | null = null
 
 onMounted(() => {
   artifactCenter.ensureSubscriptions()
   artifactCenter.ensureToolSelections(allTools.value)
   void artifactCenter.hydrate()
+  window.addEventListener('resize', syncScrollMetrics)
+  void nextTick(syncScrollMetrics)
+  scheduleEstimateRefresh()
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncScrollMetrics)
+  if (estimateTimer) {
+    window.clearTimeout(estimateTimer)
+    estimateTimer = null
+  }
+})
+
+watch(
+  () => [artifactCenter.recentTasks.length, artifactCenter.expandedTaskId],
+  () => {
+    artifactCenter.ensureExpandedTask()
+    void nextTick(syncScrollMetrics)
+  },
+  { immediate: true, flush: 'post' },
+)
+
+watch(
+  () => [
+    artifactCenter.selectedKeys.join('|'),
+    artifactCenter.preferCache,
+    artifactCenter.forceRebuild,
+    artifactCenter.exportRootDir,
+    artifactCenter.mode,
+    artifactCenter.skipUnchanged,
+  ],
+  () => {
+    scheduleEstimateRefresh()
+  },
+  { immediate: true },
+)
+
+function matchesToolFilter(tool: ToolManifest) {
+  if (toolFilter.value === 'favorites') {
+    return favoriteToolIdSet.value.has(tool.id)
+  }
+  if (toolFilter.value === 'recent') {
+    return recentToolIdSet.value.has(tool.id)
+  }
+  return true
+}
+
+function scheduleEstimateRefresh() {
+  if (estimateTimer) {
+    window.clearTimeout(estimateTimer)
+  }
+  estimateTimer = window.setTimeout(() => {
+    void artifactCenter.refreshEstimate()
+  }, 240)
+}
 
 function selectedForTool(toolId: string) {
   return artifactPlatforms.filter((platform) => artifactCenter.isSelected(toolId, platform.key)).length
@@ -46,11 +137,11 @@ function isToolPartiallySelected(toolId: string) {
 }
 
 function selectedForPlatform(platformKey: string) {
-  return goTools.value.filter((tool) => artifactCenter.isSelected(tool.id, platformKey)).length
+  return filteredGoTools.value.filter((tool) => artifactCenter.isSelected(tool.id, platformKey)).length
 }
 
 function isPlatformFullySelected(platformKey: string) {
-  return goTools.value.length > 0 && selectedForPlatform(platformKey) === goTools.value.length
+  return filteredGoTools.value.length > 0 && selectedForPlatform(platformKey) === filteredGoTools.value.length
 }
 
 function isPlatformPartiallySelected(platformKey: string) {
@@ -87,10 +178,139 @@ async function handleStart() {
   }
   try {
     await artifactCenter.startBatch()
+    await scrollToResults()
     message.success(`${taskLabel.value}已启动`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : '启动批量产物任务失败')
   }
+}
+
+async function retryFailedItems(task: ArtifactBatchTask) {
+  const failedItems = task.items
+    .filter((item) => item.status === 'error')
+    .map((item) => ({
+      toolId: item.toolId,
+      targetOS: item.targetOS,
+      targetArch: item.targetArch,
+    }))
+  if (failedItems.length === 0) {
+    message.warning('当前任务没有失败项可重试')
+    return
+  }
+  try {
+    await artifactCenter.startBatch({
+      mode: task.mode,
+      exportRootDir: task.exportRootDir ?? '',
+      concurrency: task.concurrency,
+      skipUnchanged: task.skipUnchanged,
+      preferCache: task.preferCache,
+      forceRebuild: task.forceRebuild,
+      continueOnError: task.continueOnError,
+      items: failedItems,
+    })
+    await scrollToResults()
+    message.success('已重新发起失败项重试')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '重试失败项失败')
+  }
+}
+
+async function clearTaskResults() {
+  try {
+    await artifactCenter.clearTasks()
+    message.success('任务结果已清空')
+    void nextTick(syncScrollMetrics)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '清空任务结果失败')
+  }
+}
+
+function formatTaskSummary(task: ArtifactBatchTask) {
+  const lines = [
+    `# 产物任务摘要`,
+    ``,
+    `- 任务 ID: ${task.id}`,
+    `- 模式: ${task.mode === 'build_cache' ? '批量构建缓存' : '批量导出'}`,
+    `- 状态: ${task.status}`,
+    `- 启动时间: ${new Date(task.startedAt).toLocaleString()}`,
+    `- 结束时间: ${task.endedAt ? new Date(task.endedAt).toLocaleString() : '进行中'}`,
+    `- 成功: ${task.successCount}`,
+    `- 缓存命中: ${task.cachedCount}`,
+    `- 跳过: ${task.skippedCount}`,
+    `- 失败: ${task.errorCount}`,
+    task.exportRootDir ? `- 导出目录: ${task.exportRootDir}` : '',
+    task.exitMessage ? `- 结果说明: ${task.exitMessage}` : '',
+    ``,
+    `## 明细`,
+    ``,
+  ].filter(Boolean)
+
+  for (const item of task.items) {
+    lines.push(`- ${item.toolName} (${item.toolId}) ${item.targetOS}/${item.targetArch} | ${item.status} | ${item.message}`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
+
+async function exportTaskSummary(task: ArtifactBatchTask) {
+  try {
+    const filePath = await OpenSaveFileDialog({
+      title: '导出产物任务摘要',
+      filterName: 'Markdown 文件',
+      filterGlob: '*.md',
+      directory: false,
+      defaultDirectory: task.exportRootDir ?? artifactCenter.exportRootDir,
+      defaultFilename: `artifact-task-${task.id}.md`,
+    })
+    if (!filePath) {
+      return
+    }
+    await SaveTextFile(filePath, formatTaskSummary(task))
+    message.success('任务摘要已导出')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导出任务摘要失败')
+  }
+}
+
+function syncScrollMetrics() {
+  const container = scrollContainerRef.value
+  if (!container) {
+    return
+  }
+  scrollTop.value = container.scrollTop
+  scrollHeight.value = container.scrollHeight
+  clientHeight.value = container.clientHeight
+}
+
+function handlePanelScroll() {
+  syncScrollMetrics()
+}
+
+async function scrollToResults() {
+  await nextTick()
+  resultsSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  window.setTimeout(syncScrollMetrics, 250)
+}
+
+function scrollToTop() {
+  scrollContainerRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function scrollToBottom() {
+  const container = scrollContainerRef.value
+  if (!container) {
+    return
+  }
+  container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+}
+
+function isTaskExpanded(taskId: string) {
+  return artifactCenter.expandedTaskId === taskId
+}
+
+function toggleTaskExpanded(taskId: string) {
+  artifactCenter.setExpandedTask(artifactCenter.expandedTaskId === taskId ? null : taskId)
+  void nextTick(syncScrollMetrics)
 }
 
 function openDirectory(path?: string) {
@@ -118,7 +338,11 @@ function openContainingDirectory(path?: string) {
 </script>
 
 <template>
-  <div class="flex h-full flex-col gap-4 overflow-y-auto p-4">
+  <div
+    ref="scrollContainerRef"
+    class="relative flex h-full flex-col gap-4 overflow-y-auto p-4"
+    @scroll="handlePanelScroll"
+  >
     <div class="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
       <NCard
         title="产物中心"
@@ -126,13 +350,13 @@ function openContainingDirectory(path?: string) {
         :bordered="false"
         class="bg-[#151923]/90"
       >
-        <div class="grid gap-3 sm:grid-cols-4">
+        <div class="grid gap-3 sm:grid-cols-5">
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div class="text-xs text-slate-400">
               Go 工具
             </div>
             <div class="mt-1 text-lg font-semibold text-slate-100">
-              {{ goTools.length }}
+              {{ filteredGoTools.length }}
             </div>
           </div>
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
@@ -140,7 +364,7 @@ function openContainingDirectory(path?: string) {
               Python 工具
             </div>
             <div class="mt-1 text-lg font-semibold text-slate-100">
-              {{ pythonTools.length }}
+              {{ filteredPythonTools.length }}
             </div>
           </div>
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
@@ -153,10 +377,71 @@ function openContainingDirectory(path?: string) {
           </div>
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div class="text-xs text-slate-400">
-              最近任务
+              预计命中缓存
             </div>
             <div class="mt-1 text-lg font-semibold text-slate-100">
-              {{ artifactCenter.recentTasks.length }}
+              {{ artifactCenter.estimating ? '计算中' : estimatedCachedCount }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+            <div class="text-xs text-slate-400">
+              预计重新构建
+            </div>
+            <div class="mt-1 text-lg font-semibold text-slate-100">
+              {{ artifactCenter.estimating ? '计算中' : estimatedBuildCount }}
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <NButton
+            size="small"
+            :type="toolFilter === 'all' ? 'primary' : 'default'"
+            @click="toolFilter = 'all'"
+          >
+            全部工具
+          </NButton>
+          <NButton
+            size="small"
+            :type="toolFilter === 'favorites' ? 'primary' : 'default'"
+            @click="toolFilter = 'favorites'"
+          >
+            <template #icon>
+              <StarOutline />
+            </template>
+            仅收藏
+          </NButton>
+          <NButton
+            size="small"
+            :type="toolFilter === 'recent' ? 'primary' : 'default'"
+            @click="toolFilter = 'recent'"
+          >
+            <template #icon>
+              <TimeOutline />
+            </template>
+            仅最近使用
+          </NButton>
+        </div>
+        <div class="mt-3 grid gap-3 lg:grid-cols-2">
+          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs leading-6 text-slate-300">
+            <div class="font-medium text-slate-100">
+              任务中心说明
+            </div>
+            <div class="mt-2">
+              这里用于集中准备常用平台产物，适合在批量导出、远程执行之前，先把经常用到的平台缓存准备好。
+            </div>
+            <div class="mt-2 text-slate-400">
+              下方任务结果会持续保留最近记录，方便回看哪些平台已成功、命中缓存或执行失败。
+            </div>
+          </div>
+          <div class="rounded-lg border border-dashed border-cyan-400/20 bg-cyan-500/5 px-3 py-3 text-xs leading-6 text-slate-300">
+            <div class="font-medium text-cyan-100">
+              使用说明
+            </div>
+            <div class="mt-2">
+              先用筛选按钮缩小范围，再在矩阵里勾选工具和平台，然后选择“批量构建缓存”或“批量导出”。
+            </div>
+            <div class="mt-2 text-slate-400">
+              启动后会自动滚动到任务结果区；如果有失败项，可以直接重试，也可以导出摘要留档。
             </div>
           </div>
         </div>
@@ -226,10 +511,50 @@ function openContainingDirectory(path?: string) {
 
           <div class="grid gap-2 text-sm">
             <NCheckbox v-model:checked="artifactCenter.skipUnchanged">
-              跳过未变化项
+              <span class="inline-flex items-center gap-1.5">
+                <span>跳过未变化项</span>
+                <NTooltip
+                  placement="top"
+                  :style="{ maxWidth: '320px' }"
+                >
+                  <template #trigger>
+                    <span
+                      class="help-trigger"
+                      tabindex="0"
+                      @click.stop
+                    >
+                      <NIcon
+                        :component="HelpCircle"
+                        size="14"
+                      />
+                    </span>
+                  </template>
+                  构建输入未变化时直接跳过；导出模式下如果目标目录已经是最新产物，也会跳过写入。
+                </NTooltip>
+              </span>
             </NCheckbox>
             <NCheckbox v-model:checked="artifactCenter.preferCache">
-              命中缓存直接复用
+              <span class="inline-flex items-center gap-1.5">
+                <span>命中缓存直接复用</span>
+                <NTooltip
+                  placement="top"
+                  :style="{ maxWidth: '320px' }"
+                >
+                  <template #trigger>
+                    <span
+                      class="help-trigger"
+                      tabindex="0"
+                      @click.stop
+                    >
+                      <NIcon
+                        :component="HelpCircle"
+                        size="14"
+                      />
+                    </span>
+                  </template>
+                  命中缓存后直接复用缓存产物，减少重复编译；关闭后仍可重新构建最新产物。
+                </NTooltip>
+              </span>
             </NCheckbox>
             <NCheckbox v-model:checked="artifactCenter.forceRebuild">
               强制重编
@@ -243,7 +568,7 @@ function openContainingDirectory(path?: string) {
             <NButton
               size="small"
               secondary
-              @click="artifactCenter.selectAllGoTargets(goTools)"
+              @click="artifactCenter.selectAllGoTargets(filteredGoTools)"
             >
               全选 Go 平台矩阵
             </NButton>
@@ -298,7 +623,7 @@ function openContainingDirectory(path?: string) {
                   <NCheckbox
                     :checked="isPlatformFullySelected(platform.key)"
                     :indeterminate="isPlatformPartiallySelected(platform.key)"
-                    @update:checked="artifactCenter.setPlatformSelections(platform.key, $event, goTools)"
+                    @update:checked="artifactCenter.setPlatformSelections(platform.key, $event, filteredGoTools)"
                   />
                 </div>
               </th>
@@ -306,7 +631,7 @@ function openContainingDirectory(path?: string) {
           </thead>
           <tbody>
             <tr
-              v-for="tool in goTools"
+              v-for="tool in filteredGoTools"
               :key="tool.id"
               class="border-b border-white/5"
             >
@@ -339,7 +664,7 @@ function openContainingDirectory(path?: string) {
               </td>
             </tr>
             <tr
-              v-for="tool in pythonTools"
+              v-for="tool in filteredPythonTools"
               :key="tool.id"
               class="border-b border-white/5"
             >
@@ -374,98 +699,225 @@ function openContainingDirectory(path?: string) {
       </div>
     </NCard>
 
-    <NCard
-      title="任务结果"
-      size="small"
-      :bordered="false"
-      class="bg-[#151923]/90"
-    >
-      <div
-        v-if="artifactCenter.recentTasks.length === 0"
-        class="py-6"
+    <div ref="resultsSectionRef">
+      <NCard
+        size="small"
+        :bordered="false"
+        class="bg-[#151923]/90"
       >
-        <NEmpty description="还没有批量产物任务" />
-      </div>
-      <div
-        v-else
-        class="space-y-3"
-      >
-        <div
-          v-for="task in artifactCenter.recentTasks"
-          :key="task.id"
-          class="rounded-lg border border-white/10 bg-white/5 p-3"
-        >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-slate-100">
-                  {{ task.mode === 'build_cache' ? '批量构建缓存' : '批量导出' }}
-                </span>
-                <NTag
-                  size="small"
-                  :type="task.status === 'success' ? 'success' : task.status === 'failed' ? 'error' : task.status === 'partial' ? 'warning' : 'info'"
-                  :bordered="false"
+        <template #header>
+          <div class="flex items-center gap-1.5">
+            <span>任务结果</span>
+            <NTooltip
+              placement="top"
+              :style="{ maxWidth: '320px' }"
+            >
+              <template #trigger>
+                <span
+                  class="help-trigger"
+                  tabindex="0"
                 >
-                  {{ task.status }}
-                </NTag>
-              </div>
-              <div class="mt-1 text-xs text-slate-400">
-                成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
-              </div>
-              <div
-                v-if="task.exitMessage"
-                class="mt-1 text-xs text-slate-500"
-              >
-                {{ task.exitMessage }}
-              </div>
-            </div>
-            <div class="flex gap-2">
-              <NButton
-                v-if="task.mode === 'export' && task.exportRootDir"
-                size="tiny"
-                secondary
-                @click="openDirectory(task.exportRootDir)"
-              >
-                打开导出目录
-              </NButton>
-            </div>
+                  <NIcon
+                    :component="HelpCircle"
+                    size="14"
+                  />
+                </span>
+              </template>
+              当前结果区采用单展开模式，展开一项时会自动收起其他任务，便于快速查看最新结果。
+            </NTooltip>
           </div>
-
-          <div class="mt-3 grid gap-2">
+        </template>
+        <template #header-extra>
+          <NButton
+            size="small"
+            tertiary
+            :disabled="artifactCenter.recentTasks.length === 0"
+            @click="clearTaskResults"
+          >
+            <template #icon>
+              <TrashOutline />
+            </template>
+            清空结果
+          </NButton>
+        </template>
+        <div
+          v-if="artifactCenter.recentTasks.length === 0"
+          class="py-6"
+        >
+          <NEmpty description="还没有批量产物任务" />
+        </div>
+        <div
+          v-else
+          class="space-y-3"
+        >
+          <div
+            v-for="task in artifactCenter.recentTasks"
+            :key="task.id"
+            class="rounded-lg border border-white/10 bg-white/5 p-3"
+          >
             <div
-              v-for="item in task.items"
-              :key="item.key"
-              class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/8 bg-black/10 px-3 py-2 text-xs"
+              role="button"
+              tabindex="0"
+              class="flex w-full flex-wrap items-start justify-between gap-3 text-left"
+              @click="toggleTaskExpanded(task.id)"
+              @keyup.enter="toggleTaskExpanded(task.id)"
+              @keyup.space.prevent="toggleTaskExpanded(task.id)"
             >
               <div class="min-w-0">
-                <div class="font-medium text-slate-100">
-                  {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
+                <div class="flex items-center gap-2">
+                  <NIcon
+                    :component="isTaskExpanded(task.id) ? CaretDownOutline : CaretForwardOutline"
+                    size="14"
+                    class="text-slate-400"
+                  />
+                  <span class="font-medium text-slate-100">
+                    {{ task.mode === 'build_cache' ? '批量构建缓存' : '批量导出' }}
+                  </span>
+                  <NTag
+                    size="small"
+                    :type="task.status === 'success' ? 'success' : task.status === 'failed' ? 'error' : task.status === 'partial' ? 'warning' : 'info'"
+                    :bordered="false"
+                  >
+                    {{ task.status }}
+                  </NTag>
                 </div>
-                <div class="mt-1 truncate text-slate-400">
-                  {{ item.message }}
+                <div class="mt-1 text-xs text-slate-400">
+                  成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
+                </div>
+                <div
+                  v-if="task.exitMessage"
+                  class="mt-1 text-xs text-slate-500"
+                >
+                  {{ task.exitMessage }}
                 </div>
               </div>
-              <div class="flex items-center gap-2">
-                <NTag
-                  size="small"
-                  :bordered="false"
-                  :type="item.status === 'success' ? 'success' : item.status === 'error' ? 'error' : item.status === 'cached' ? 'info' : 'warning'"
-                >
-                  {{ item.status }}
-                </NTag>
+              <div
+                class="flex gap-2"
+                @click.stop
+              >
                 <NButton
-                  v-if="item.outputPath"
+                  v-if="task.errorCount > 0"
                   size="tiny"
-                  tertiary
-                  @click="openContainingDirectory(item.outputPath)"
+                  secondary
+                  @click="retryFailedItems(task)"
                 >
-                  打开
+                  <template #icon>
+                    <RefreshOutline />
+                  </template>
+                  重试失败项
                 </NButton>
+                <NButton
+                  size="tiny"
+                  secondary
+                  @click="exportTaskSummary(task)"
+                >
+                  <template #icon>
+                    <DownloadOutline />
+                  </template>
+                  导出摘要
+                </NButton>
+                <NButton
+                  v-if="task.mode === 'export' && task.exportRootDir"
+                  size="tiny"
+                  secondary
+                  @click="openDirectory(task.exportRootDir)"
+                >
+                  打开导出目录
+                </NButton>
+              </div>
+            </div>
+
+            <div
+              v-if="isTaskExpanded(task.id)"
+              class="mt-3 grid gap-2"
+            >
+              <div
+                v-for="item in task.items"
+                :key="item.key"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/8 bg-black/10 px-3 py-2 text-xs"
+              >
+                <div class="min-w-0">
+                  <div class="font-medium text-slate-100">
+                    {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
+                  </div>
+                  <div class="mt-1 truncate text-slate-400">
+                    {{ item.message }}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <NTag
+                    size="small"
+                    :bordered="false"
+                    :type="item.status === 'success' ? 'success' : item.status === 'error' ? 'error' : item.status === 'cached' ? 'info' : 'warning'"
+                  >
+                    {{ item.status }}
+                  </NTag>
+                  <NButton
+                    v-if="item.outputPath"
+                    size="tiny"
+                    tertiary
+                    @click="openContainingDirectory(item.outputPath)"
+                  >
+                    打开
+                  </NButton>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </NCard>
+    </div>
+
+    <div
+      v-if="showJumpTop || showJumpBottom"
+      class="pointer-events-none sticky bottom-4 z-20 -mt-16 flex justify-end pr-1"
+    >
+      <div class="pointer-events-auto flex flex-col gap-2">
+        <NButton
+          v-if="showJumpTop"
+          circle
+          type="primary"
+          secondary
+          @click="scrollToTop"
+        >
+          <template #icon>
+            <NIcon :component="ArrowUpOutline" />
+          </template>
+        </NButton>
+        <NButton
+          v-if="showJumpBottom"
+          circle
+          type="primary"
+          secondary
+          @click="scrollToBottom"
+        >
+          <template #icon>
+            <NIcon :component="ArrowDownOutline" />
+          </template>
+        </NButton>
       </div>
-    </NCard>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.help-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: rgba(160, 166, 186, 0.82);
+  cursor: pointer;
+  transition:
+    color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.help-trigger:hover,
+.help-trigger:focus-visible {
+  color: rgb(34 211 238 / 0.95);
+  opacity: 1;
+}
+</style>

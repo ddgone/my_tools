@@ -49,6 +49,25 @@ type BuildResult struct {
 	CacheHit  bool
 }
 
+func ProbeBuildCache(req BuildRequest) (BuildResult, error) {
+	req.CacheDir = strings.TrimSpace(req.CacheDir)
+	if req.CacheDir == "" {
+		req.CacheDir = req.OutputDir
+	}
+	if strings.TrimSpace(req.CacheDir) == "" {
+		return BuildResult{}, fmt.Errorf("缺少构建缓存目录")
+	}
+
+	switch req.Kind {
+	case KindPython:
+		return probePythonCache(req)
+	case KindGo:
+		return probeGoCache(req)
+	default:
+		return BuildResult{}, fmt.Errorf("不支持的工具类型: %s", req.Kind)
+	}
+}
+
 func BuildPackage(req BuildRequest) (BuildResult, error) {
 	if strings.TrimSpace(req.OutputDir) == "" {
 		return BuildResult{}, fmt.Errorf("缺少输出目录")
@@ -121,6 +140,41 @@ func buildPythonPackage(req BuildRequest) (BuildResult, error) {
 	}
 
 	return finalizeBuildOutput(req, outFile, cachePath, 0644, cacheKey, false)
+}
+
+func probePythonCache(req BuildRequest) (BuildResult, error) {
+	scriptPath := req.SourceEntry
+	if scriptPath == "" {
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少 Python 脚本入口", req.ToolID)
+	}
+	if !filepath.IsAbs(scriptPath) {
+		if req.RepoRoot == "" {
+			return BuildResult{}, fmt.Errorf("工具 %s 缺少仓库根目录，无法解析脚本入口", req.ToolID)
+		}
+		scriptPath = filepath.Join(req.RepoRoot, filepath.FromSlash(scriptPath))
+	}
+	if _, err := os.Stat(scriptPath); err != nil {
+		return BuildResult{}, fmt.Errorf("Python 脚本不存在: %w", err)
+	}
+
+	outputName := strings.TrimSpace(req.OutputName)
+	if outputName == "" {
+		outputName = req.ToolID + ".py"
+	}
+	cacheKey, err := computePythonCacheKey(req, scriptPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	cachePath, _, cacheKeyPath, err := resolveCachePaths(req, "script", outputName, scriptPath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	return BuildResult{
+		Path:      cachePath,
+		CachePath: cachePath,
+		CacheKey:  cacheKey,
+		CacheHit:  cacheEntryMatches(cachePath, cacheKeyPath, cacheKey),
+	}, nil
 }
 
 func buildGoPackage(req BuildRequest) (BuildResult, error) {
@@ -207,6 +261,51 @@ func buildGoPackage(req BuildRequest) (BuildResult, error) {
 
 	logBuildProgress(req, "构建完成，已写入缓存")
 	return finalizeBuildOutput(req, outFile, cachePath, 0755, cacheKey, false)
+}
+
+func probeGoCache(req BuildRequest) (BuildResult, error) {
+	if req.SourceEntry == "" {
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少 Go 源码入口", req.ToolID)
+	}
+	if req.RepoRoot == "" {
+		return BuildResult{}, fmt.Errorf("工具 %s 缺少仓库根目录，无法生成单工具产物", req.ToolID)
+	}
+
+	targetOS := req.TargetOS
+	if targetOS == "" {
+		targetOS = runtime.GOOS
+	}
+	targetArch := req.TargetArch
+	if targetArch == "" {
+		targetArch = runtime.GOARCH
+	}
+
+	outputName := strings.TrimSpace(req.OutputName)
+	if outputName == "" {
+		outputName = req.ToolID + "_" + targetOS + "_" + targetArch
+		if targetOS == "windows" {
+			outputName += ".exe"
+		}
+	}
+	importPath := buildImportPath(req.SourceEntry)
+	cacheKey, err := computeGoCacheKey(req, importPath, targetOS, targetArch)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	sourcePath, err := resolveSourceEntryPath(req)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	cachePath, _, cacheKeyPath, err := resolveCachePaths(req, targetOS+"_"+targetArch, outputName, sourcePath)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	return BuildResult{
+		Path:      cachePath,
+		CachePath: cachePath,
+		CacheKey:  cacheKey,
+		CacheHit:  cacheEntryMatches(cachePath, cacheKeyPath, cacheKey),
+	}, nil
 }
 
 func buildImportPath(sourceEntry string) string {
@@ -445,7 +544,7 @@ func writeCacheToken(digest hash.Hash, value string) {
 }
 
 func resolveCachePaths(req BuildRequest, platformKey string, outputName string, sourcePath string) (artifactPath string, sourceCachePath string, cacheKeyPath string, err error) {
-	toolDir := filepath.Join(req.CacheDir, sanitizeCachePathSegment(cacheToolName(req)))
+	toolDir := filepath.Join(req.CacheDir, cacheToolDirName(req))
 	platformDir := filepath.Join(toolDir, sanitizeCachePathSegment(platformKey))
 	artifactDir := filepath.Join(platformDir, "artifact")
 	sourceDir := filepath.Join(platformDir, "source")
@@ -458,6 +557,14 @@ func resolveCachePaths(req BuildRequest, platformKey string, outputName string, 
 	sourceCachePath = filepath.Join(sourceDir, filepath.Base(sourcePath))
 	cacheKeyPath = filepath.Join(platformDir, ".cachekey")
 	return artifactPath, sourceCachePath, cacheKeyPath, nil
+}
+
+func cacheToolDirName(req BuildRequest) string {
+	toolID := sanitizeCachePathSegment(req.ToolID)
+	if toolID != "" && toolID != "artifact" {
+		return toolID
+	}
+	return sanitizeCachePathSegment(cacheToolName(req))
 }
 
 func cacheArtifactFileName(req BuildRequest, outputName string) string {

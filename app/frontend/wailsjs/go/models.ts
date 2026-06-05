@@ -1,5 +1,23 @@
 export namespace main {
 	
+	export class ArtifactBatchEstimate {
+	    totalCount: number;
+	    cachedCount: number;
+	    buildCount: number;
+	    invalidCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchEstimate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalCount = source["totalCount"];
+	        this.cachedCount = source["cachedCount"];
+	        this.buildCount = source["buildCount"];
+	        this.invalidCount = source["invalidCount"];
+	    }
+	}
 	export class ArtifactBatchItemResult {
 	    key: string;
 	    toolId: string;
@@ -100,6 +118,11 @@ export namespace main {
 	    mode: string;
 	    status: string;
 	    exportRootDir?: string;
+	    concurrency: number;
+	    skipUnchanged: boolean;
+	    preferCache: boolean;
+	    forceRebuild: boolean;
+	    continueOnError: boolean;
 	    totalCount: number;
 	    successCount: number;
 	    errorCount: number;
@@ -121,6 +144,11 @@ export namespace main {
 	        this.mode = source["mode"];
 	        this.status = source["status"];
 	        this.exportRootDir = source["exportRootDir"];
+	        this.concurrency = source["concurrency"];
+	        this.skipUnchanged = source["skipUnchanged"];
+	        this.preferCache = source["preferCache"];
+	        this.forceRebuild = source["forceRebuild"];
+	        this.continueOnError = source["continueOnError"];
 	        this.totalCount = source["totalCount"];
 	        this.successCount = source["successCount"];
 	        this.errorCount = source["errorCount"];

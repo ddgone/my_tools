@@ -6,8 +6,16 @@ export function CancelExecution(arg1) {
   return window['go']['main']['App']['CancelExecution'](arg1);
 }
 
+export function ClearArtifactBatchTasks() {
+  return window['go']['main']['App']['ClearArtifactBatchTasks']();
+}
+
 export function DeleteSSHConnection(arg1) {
   return window['go']['main']['App']['DeleteSSHConnection'](arg1);
+}
+
+export function EstimateArtifactBatchCache(arg1) {
+  return window['go']['main']['App']['EstimateArtifactBatchCache'](arg1);
 }
 
 export function ExportTool(arg1) {

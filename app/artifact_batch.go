@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,8 @@ import (
 const (
 	artifactBatchModeBuildCache = "build_cache"
 	artifactBatchModeExport     = "export"
+	maxArtifactBatchTaskHistory = 10
+	artifactBatchTasksFileName  = "artifact_tasks.json"
 )
 
 type ArtifactBatchSelection struct {
@@ -55,20 +58,124 @@ type ArtifactBatchItemResult struct {
 }
 
 type ArtifactBatchTask struct {
-	ID            string                    `json:"id"`
-	Mode          string                    `json:"mode"`
-	Status        string                    `json:"status"`
-	ExportRootDir string                    `json:"exportRootDir,omitempty"`
-	TotalCount    int                       `json:"totalCount"`
-	SuccessCount  int                       `json:"successCount"`
-	ErrorCount    int                       `json:"errorCount"`
-	CachedCount   int                       `json:"cachedCount"`
-	SkippedCount  int                       `json:"skippedCount"`
-	StartedAt     int64                     `json:"startedAt"`
-	EndedAt       int64                     `json:"endedAt,omitempty"`
-	CurrentItem   string                    `json:"currentItem,omitempty"`
-	ExitMessage   string                    `json:"exitMessage,omitempty"`
-	Items         []ArtifactBatchItemResult `json:"items"`
+	ID              string                    `json:"id"`
+	Mode            string                    `json:"mode"`
+	Status          string                    `json:"status"`
+	ExportRootDir   string                    `json:"exportRootDir,omitempty"`
+	Concurrency     int                       `json:"concurrency"`
+	SkipUnchanged   bool                      `json:"skipUnchanged"`
+	PreferCache     bool                      `json:"preferCache"`
+	ForceRebuild    bool                      `json:"forceRebuild"`
+	ContinueOnError bool                      `json:"continueOnError"`
+	TotalCount      int                       `json:"totalCount"`
+	SuccessCount    int                       `json:"successCount"`
+	ErrorCount      int                       `json:"errorCount"`
+	CachedCount     int                       `json:"cachedCount"`
+	SkippedCount    int                       `json:"skippedCount"`
+	StartedAt       int64                     `json:"startedAt"`
+	EndedAt         int64                     `json:"endedAt,omitempty"`
+	CurrentItem     string                    `json:"currentItem,omitempty"`
+	ExitMessage     string                    `json:"exitMessage,omitempty"`
+	Items           []ArtifactBatchItemResult `json:"items"`
+}
+
+type ArtifactBatchEstimate struct {
+	TotalCount   int `json:"totalCount"`
+	CachedCount  int `json:"cachedCount"`
+	BuildCount   int `json:"buildCount"`
+	InvalidCount int `json:"invalidCount"`
+}
+
+func (a *App) EstimateArtifactBatchCache(req ArtifactBatchRequest) (*ArtifactBatchEstimate, error) {
+	if err := a.ensureTooling(); err != nil {
+		return nil, err
+	}
+	mode := normalizeArtifactBatchMode(req.Mode)
+	repoRoot, ok := locateRepoRoot()
+	if !ok || strings.TrimSpace(repoRoot) == "" {
+		return nil, fmt.Errorf("当前运行环境缺少源码工作区，暂时无法估算构建缓存")
+	}
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		return nil, fmt.Errorf("解析运行时目录失败: %w", err)
+	}
+	if err := layout.Ensure(); err != nil {
+		return nil, fmt.Errorf("准备运行时目录失败: %w", err)
+	}
+
+	estimate := &ArtifactBatchEstimate{}
+	seen := make(map[string]struct{}, len(req.Items))
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	for _, item := range req.Items {
+		key := artifactItemKey(strings.TrimSpace(item.ToolID), strings.TrimSpace(item.TargetOS), strings.TrimSpace(item.TargetArch))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		estimate.TotalCount++
+
+		toolID := strings.TrimSpace(item.ToolID)
+		manifest, ok := a.manifests[toolID]
+		if !ok || strings.TrimSpace(item.TargetOS) == "" || strings.TrimSpace(item.TargetArch) == "" {
+			estimate.InvalidCount++
+			continue
+		}
+		if req.ForceRebuild {
+			estimate.BuildCount++
+			continue
+		}
+
+		probe, probeErr := builder.ProbeBuildCache(builder.BuildRequest{
+			ToolID:      manifest.ID,
+			ToolName:    manifest.Name,
+			Kind:        builderKind(string(manifest.Kind)),
+			OutputDir:   layout.BuildCacheDir(),
+			CacheDir:    layout.BuildCacheDir(),
+			OutputName:  exportDefaultFileName(manifest.Name, manifest.ID, string(manifest.Kind), exportModeBinary, item.TargetOS, item.TargetArch),
+			RepoRoot:    repoRoot,
+			SourceEntry: manifest.Source.Entry,
+			TargetOS:    item.TargetOS,
+			TargetArch:  item.TargetArch,
+		})
+		if probeErr != nil {
+			estimate.InvalidCount++
+			continue
+		}
+
+		if !probe.CacheHit {
+			estimate.BuildCount++
+			continue
+		}
+
+		if req.SkipUnchanged {
+			if mode == artifactBatchModeBuildCache {
+				estimate.CachedCount++
+				continue
+			}
+			outputPath := filepath.Join(
+				strings.TrimSpace(req.ExportRootDir),
+				manifest.ID,
+				fmt.Sprintf("%s_%s", item.TargetOS, item.TargetArch),
+				exportDefaultFileName(manifest.Name, manifest.ID, string(manifest.Kind), exportModeBinary, item.TargetOS, item.TargetArch),
+			)
+			same, compareErr := sameArtifactFile(outputPath, probe.CachePath)
+			if compareErr == nil && same {
+				estimate.CachedCount++
+				continue
+			}
+		}
+
+		if req.PreferCache {
+			estimate.CachedCount++
+		} else {
+			estimate.BuildCount++
+		}
+	}
+
+	return estimate, nil
 }
 
 type artifactBatchResolvedRequest struct {
@@ -93,6 +200,8 @@ func (a *App) StartArtifactBatch(req ArtifactBatchRequest) (*ArtifactBatchTask, 
 
 	a.mu.Lock()
 	a.artifactTasks[task.ID] = task
+	a.trimArtifactBatchTasksLocked()
+	a.persistArtifactBatchTasksLocked()
 	snapshot := cloneArtifactTask(task)
 	a.mu.Unlock()
 	a.emitArtifactTaskUpdate(snapshot)
@@ -114,6 +223,21 @@ func (a *App) ListArtifactBatchTasks() []*ArtifactBatchTask {
 		return tasks[i].StartedAt > tasks[j].StartedAt
 	})
 	return tasks
+}
+
+func (a *App) ClearArtifactBatchTasks() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, task := range a.artifactTasks {
+		if task != nil && task.Status == "running" {
+			return fmt.Errorf("存在进行中的产物任务，暂时无法清空")
+		}
+	}
+
+	a.artifactTasks = map[string]*ArtifactBatchTask{}
+	a.persistArtifactBatchTasksLocked()
+	return nil
 }
 
 func (a *App) prepareArtifactBatch(req ArtifactBatchRequest) (artifactBatchResolvedRequest, *ArtifactBatchTask, error) {
@@ -206,13 +330,18 @@ func (a *App) prepareArtifactBatch(req ArtifactBatchRequest) (artifactBatchResol
 	taskID := fmt.Sprintf("artifact_%d", time.Now().UnixNano())
 	now := time.Now().UnixMilli()
 	task := &ArtifactBatchTask{
-		ID:            taskID,
-		Mode:          mode,
-		Status:        "running",
-		ExportRootDir: exportRootDir,
-		TotalCount:    len(taskItems),
-		StartedAt:     now,
-		Items:         taskItems,
+		ID:              taskID,
+		Mode:            mode,
+		Status:          "running",
+		ExportRootDir:   exportRootDir,
+		Concurrency:     concurrency,
+		SkipUnchanged:   req.SkipUnchanged,
+		PreferCache:     req.PreferCache,
+		ForceRebuild:    req.ForceRebuild,
+		ContinueOnError: req.ContinueOnError,
+		TotalCount:      len(taskItems),
+		StartedAt:       now,
+		Items:           taskItems,
 	}
 
 	return artifactBatchResolvedRequest{
@@ -302,14 +431,59 @@ func (a *App) executeArtifactItem(taskID string, req artifactBatchResolvedReques
 		SourceEntry:      manifest.Source.Entry,
 		TargetOS:         item.TargetOS,
 		TargetArch:       item.TargetArch,
-		ForceRebuild:     req.ForceRebuild || !req.PreferCache,
 		UseCacheAsOutput: true,
 	}
-	buildResult, err := builder.BuildPackage(buildReq)
-	if err != nil {
-		item.Message = err.Error()
-		item.CacheHit = buildResult.CacheHit
-		return item, err
+	outputPath := ""
+	if req.Mode == artifactBatchModeExport {
+		outputPath = filepath.Join(
+			req.ExportRootDir,
+			manifest.ID,
+			fmt.Sprintf("%s_%s", item.TargetOS, item.TargetArch),
+			exportDefaultFileName(manifest.Name, manifest.ID, string(manifest.Kind), exportModeBinary, item.TargetOS, item.TargetArch),
+		)
+	}
+
+	var buildResult builder.BuildResult
+	if !req.ForceRebuild && (req.SkipUnchanged || req.PreferCache) {
+		probe, probeErr := builder.ProbeBuildCache(buildReq)
+		if probeErr != nil {
+			item.Message = probeErr.Error()
+			return item, probeErr
+		}
+		item.CacheHit = probe.CacheHit
+		item.OutputPath = probe.CachePath
+
+		if probe.CacheHit && req.SkipUnchanged {
+			switch req.Mode {
+			case artifactBatchModeBuildCache:
+				item.Status = "skipped"
+				item.Message = "构建输入未变化，已跳过"
+				return item, nil
+			default:
+				same, compareErr := sameArtifactFile(outputPath, probe.CachePath)
+				if compareErr == nil && same {
+					item.Status = "skipped"
+					item.Message = "导出目录已是最新产物，已跳过"
+					item.OutputPath = outputPath
+					return item, nil
+				}
+			}
+		}
+
+		if probe.CacheHit && req.PreferCache {
+			buildResult = probe
+		}
+	}
+
+	if strings.TrimSpace(buildResult.CachePath) == "" {
+		buildReq.ForceRebuild = req.ForceRebuild || !req.PreferCache
+		var err error
+		buildResult, err = builder.BuildPackage(buildReq)
+		if err != nil {
+			item.Message = err.Error()
+			item.CacheHit = buildResult.CacheHit
+			return item, err
+		}
 	}
 
 	item.CacheHit = buildResult.CacheHit
@@ -331,12 +505,6 @@ func (a *App) executeArtifactItem(taskID string, req artifactBatchResolvedReques
 		item.Message = "已写入构建缓存"
 		return item, nil
 	default:
-		outputPath := filepath.Join(
-			req.ExportRootDir,
-			manifest.ID,
-			fmt.Sprintf("%s_%s", item.TargetOS, item.TargetArch),
-			exportDefaultFileName(manifest.Name, manifest.ID, string(manifest.Kind), exportModeBinary, item.TargetOS, item.TargetArch),
-		)
 		if req.SkipUnchanged && !req.ForceRebuild {
 			same, compareErr := sameArtifactFile(outputPath, buildResult.CachePath)
 			if compareErr == nil && same {
@@ -381,6 +549,7 @@ func (a *App) markArtifactItemRunning(taskID string, index int) error {
 	task.Items[index].StartedAt = time.Now().UnixMilli()
 	task.CurrentItem = task.Items[index].ToolName + " " + task.Items[index].TargetOS + "/" + task.Items[index].TargetArch
 	recountArtifactTask(task)
+	a.persistArtifactBatchTasksLocked()
 	a.emitArtifactTaskUpdate(cloneArtifactTask(task))
 	return nil
 }
@@ -408,6 +577,7 @@ func (a *App) completeArtifactItem(taskID string, index int, result ArtifactBatc
 	task.Items[index] = result
 	task.CurrentItem = ""
 	recountArtifactTask(task)
+	a.persistArtifactBatchTasksLocked()
 	a.emitArtifactTaskUpdate(cloneArtifactTask(task))
 	return nil
 }
@@ -442,6 +612,7 @@ func (a *App) finalizeArtifactBatch(taskID string, aborted bool) {
 		task.Status = "failed"
 		task.ExitMessage = "批量任务失败"
 	}
+	a.persistArtifactBatchTasksLocked()
 	a.emitArtifactTaskUpdate(cloneArtifactTask(task))
 }
 
@@ -456,6 +627,7 @@ func (a *App) finishArtifactBatchWithError(taskID string, err error) {
 	task.EndedAt = time.Now().UnixMilli()
 	task.ExitMessage = err.Error()
 	recountArtifactTask(task)
+	a.persistArtifactBatchTasksLocked()
 	a.emitArtifactTaskUpdate(cloneArtifactTask(task))
 }
 
@@ -504,6 +676,113 @@ func cloneArtifactTask(task *ArtifactBatchTask) *ArtifactBatchTask {
 	copyTask := *task
 	copyTask.Items = append([]ArtifactBatchItemResult(nil), task.Items...)
 	return &copyTask
+}
+
+func (a *App) trimArtifactBatchTasksLocked() {
+	if len(a.artifactTasks) <= maxArtifactBatchTaskHistory {
+		return
+	}
+	tasks := make([]*ArtifactBatchTask, 0, len(a.artifactTasks))
+	for _, task := range a.artifactTasks {
+		tasks = append(tasks, task)
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].StartedAt > tasks[j].StartedAt
+	})
+	for _, task := range tasks[maxArtifactBatchTaskHistory:] {
+		delete(a.artifactTasks, task.ID)
+	}
+}
+
+func artifactBatchTasksFilePath(layout runtimeenv.Layout) string {
+	return filepath.Join(layout.ConfigDir(), artifactBatchTasksFileName)
+}
+
+func loadArtifactBatchTasksFile(filePath string) ([]*ArtifactBatchTask, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("读取产物任务持久化文件失败: %w", err)
+	}
+
+	var tasks []*ArtifactBatchTask
+	if err := json.Unmarshal(data, &tasks); err != nil {
+		return nil, fmt.Errorf("解析产物任务持久化文件失败: %w", err)
+	}
+	return normalizePersistedArtifactTasks(tasks), nil
+}
+
+func saveArtifactBatchTasksFile(filePath string, tasks []*ArtifactBatchTask) error {
+	normalized := normalizePersistedArtifactTasks(tasks)
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return fmt.Errorf("创建产物任务持久化目录失败: %w", err)
+	}
+	data, err := json.MarshalIndent(normalized, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化产物任务持久化文件失败: %w", err)
+	}
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("写入产物任务持久化文件失败: %w", err)
+	}
+	return nil
+}
+
+func normalizePersistedArtifactTasks(tasks []*ArtifactBatchTask) []*ArtifactBatchTask {
+	normalized := make([]*ArtifactBatchTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task == nil || strings.TrimSpace(task.ID) == "" {
+			continue
+		}
+		copyTask := cloneArtifactTask(task)
+		recountArtifactTask(copyTask)
+		normalized = append(normalized, copyTask)
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		return normalized[i].StartedAt > normalized[j].StartedAt
+	})
+	if len(normalized) > maxArtifactBatchTaskHistory {
+		normalized = normalized[:maxArtifactBatchTaskHistory]
+	}
+	return normalized
+}
+
+func (a *App) loadArtifactBatchTasks() error {
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		return fmt.Errorf("解析运行时目录失败: %w", err)
+	}
+	if err := layout.Ensure(); err != nil {
+		return fmt.Errorf("准备运行时目录失败: %w", err)
+	}
+	tasks, err := loadArtifactBatchTasksFile(artifactBatchTasksFilePath(layout))
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.artifactTasks = make(map[string]*ArtifactBatchTask, len(tasks))
+	for _, task := range tasks {
+		a.artifactTasks[task.ID] = task
+	}
+	return nil
+}
+
+func (a *App) persistArtifactBatchTasksLocked() {
+	layout, err := runtimeenv.ResolveLayout()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "持久化产物任务失败: %v\n", err)
+		return
+	}
+	tasks := make([]*ArtifactBatchTask, 0, len(a.artifactTasks))
+	for _, task := range a.artifactTasks {
+		tasks = append(tasks, task)
+	}
+	if err := saveArtifactBatchTasksFile(artifactBatchTasksFilePath(layout), tasks); err != nil {
+		fmt.Fprintf(os.Stderr, "持久化产物任务失败: %v\n", err)
+	}
 }
 
 func sameArtifactFile(targetPath string, cachePath string) (bool, error) {
