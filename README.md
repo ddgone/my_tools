@@ -7,6 +7,7 @@
 - 已接通本地执行链路，前后端事件流、日志面板、参数表单和页签工作区均可用。
 - 已接通基础远程执行链路，包含 SSH 连接管理、远端上传、执行和清理。
 - 已接通单工具导出与产物中心，支持批量构建缓存、批量导出、任务历史持久化、任务快照回看，以及与远程执行共享构建缓存。
+- 已接通 Go 环境配置：支持本地 Go 选择、官方 SDK 下载、显式禁用当前 SDK，以及状态栏环境提示。
 - 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错和文档真相源漂移。
 
 ## 主要能力
@@ -14,6 +15,7 @@
 - 单工具工作台：支持本地执行、远程执行、参数表单、终端日志和单工具导出。
 - 产物中心：支持工具 × 平台矩阵选择、批量构建缓存、批量导出、缓存命中预估、失败项重试和结果摘要导出。
 - 产物工作流：左侧侧栏提供产物工作台入口与任务历史卡片，右侧支持完整工作台页面和单次任务快照页。
+- Go 工具的本地执行不依赖运行时 Go 环境；Go 环境当前只影响远程执行、Go 导出和构建缓存准备。
 
 ## 仓库结构
 
@@ -62,7 +64,8 @@ go run scripts/build.go
 
 ```bash
 go test ./...
-go vet ./...
+go vet ./libs/... ./tools/... ./scripts/...
+cd app && go vet ./...
 cd app/frontend && npm run lint
 cd app/frontend && npm run typecheck
 ```
@@ -71,6 +74,7 @@ cd app/frontend && npm run typecheck
 
 - [CONTEXT.md](CONTEXT.md)：领域术语表，只记录项目语言，不记录实现细节。
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：当前产品定位、能力边界和文档索引。
+- [docs/GO_ENVIRONMENT.md](docs/GO_ENVIRONMENT.md)：Go 环境的用户视角说明、影响范围、默认路径、`<无 SDK>` 语义与验收清单。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：当前真实落地架构、模块边界、执行链路和约束。
 - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)：最新开发环境、启动方式、校验命令和入口文件。
 - [docs/adr/0022-host-owned-background-artifact-preparation.md](docs/adr/0022-host-owned-background-artifact-preparation.md)：后台产物准备、缓存复用与产物中心工作区形态。

@@ -19,6 +19,7 @@
 - `app.go`：bootstrap、SSH CRUD、窗口状态读写、前端绑定 API。
 - `execution.go`：本地执行、远程执行、事件推送、任务生命周期。
 - `export.go`：单工具导出、最近导出目录、导出结果打开。
+- `go_settings.go`：Go 环境状态、Go SDK 选择、官方 SDK 下载与禁用态桥接 API。
 - `legacy.go`：旧工具注册闭包向新宿主的桥接。
 
 ### `app/internal/ssh/`
@@ -35,6 +36,15 @@
 
 - Go 工具：现场生成 wrapper 并编译。
 - Python 工具：复制脚本到目标位置。
+- Go 工具链解析由 `app/internal/toolchain/` 提供，不再散落在 builder 内部的路径猜测逻辑中。
+
+### `app/internal/toolchain/`
+
+负责 Go 环境发现、状态计算、官方 SDK 列表拉取、下载安装和显式禁用。
+
+- 支持“已配置路径 / 历史已知路径 / PATH / 常见系统路径 / 托管 SDK”多来源检测。
+- 支持 `disabled=true` 的显式关闭态；关闭后不会自动回退到可发现的 Go。
+- 默认把托管 SDK 放在运行时目录下的 `toolchains/`。
 
 ### `app/internal/runtimeenv/`
 
@@ -61,8 +71,9 @@
 - 左侧导航：`ActivityBar.vue`、`ToolSidebar.vue`
 - 主工作区：`WorkspaceTabs.vue`
 - 工具详情与执行：`ToolDetailPanel.vue`、`ParameterPanel.vue`、`ExecutionTerminal.vue`
+- 宿主设置与环境提示：`SettingsModal.vue`、`StatusBar.vue`
 - SSH 表单：`SSHDetailPanel.vue`
-- 状态存储：`src/stores/workspace.ts`
+- 状态存储：`src/stores/workspace.ts`、`src/stores/goenv.ts`
 
 当前没有 `vue-router` 依赖，也不再维护 `HomeView` / `ExecuteView` 的旧结构。
 
@@ -75,18 +86,22 @@
 3. `execution.go` 创建任务、推送状态事件、收集日志。
 4. 前端通过 Wails 事件更新标签状态和执行终端。
 
+本地执行不会现场调用 `go build`。对 Go 工具来说，它直接运行编译进宿主的 bridge 闭包，因此不依赖用户额外配置 Go 环境。
+
 ### 远程执行
 
 1. 前端选择 SSH 连接并提交执行请求。
-2. 宿主构建或准备单工具产物。
-3. 远程执行器建立 SSH 会话、探测远端平台、上传文件。
-4. 在远端临时目录执行工具并回传日志。
-5. 执行结束后清理远端临时目录和本地任务状态。
+2. 宿主先解析当前 Go 环境；若是 Go 工具且未配置可用 SDK，则阻断当前操作。
+3. 宿主构建或准备单工具产物。
+4. 远程执行器建立 SSH 会话、探测远端平台、上传文件。
+5. 在远端临时目录执行工具并回传日志。
+6. 执行结束后清理远端临时目录和本地任务状态。
 
 ## 5. 数据与状态边界
 
 - 运行时配置：`build/runtime/config/` 或安装态用户目录。
 - SSH 连接：由后端存储在运行时配置目录下。
+- Go 环境配置：后端维护在运行时配置目录中的 `app.json`，当前稳定字段包括 `selectedBinary`、`knownBinaries`、`lastInstallDirectory`、`disabled`。
 - 前端偏好：收藏夹、最近使用、参数历史、工具参数快照、导出目标平台、设置页签、固定标签与标签顺序等当前主要在 `localStorage`。
 - 任务日志：事件流为主，日志导出是当前已完成的持久化出口。
 - 单工具导出：最近导出目录由后端配置文件维护；导出模式、是否自动打开目录、工具级导出目标平台由前端偏好维护。
@@ -95,8 +110,9 @@
 
 - 远程执行已可用，但 SSH 安全与认证链路尚未完全收口。
 - 单工具导出已闭环，但导出中心、导出记录与批量导出仍未实现。
-- 构建链路对仓库目录和部分默认环境仍有依赖。
+- 构建链路对仓库目录和部分默认环境仍有依赖，但 Go SDK 默认落点已统一到运行时目录下的 `toolchains/`。
 - 部分设置项已经暴露到 UI，但仍有历史选项尚未接入实际业务逻辑。
+- Go 环境当前只影响远程执行、Go 导出和构建缓存，不影响 Go 工具的本地执行。
 
 ## 7. 文档维护规则
 
@@ -104,3 +120,5 @@
 - 若新增的是术语定义，更新 `CONTEXT.md`。
 - 若新增的是难以逆转的架构决策，再考虑新增 ADR。
 - 历史方案、阶段计划、过程复盘不得回流到本文。
+
+如果需要从用户视角理解 Go 环境，而不是从架构视角理解它，直接看 [GO_ENVIRONMENT.md](./GO_ENVIRONMENT.md)。
