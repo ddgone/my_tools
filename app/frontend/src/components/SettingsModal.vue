@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
 import {
+  NAlert,
   NButton,
+  NDropdown,
   NIcon,
   NInput,
   NPopconfirm,
@@ -11,17 +14,186 @@ import {
   NText,
   useMessage,
 } from 'naive-ui'
-import { Trash, Checkmark } from '@vicons/ionicons5'
+import { Add, Checkmark, FolderOpenOutline, Trash } from '@vicons/ionicons5'
+import { OpenFileDialog } from '../../wailsjs/go/main/App'
+import { useGoEnvStore } from '@/stores/goenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
+const goEnv = useGoEnvStore()
 const message = useMessage()
+const noSdkValue = '__no_sdk__'
+
+const showDownloadPanel = ref(false)
+const downloadVersion = ref('')
+const downloadDirectory = ref('')
+
+const goCandidateOptions = computed(() =>
+  [
+    { label: '<无 SDK>', value: noSdkValue },
+    ...(goEnv.state?.candidates ?? [])
+      .filter(candidate => candidate.valid)
+      .map(candidate => ({
+        label: candidate.detail ? `${candidate.label}  ${candidate.detail}` : candidate.label,
+        value: candidate.path,
+      })),
+  ],
+)
+
+const currentGoBinary = computed(() => {
+  if (goEnv.state?.config.disabled) {
+    return noSdkValue
+  }
+  return goEnv.state?.config.selectedBinary || goEnv.state?.activeBinary || null
+})
+const canInstall = computed(() => downloadVersion.value.trim() && downloadDirectory.value.trim())
 
 function resetAll() {
   workspace.resetAllData()
   workspace.showSettings = false
   message.success('已恢复出厂设置')
 }
+
+async function ensureGoState() {
+  if (!goEnv.state && !goEnv.loading) {
+    await goEnv.loadState()
+  }
+}
+
+async function ensureGoReleases() {
+  await goEnv.ensureReleases()
+  if (!downloadVersion.value && goEnv.releases.length > 0) {
+    downloadVersion.value = goEnv.releases[0].version
+  }
+}
+
+function ensureDownloadDirectory(version?: string) {
+  const targetVersion = version || downloadVersion.value
+  if (!targetVersion) {
+    return
+  }
+  const lastInstallDirectory = goEnv.state?.config.lastInstallDirectory?.trim()
+  if (lastInstallDirectory) {
+    downloadDirectory.value = lastInstallDirectory
+    return
+  }
+  const suggested = goEnv.state?.suggestedInstallDirectory?.trim()
+  if (suggested) {
+    const normalizedVersion = targetVersion.toLowerCase()
+    const normalizedBase = suggested.replace(/[\\/]+$/, '')
+    downloadDirectory.value = normalizedBase.endsWith(normalizedVersion)
+      ? normalizedBase
+      : `${normalizedBase}/${normalizedVersion}`
+  }
+}
+
+async function handleOpenLocalGo() {
+  try {
+    const filePath = await OpenFileDialog({
+      title: '选择 Go 可执行文件',
+      filterName: 'Go',
+      filterGlob: '*',
+      directory: false,
+      defaultDirectory: '',
+      defaultFilename: '',
+    })
+    if (!filePath) {
+      return
+    }
+    await goEnv.chooseBinary(filePath)
+    showDownloadPanel.value = false
+    message.success('Go 环境已更新')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '选择本地 Go 失败')
+  }
+}
+
+async function handleSelectGo(value: string | null) {
+  if (!value) {
+    return
+  }
+  try {
+    if (value === noSdkValue) {
+      await goEnv.clearSelection()
+      message.success('已清除 Go 环境配置')
+      return
+    }
+    await goEnv.chooseBinary(value)
+    message.success('Go 环境已切换')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '切换 Go 环境失败')
+  }
+}
+
+async function handleBrowseInstallDirectory() {
+  try {
+    const dir = await OpenFileDialog({
+      title: '选择 Go SDK 安装目录',
+      filterName: '目录',
+      filterGlob: '*',
+      directory: true,
+      defaultDirectory: '',
+      defaultFilename: '',
+    })
+    if (dir) {
+      downloadDirectory.value = dir
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '选择目录失败')
+  }
+}
+
+async function handleStartDownload() {
+  if (!canInstall.value) {
+    message.error('请先选择版本和安装位置')
+    return
+  }
+  try {
+    await goEnv.install(downloadVersion.value, downloadDirectory.value)
+    showDownloadPanel.value = false
+    message.success('Go SDK 安装完成，已自动设为当前环境')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '安装 Go SDK 失败')
+  }
+}
+
+async function handleGoMenuSelect(key: string) {
+  if (key === 'local') {
+    await handleOpenLocalGo()
+    return
+  }
+  showDownloadPanel.value = true
+  await ensureGoState()
+  await ensureGoReleases()
+  ensureDownloadDirectory()
+}
+
+watch(() => workspace.showSettings, async (visible) => {
+  if (visible && workspace.settings.lastSettingsTab === 'go') {
+    await ensureGoState()
+  }
+}, { immediate: true })
+
+watch(() => workspace.settings.lastSettingsTab, async (tab) => {
+  if (tab === 'go' && workspace.showSettings) {
+    await ensureGoState()
+  }
+})
+
+watch(downloadVersion, (value) => {
+  if (!showDownloadPanel.value) {
+    return
+  }
+  ensureDownloadDirectory(value)
+})
+
+onMounted(async () => {
+  await ensureGoState()
+})
 </script>
 
 <template>
@@ -63,7 +235,7 @@ function resetAll() {
               type="line"
               animated
               :value="workspace.settings.lastSettingsTab"
-              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'export' ? 'export' : 'general'"
+              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'export' || v === 'go' ? v : 'general'"
             >
               <NTabPane
                 name="general"
@@ -210,6 +382,168 @@ function resetAll() {
                   </div>
                 </div>
               </NTabPane>
+
+              <NTabPane
+                name="go"
+                tab="Go"
+              >
+                <div class="pt-2 space-y-4">
+                  <div
+                    class="rounded-xl border px-4 py-4"
+                    :class="goEnv.hasUsableBinary ? 'border-emerald-400/20 bg-emerald-500/5' : 'border-amber-400/20 bg-amber-500/5'"
+                  >
+                    <div class="text-base font-semibold text-dracula-text">
+                      {{ goEnv.hasUsableBinary ? 'Go 环境已就绪' : '当前未检测到可用的 Go 环境' }}
+                    </div>
+                    <div class="mt-2 text-sm text-white/70 leading-6">
+                      {{
+                        goEnv.hasUsableBinary
+                          ? `当前使用 ${goEnv.state?.activeVersion || 'Go'}，整个桌面宿主共用这一份 Go 环境。`
+                          : '请先选择本地 Go，或直接下载一个 Go SDK。配置完成后会立即生效。'
+                      }}
+                    </div>
+                    <div
+                      v-if="goEnv.state?.statusMessage"
+                      class="mt-3 text-xs text-white/55"
+                    >
+                      {{ goEnv.state.statusMessage }}
+                    </div>
+                  </div>
+
+                  <NAlert
+                    v-if="goEnv.error"
+                    type="error"
+                    :show-icon="false"
+                  >
+                    {{ goEnv.error }}
+                  </NAlert>
+
+                  <div class="settings-form">
+                    <div class="settings-row">
+                      <div class="settings-label">
+                        当前 Go 环境
+                      </div>
+                      <div class="settings-value gap-2">
+                        <NSelect
+                          class="settings-control"
+                          :value="currentGoBinary"
+                          :options="goCandidateOptions"
+                          :placeholder="goEnv.loading ? '正在检测 Go 环境...' : '尚未选择 Go 环境'"
+                          :loading="goEnv.loading"
+                          @update:value="(v: string | null) => handleSelectGo(v)"
+                        />
+                        <NDropdown
+                          trigger="click"
+                          :options="[
+                            { label: '本地', key: 'local' },
+                            { label: '下载', key: 'download' },
+                          ]"
+                          @select="(key: string) => handleGoMenuSelect(key)"
+                        >
+                          <NButton
+                            secondary
+                            size="medium"
+                          >
+                            <template #icon>
+                              <NIcon :component="Add" />
+                            </template>
+                          </NButton>
+                        </NDropdown>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="goEnv.state?.activeBinary"
+                      class="settings-row align-start"
+                    >
+                      <div class="settings-label">
+                        当前路径
+                      </div>
+                      <div class="settings-value">
+                        <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 break-all">
+                          {{ goEnv.state.activeBinary }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="showDownloadPanel"
+                    class="rounded-xl border border-white/10 bg-black/10 p-4 space-y-4"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div class="text-sm font-medium text-dracula-text">
+                        下载 Go SDK
+                      </div>
+                      <NButton
+                        text
+                        size="small"
+                        @click="showDownloadPanel = false"
+                      >
+                        收起
+                      </NButton>
+                    </div>
+
+                    <NAlert
+                      v-if="goEnv.releaseError"
+                      type="error"
+                      :show-icon="false"
+                    >
+                      {{ goEnv.releaseError }}
+                    </NAlert>
+
+                    <div class="settings-form">
+                      <div class="settings-row">
+                        <div class="settings-label">
+                          版本
+                        </div>
+                        <div class="settings-value">
+                          <NSelect
+                            class="settings-control"
+                            :value="downloadVersion"
+                            :options="goEnv.releases.map(release => ({ label: release.version, value: release.version }))"
+                            :loading="goEnv.releaseLoading"
+                            placeholder="选择 Go 版本"
+                            @update:value="(v: string | null) => downloadVersion = v || ''"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="settings-row align-start">
+                        <div class="settings-label">
+                          位置
+                        </div>
+                        <div class="settings-value gap-2">
+                          <NInput
+                            class="settings-control"
+                            :value="downloadDirectory"
+                            placeholder="选择 Go SDK 安装目录"
+                            @update:value="(v: string) => downloadDirectory = v"
+                          />
+                          <NButton
+                            secondary
+                            @click="handleBrowseInstallDirectory"
+                          >
+                            <template #icon>
+                              <NIcon :component="FolderOpenOutline" />
+                            </template>
+                          </NButton>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                      <NButton
+                        type="primary"
+                        :loading="goEnv.installing"
+                        @click="handleStartDownload"
+                      >
+                        安装
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </NTabPane>
             </NTabs>
           </div>
 
@@ -278,6 +612,10 @@ function resetAll() {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
+}
+
+.align-start {
+  align-items: flex-start;
 }
 
 @media (max-width: 720px) {

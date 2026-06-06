@@ -15,15 +15,21 @@ export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolR
 
 export function GetCurrentWindowState():Promise<main.WindowState>;
 
+export function GetGoToolchainState():Promise<main.GoToolchainState>;
+
 export function GetSSHConnection(arg1:string):Promise<ssh.Connection>;
 
 export function GetWindowConfig():Promise<main.WindowState>;
 
 export function GetWorkbenchBootstrap():Promise<main.WorkbenchBootstrap>;
 
+export function InstallGoToolchain(arg1:main.InstallGoToolchainRequest):Promise<main.GoToolchainState>;
+
 export function IsWindowRectVisible(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
 
 export function ListArtifactBatchTasks():Promise<Array<main.ArtifactBatchTask>>;
+
+export function ListOfficialGoReleases():Promise<Array<main.GoOfficialRelease>>;
 
 export function ListSSHConnections():Promise<Array<ssh.Connection>>;
 
@@ -36,6 +42,8 @@ export function OpenPath(arg1:string):Promise<void>;
 export function OpenSaveFileDialog(arg1:main.FileDialogRequest):Promise<string>;
 
 export function PersistCurrentWindowState():Promise<void>;
+
+export function SaveGoToolchainConfig(arg1:main.GoToolchainConfig):Promise<main.GoToolchainState>;
 
 export function SaveSSHConnection(arg1:ssh.Connection):Promise<ssh.Connection>;
 

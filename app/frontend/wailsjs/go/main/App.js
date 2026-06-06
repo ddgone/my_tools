@@ -26,6 +26,10 @@ export function GetCurrentWindowState() {
   return window['go']['main']['App']['GetCurrentWindowState']();
 }
 
+export function GetGoToolchainState() {
+  return window['go']['main']['App']['GetGoToolchainState']();
+}
+
 export function GetSSHConnection(arg1) {
   return window['go']['main']['App']['GetSSHConnection'](arg1);
 }
@@ -38,12 +42,20 @@ export function GetWorkbenchBootstrap() {
   return window['go']['main']['App']['GetWorkbenchBootstrap']();
 }
 
+export function InstallGoToolchain(arg1) {
+  return window['go']['main']['App']['InstallGoToolchain'](arg1);
+}
+
 export function IsWindowRectVisible(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['IsWindowRectVisible'](arg1, arg2, arg3, arg4);
 }
 
 export function ListArtifactBatchTasks() {
   return window['go']['main']['App']['ListArtifactBatchTasks']();
+}
+
+export function ListOfficialGoReleases() {
+  return window['go']['main']['App']['ListOfficialGoReleases']();
 }
 
 export function ListSSHConnections() {
@@ -68,6 +80,10 @@ export function OpenSaveFileDialog(arg1) {
 
 export function PersistCurrentWindowState() {
   return window['go']['main']['App']['PersistCurrentWindowState']();
+}
+
+export function SaveGoToolchainConfig(arg1) {
+  return window['go']['main']['App']['SaveGoToolchainConfig'](arg1);
 }
 
 export function SaveSSHConnection(arg1) {

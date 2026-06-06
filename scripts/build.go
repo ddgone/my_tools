@@ -54,12 +54,7 @@ func main() {
 	fmt.Println("   火蜥蜴工具箱 Desktop - 构建脚本")
 	fmt.Println("====================================")
 
-	fmt.Println("\ngo vet...")
-	vet := exec.Command("go", "vet", "./...")
-	vet.Dir = rootDir
-	vet.Stdout = os.Stdout
-	vet.Stderr = os.Stderr
-	vet.Run()
+	runGoVet(rootDir, appDir)
 
 	os.RemoveAll(hostDir)
 	os.RemoveAll(filepath.Join(appDir, "build"))
@@ -142,6 +137,25 @@ func main() {
 	fmt.Println("====================================")
 }
 
+func runGoVet(rootDir, appDir string) {
+	fmt.Println("\ngo vet...")
+
+	rootPackages := []string{"./libs/...", "./tools/...", "./scripts/..."}
+	runVetCommand(rootDir, rootPackages, "根模块")
+	runVetCommand(appDir, []string{"./..."}, "app 模块")
+}
+
+func runVetCommand(dir string, packages []string, label string) {
+	args := append([]string{"vet"}, packages...)
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("⚠ %s go vet 失败: %v\n", label, err)
+	}
+}
+
 func cleanBuildRootStale(rootDir string) {
 	buildDir := filepath.Join(rootDir, "build")
 	entries, err := os.ReadDir(buildDir)
@@ -185,6 +199,12 @@ const defaultConfigJSON = `{
     "lastDirectory": "",
     "goMode": "binary",
     "autoOpenDir": true
+  },
+  "go": {
+    "selectedBinary": "",
+    "knownBinaries": [],
+    "lastInstallDirectory": "",
+    "disabled": false
   },
   "ui": {
     "theme": "dracula",

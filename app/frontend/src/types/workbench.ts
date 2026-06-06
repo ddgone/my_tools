@@ -208,3 +208,38 @@ export interface FileDialogRequest {
   defaultDirectory?: string
   defaultFilename?: string
 }
+
+export interface GoToolchainConfig {
+  selectedBinary: string
+  knownBinaries: string[]
+  lastInstallDirectory: string
+  disabled: boolean
+}
+
+export interface GoToolchainCandidate {
+  path: string
+  version: string
+  source: string
+  label: string
+  detail: string
+  error?: string
+  valid: boolean
+  selected: boolean
+  active: boolean
+}
+
+export interface GoToolchainState {
+  config: GoToolchainConfig
+  candidates: GoToolchainCandidate[]
+  hasUsableBinary: boolean
+  activeBinary: string
+  activeVersion: string
+  activeSource: string
+  statusMessage: string
+  suggestedInstallDirectory: string
+}
+
+export interface GoOfficialRelease {
+  version: string
+  stable: boolean
+}

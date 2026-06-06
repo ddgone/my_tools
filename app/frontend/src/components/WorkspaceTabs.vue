@@ -5,6 +5,7 @@ import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
+import { useGoEnvStore } from '@/stores/goenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useResizable } from '@/composables/useResizable'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
+const goEnv = useGoEnvStore()
 const workspace = useWorkspaceStore()
 const message = useMessage()
 
@@ -270,6 +272,22 @@ function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
 }
 
+function isMissingGoEnvError(detail: string) {
+  return detail.includes('未检测到可用的 Go 环境')
+    || detail.includes('请先在系统设置 > Go 中选择本地 Go 或下载 SDK')
+    || detail.includes('指定的 Go 工具链不存在')
+}
+
+async function openGoSettings(messageText?: string) {
+  workspace.openSettings('go')
+  if (messageText) {
+    message.warning(messageText)
+  }
+  if (!goEnv.state && !goEnv.loading) {
+    await goEnv.loadState()
+  }
+}
+
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 const exportTargetOptions = [
   { label: 'Windows x64', value: 'windows/amd64' },
@@ -333,6 +351,22 @@ const activeTask = computed(() =>
   activeTabTaskId.value ? execution.recentTasks.find((t) => t.id === activeTabTaskId.value) ?? null : null,
 )
 
+watch(
+  [() => workspace.activeToolTab?.toolId, () => goEnv.state?.hasUsableBinary, () => goEnv.loading],
+  async ([toolId, hasUsableBinary, loading]) => {
+    if (!toolId || loading) {
+      return
+    }
+    const tool = toolById(toolId)
+    if (!tool || tool.kind !== 'go' || hasUsableBinary || goEnv.missingPromptShown) {
+      return
+    }
+    goEnv.markPromptShown()
+    await openGoSettings('当前 Go 工具需要先配置 Go 环境')
+  },
+  { immediate: true },
+)
+
 async function handleExecute() {
   const tab = workspace.activeToolTab
   const tool = tab ? toolById(tab.toolId) : null
@@ -382,6 +416,13 @@ async function handleExecute() {
         pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
       })
     }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    if (isMissingGoEnvError(detail)) {
+      await openGoSettings('当前操作需要 Go 环境，已为你打开设置')
+      return
+    }
+    message.error(detail || '执行失败')
   } finally {
     launching.value = false
   }
@@ -435,6 +476,10 @@ async function handleExport() {
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
+    if (isMissingGoEnvError(detail)) {
+      await openGoSettings('导出 Go 工具前需要先配置 Go 环境')
+      return
+    }
     message.error(detail || '工具导出失败')
   } finally {
     exporting.value = false

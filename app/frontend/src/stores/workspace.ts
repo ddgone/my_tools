@@ -17,7 +17,7 @@ export interface ToolTabState {
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
-export type SettingsTab = 'general' | 'export'
+export type SettingsTab = 'general' | 'export' | 'go'
 export type GoExportMode = 'binary' | 'source'
 
 export interface ToolExecutionConfig {
@@ -103,7 +103,10 @@ interface PersistedToolState {
 }
 
 function normalizeSettingsTab(value: unknown): SettingsTab {
-  return value === 'export' ? 'export' : 'general'
+  if (value === 'export' || value === 'go') {
+    return value
+  }
+  return 'general'
 }
 
 function normalizeGoExportMode(value: unknown): GoExportMode {
@@ -849,6 +852,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k))
   }
 
+  function openSettings(tab?: SettingsTab) {
+    if (tab) {
+      settings.value.lastSettingsTab = normalizeSettingsTab(tab)
+    }
+    showSettings.value = true
+  }
+
   function openSSHNew(savedCount: number) {
     const existing = sshTabs.value.findIndex((t) => t.isNew && !t.connectionId)
     if (existing >= 0) {
@@ -1002,6 +1012,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     showSearch,
     showHotkeyHelp,
     showSettings,
+    openSettings,
     favorites,
     recentTools,
     toolHistory,

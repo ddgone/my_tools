@@ -8,13 +8,13 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 
+	"fire-salamander-desktop/internal/toolchain"
 	"my_tools/libs/core/procutil"
 )
 
@@ -327,58 +327,11 @@ func resolveGoBinary() (string, error) {
 		return "", fmt.Errorf("指定的 Go 工具链不存在: %s", override)
 	}
 
-	if path, err := exec.LookPath("go"); err == nil && path != "" {
-		return path, nil
+	path, err := toolchain.ResolveGoBinary()
+	if err != nil {
+		return "", fmt.Errorf("构建单工具产物失败: %w", err)
 	}
-
-	for _, candidate := range candidateGoBinaryPaths() {
-		if isExecutableFile(candidate) {
-			return candidate, nil
-		}
-	}
-
-	return "", fmt.Errorf("构建单工具产物失败: 未找到 Go 工具链；请将 `go` 加入 PATH，或设置 `%s` 指向 go 可执行文件", envGoBinary)
-}
-
-func candidateGoBinaryPaths() []string {
-	paths := make([]string, 0, 8)
-
-	addGOROOTCandidate := func(root string) {
-		root = strings.TrimSpace(root)
-		if root == "" {
-			return
-		}
-		paths = append(paths, filepath.Join(root, "bin", goExecutableName()))
-	}
-
-	addGOROOTCandidate(runtime.GOROOT())
-	addGOROOTCandidate(os.Getenv("GOROOT"))
-
-	if runtime.GOOS == "windows" {
-		if home, err := os.UserHomeDir(); err == nil && home != "" {
-			matches, _ := filepath.Glob(filepath.Join(home, "sdk", "go*", "bin", "go.exe"))
-			sort.Strings(matches)
-			for i := len(matches) - 1; i >= 0; i-- {
-				paths = append(paths, matches[i])
-			}
-		}
-		for _, envKey := range []string{"ProgramFiles", "ProgramFiles(x86)", "LocalAppData"} {
-			base := strings.TrimSpace(os.Getenv(envKey))
-			if base == "" {
-				continue
-			}
-			switch envKey {
-			case "LocalAppData":
-				paths = append(paths, filepath.Join(base, "Programs", "Go", "bin", "go.exe"))
-			default:
-				paths = append(paths, filepath.Join(base, "Go", "bin", "go.exe"))
-			}
-		}
-		return dedupeStrings(paths)
-	}
-
-	paths = append(paths, "/usr/local/go/bin/go", "/opt/homebrew/bin/go", "/usr/bin/go")
-	return dedupeStrings(paths)
+	return path, nil
 }
 
 func goExecutableName() string {

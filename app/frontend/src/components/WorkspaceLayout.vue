@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import gsap from 'gsap'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
+import { useGoEnvStore } from '@/stores/goenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
 import { ANIM } from '@/utils/animation'
@@ -19,6 +20,7 @@ import { ListSSHConnections } from '../../wailsjs/go/main/App'
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
+const goEnv = useGoEnvStore()
 const workspace = useWorkspaceStore()
 
 const activityBarActiveView = ref<ActivityBarView | null>('tools')
@@ -53,13 +55,13 @@ async function handleRefreshSSHList() {
 }
 
 function handleOpenSettings() {
-  workspace.showSettings = true
+  workspace.openSettings()
 }
 
 onMounted(async () => {
   try {
     const [, sshConnections] = await Promise.all([
-      Promise.all([workbench.loadBootstrap(), execution.hydrate()]),
+      Promise.all([workbench.loadBootstrap(), execution.hydrate(), goEnv.loadState()]),
       ListSSHConnections().catch(() => []),
     ])
     workspace.restorePinnedTabs(workbench.bootstrap?.tools ?? [], sshConnections)

@@ -293,6 +293,124 @@ export namespace main {
 	        this.defaultFilename = source["defaultFilename"];
 	    }
 	}
+	export class GoOfficialRelease {
+	    version: string;
+	    stable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoOfficialRelease(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.stable = source["stable"];
+	    }
+	}
+	export class GoToolchainCandidate {
+	    path: string;
+	    version: string;
+	    source: string;
+	    label: string;
+	    detail: string;
+	    error?: string;
+	    valid: boolean;
+	    selected: boolean;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoToolchainCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.source = source["source"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.error = source["error"];
+	        this.valid = source["valid"];
+	        this.selected = source["selected"];
+	        this.active = source["active"];
+	    }
+	}
+	export class GoToolchainConfig {
+	    selectedBinary: string;
+	    knownBinaries: string[];
+	    lastInstallDirectory: string;
+	    disabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoToolchainConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selectedBinary = source["selectedBinary"];
+	        this.knownBinaries = source["knownBinaries"];
+	        this.lastInstallDirectory = source["lastInstallDirectory"];
+	        this.disabled = source["disabled"];
+	    }
+	}
+	export class GoToolchainState {
+	    config: GoToolchainConfig;
+	    candidates: GoToolchainCandidate[];
+	    hasUsableBinary: boolean;
+	    activeBinary: string;
+	    activeVersion: string;
+	    activeSource: string;
+	    statusMessage: string;
+	    suggestedInstallDirectory: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoToolchainState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.config = this.convertValues(source["config"], GoToolchainConfig);
+	        this.candidates = this.convertValues(source["candidates"], GoToolchainCandidate);
+	        this.hasUsableBinary = source["hasUsableBinary"];
+	        this.activeBinary = source["activeBinary"];
+	        this.activeVersion = source["activeVersion"];
+	        this.activeSource = source["activeSource"];
+	        this.statusMessage = source["statusMessage"];
+	        this.suggestedInstallDirectory = source["suggestedInstallDirectory"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InstallGoToolchainRequest {
+	    version: string;
+	    directory: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallGoToolchainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.directory = source["directory"];
+	    }
+	}
 	export class RemoteExecRequest {
 	    toolId: string;
 	    connId: string;

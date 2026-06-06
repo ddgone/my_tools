@@ -71,7 +71,7 @@ func detectRuntimeRoot() (string, error) {
 		return filepath.Clean(override), nil
 	}
 
-	if repoRoot, ok := findRepoRootFromWorkingDir(); ok {
+	if repoRoot, ok := FindRepoRoot(); ok {
 		return filepath.Join(repoRoot, "build", "runtime"), nil
 	}
 
@@ -82,13 +82,34 @@ func detectRuntimeRoot() (string, error) {
 	return filepath.Join(home, ".fire-salamander"), nil
 }
 
+func FindRepoRoot() (string, bool) {
+	if repoRoot, ok := findRepoRootFromWorkingDir(); ok {
+		return repoRoot, true
+	}
+	return findRepoRootFromExecutable()
+}
+
 func findRepoRootFromWorkingDir() (string, bool) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", false
 	}
+	return findRepoRootFromPath(cwd)
+}
 
-	dir := filepath.Clean(cwd)
+func findRepoRootFromExecutable() (string, bool) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(executablePath); resolveErr == nil {
+		executablePath = resolved
+	}
+	return findRepoRootFromPath(filepath.Dir(executablePath))
+}
+
+func findRepoRootFromPath(start string) (string, bool) {
+	dir := filepath.Clean(start)
 	for {
 		if fileExists(filepath.Join(dir, "go.work")) && fileExists(filepath.Join(dir, "app", "wails.json")) {
 			return dir, true

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -417,25 +416,7 @@ func builderKind(kind string) builder.ToolKind {
 }
 
 func locateRepoRoot() (string, bool) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", false
-	}
-	for {
-		if fileExists(filepath.Join(dir, "go.work")) && fileExists(filepath.Join(dir, "app", "wails.json")) {
-			return dir, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
-	}
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
+	return runtimeenv.FindRepoRoot()
 }
 
 func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string, string, error) {
