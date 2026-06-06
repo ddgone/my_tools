@@ -67,12 +67,15 @@ go run scripts/package/main.go 1.0.0
 以下命令已经在本仓库复核通过：
 
 ```bash
-go test ./...
+cd app && go test ./...
 go vet ./libs/... ./tools/... ./scripts/...
 cd app && go vet ./...
 cd app/frontend && npm run lint
 cd app/frontend && npm run typecheck
 ```
+
+- `go test` 请在 `app/` 模块内执行。
+- 不要在仓库根直接运行 `go test ./...`，否则会把 `build/runtime/toolchains/` 下托管 Go SDK 自带的测试源码一起扫进去，产生与项目无关的噪音。
 
 ## 6. Go 环境配置现状
 
@@ -80,7 +83,10 @@ cd app/frontend && npm run typecheck
 - 桌面宿主运行后，用户可以在系统首选项的 Go 页签里：
   - 选择本地 Go
   - 下载官方 Go SDK
+  - 查看下载任务进度、速度，并在下载中停止
   - 切换已检测到的 Go
+  - 检查当前 Go 环境
+  - 删除当前托管 Go 环境
   - 选择 `<无 SDK>` 禁用当前 Go 环境
 - Go 工具的本地执行不依赖这套运行时 Go 环境配置；真正依赖它的是：
   - 远程执行前的单工具构建
