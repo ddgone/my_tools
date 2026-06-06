@@ -4,16 +4,20 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"fire-salamander-desktop/internal/appconfig"
 	"fire-salamander-desktop/internal/runtimeenv"
@@ -28,6 +32,8 @@ const (
 	sourceManaged      = "managed"
 	officialReleasesEP = "https://go.dev/dl/?mode=json&include=all"
 )
+
+var goVersionDirectoryPattern = regexp.MustCompile(`(?i)^go\d+(?:\.\d+)+(?:[-._a-z0-9]+)?$`)
 
 type Config struct {
 	SelectedBinary       string   `json:"selectedBinary"`
@@ -49,14 +55,41 @@ type Candidate struct {
 }
 
 type State struct {
-	Config                    Config      `json:"config"`
-	Candidates                []Candidate `json:"candidates"`
-	HasUsableBinary           bool        `json:"hasUsableBinary"`
-	ActiveBinary              string      `json:"activeBinary"`
-	ActiveVersion             string      `json:"activeVersion"`
-	ActiveSource              string      `json:"activeSource"`
-	StatusMessage             string      `json:"statusMessage"`
-	SuggestedInstallDirectory string      `json:"suggestedInstallDirectory"`
+	Config                    Config         `json:"config"`
+	Candidates                []Candidate    `json:"candidates"`
+	HasUsableBinary           bool           `json:"hasUsableBinary"`
+	ActiveBinary              string         `json:"activeBinary"`
+	ActiveVersion             string         `json:"activeVersion"`
+	ActiveSource              string         `json:"activeSource"`
+	RuntimeDetails            RuntimeDetails `json:"runtimeDetails"`
+	StatusMessage             string         `json:"statusMessage"`
+	SuggestedInstallDirectory string         `json:"suggestedInstallDirectory"`
+}
+
+type RuntimeDetails struct {
+	GOROOT    string `json:"goroot"`
+	GOPATH    string `json:"gopath"`
+	GOOS      string `json:"goos"`
+	GOARCH    string `json:"goarch"`
+	GOVERSION string `json:"goversion"`
+}
+
+type GoInstallProgress struct {
+	Message          string  `json:"message"`
+	Detail           string  `json:"detail,omitempty"`
+	CurrentItem      string  `json:"currentItem,omitempty"`
+	ProgressPercent  float64 `json:"progressPercent"`
+	Step             int     `json:"step"`
+	TotalSteps       int     `json:"totalSteps"`
+	Version          string  `json:"version,omitempty"`
+	Directory        string  `json:"directory,omitempty"`
+	TransferredBytes int64   `json:"transferredBytes,omitempty"`
+	TotalBytes       int64   `json:"totalBytes,omitempty"`
+	TransferSpeed    string  `json:"transferSpeed,omitempty"`
+}
+
+type GoInstallHooks struct {
+	OnProgress func(progress GoInstallProgress)
 }
 
 type Release struct {
@@ -81,6 +114,76 @@ type officialFile struct {
 	OS       string `json:"os"`
 	Arch     string `json:"arch"`
 	Kind     string `json:"kind"`
+}
+
+type goInstallError struct {
+	Message string
+	Detail  string
+	Err     error
+}
+
+func (e *goInstallError) Error() string {
+	if text := strings.TrimSpace(e.Detail); text != "" {
+		return text
+	}
+	if text := strings.TrimSpace(e.Message); text != "" {
+		return text
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return "Go SDK 安装失败"
+}
+
+func (e *goInstallError) Unwrap() error {
+	return e.Err
+}
+
+func wrapGoInstallError(message string, err error) error {
+	if err == nil {
+		return &goInstallError{
+			Message: strings.TrimSpace(message),
+			Detail:  strings.TrimSpace(message),
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	detail := strings.TrimSpace(err.Error())
+	if detail == "" {
+		detail = strings.TrimSpace(message)
+	}
+	return &goInstallError{
+		Message: strings.TrimSpace(message),
+		Detail:  detail,
+		Err:     err,
+	}
+}
+
+func DescribeGoInstallError(err error) (string, string) {
+	if err == nil {
+		return "", ""
+	}
+	if errors.Is(err, context.Canceled) {
+		return "Go SDK 下载任务已停止", ""
+	}
+	var installErr *goInstallError
+	if errors.As(err, &installErr) {
+		message := strings.TrimSpace(installErr.Message)
+		detail := strings.TrimSpace(installErr.Detail)
+		if message == "" {
+			message = "Go SDK 下载任务失败"
+		}
+		if detail == message {
+			detail = ""
+		}
+		return message, detail
+	}
+	detail := strings.TrimSpace(err.Error())
+	if detail == "" {
+		detail = "Go SDK 下载任务失败"
+	}
+	return "Go SDK 下载任务失败", detail
 }
 
 func LoadConfig() (Config, error) {
@@ -161,6 +264,11 @@ func InspectConfig(cfg Config) (State, error) {
 		statusMessage = fmt.Sprintf("已回退到自动检测的 Go 环境；之前配置的路径不可用：%s", selectedError)
 	}
 
+	runtimeDetails := RuntimeDetails{}
+	if activePath != "" {
+		runtimeDetails, _ = readGoRuntimeDetails(activePath)
+	}
+
 	return State{
 		Config:                    cfg,
 		Candidates:                candidates,
@@ -168,6 +276,7 @@ func InspectConfig(cfg Config) (State, error) {
 		ActiveBinary:              activePath,
 		ActiveVersion:             activeVersion,
 		ActiveSource:              activeSource,
+		RuntimeDetails:            runtimeDetails,
 		StatusMessage:             statusMessage,
 		SuggestedInstallDirectory: suggestedInstallDir,
 	}, nil
@@ -212,6 +321,13 @@ func ListOfficialReleases() ([]Release, error) {
 }
 
 func InstallOfficialRelease(version string, directory string) (InstallResult, error) {
+	return InstallOfficialReleaseWithOptions(context.Background(), version, directory, nil)
+}
+
+func InstallOfficialReleaseWithOptions(ctx context.Context, version string, directory string, hooks *GoInstallHooks) (InstallResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	version = strings.TrimSpace(version)
 	directory = filepath.Clean(strings.TrimSpace(directory))
 	if version == "" {
@@ -223,7 +339,7 @@ func InstallOfficialRelease(version string, directory string) (InstallResult, er
 
 	releases, err := fetchOfficialReleases()
 	if err != nil {
-		return InstallResult{}, err
+		return InstallResult{}, wrapGoInstallError("获取 Go 版本列表失败", err)
 	}
 	var matched officialRelease
 	found := false
@@ -235,50 +351,129 @@ func InstallOfficialRelease(version string, directory string) (InstallResult, er
 		}
 	}
 	if !found {
-		return InstallResult{}, fmt.Errorf("未找到可下载的 Go 版本: %s", version)
+		return InstallResult{}, wrapGoInstallError("未找到可下载的 Go 版本", fmt.Errorf("未找到可下载的 Go 版本: %s", version))
 	}
 	file, ok := selectArchiveForCurrentPlatform(matched)
 	if !ok {
-		return InstallResult{}, fmt.Errorf("当前平台暂不支持自动安装 %s", version)
+		return InstallResult{}, wrapGoInstallError("当前平台缺少对应的 Go SDK 安装包", fmt.Errorf("当前平台暂不支持自动安装 %s", version))
 	}
-	if err := ensureInstallDirectoryReady(directory); err != nil {
-		return InstallResult{}, err
+	targetDirectory := resolveInstallTargetDirectory(version, directory)
+	emitGoInstallProgress(hooks, GoInstallProgress{
+		Message:         "准备下载安装 Go SDK",
+		CurrentItem:     version,
+		ProgressPercent: 0,
+		Step:            1,
+		TotalSteps:      4,
+		Version:         version,
+		Directory:       targetDirectory,
+	})
+	if err := ensureInstallDirectoryReady(targetDirectory); err != nil {
+		return InstallResult{}, wrapGoInstallError("安装目录不可用", err)
+	}
+	if existingBinary, ok := resolveInstalledGoBinary(targetDirectory); ok {
+		emitGoInstallProgress(hooks, GoInstallProgress{
+			Message:         "已复用现有 Go SDK",
+			Detail:          targetDirectory,
+			CurrentItem:     version,
+			ProgressPercent: 100,
+			Step:            4,
+			TotalSteps:      4,
+			Version:         version,
+			Directory:       targetDirectory,
+		})
+		return InstallResult{
+			Version:    matched.Version,
+			Directory:  targetDirectory,
+			BinaryPath: existingBinary,
+		}, nil
 	}
 
 	tempFile, err := os.CreateTemp("", "fire-salamander-go-sdk-*"+filepath.Ext(file.Filename))
 	if err != nil {
-		return InstallResult{}, fmt.Errorf("创建下载缓存失败: %w", err)
+		return InstallResult{}, wrapGoInstallError("创建下载缓存失败", fmt.Errorf("创建下载缓存失败: %w", err))
 	}
 	tempPath := tempFile.Name()
 	defer os.Remove(tempPath)
 	defer tempFile.Close()
 
-	if err := downloadToFile("https://go.dev/dl/"+file.Filename, tempFile); err != nil {
-		return InstallResult{}, err
+	defer func() {
+		if ctx.Err() != nil {
+			_ = os.RemoveAll(targetDirectory)
+		}
+	}()
+
+	emitGoInstallProgress(hooks, GoInstallProgress{
+		Message:         "正在下载 Go SDK",
+		CurrentItem:     file.Filename,
+		ProgressPercent: 8,
+		Step:            2,
+		TotalSteps:      4,
+		Version:         version,
+		Directory:       targetDirectory,
+	})
+	if err := downloadToFile(ctx, "https://go.dev/dl/"+file.Filename, tempFile, func(downloaded int64, total int64, speed string) {
+		progress := 45.0
+		if total > 0 {
+			progress = 8 + float64(downloaded)*57/float64(total)
+		}
+		emitGoInstallProgress(hooks, GoInstallProgress{
+			Message:          "正在下载 Go SDK",
+			CurrentItem:      file.Filename,
+			ProgressPercent:  roundProgressPercent(progress),
+			Step:             2,
+			TotalSteps:       4,
+			Version:          version,
+			Directory:        targetDirectory,
+			TransferredBytes: downloaded,
+			TotalBytes:       total,
+			TransferSpeed:    speed,
+		})
+	}); err != nil {
+		return InstallResult{}, wrapGoInstallError("下载 Go SDK 失败", err)
 	}
 	if err := tempFile.Close(); err != nil {
-		return InstallResult{}, fmt.Errorf("关闭下载缓存失败: %w", err)
+		return InstallResult{}, wrapGoInstallError("写入下载缓存失败", fmt.Errorf("关闭下载缓存失败: %w", err))
 	}
 
+	emitGoInstallProgress(hooks, GoInstallProgress{
+		Message:         "正在解压 Go SDK",
+		Detail:          targetDirectory,
+		CurrentItem:     matched.Version,
+		ProgressPercent: 70,
+		Step:            3,
+		TotalSteps:      4,
+		Version:         version,
+		Directory:       targetDirectory,
+	})
 	if strings.HasSuffix(file.Filename, ".zip") {
-		if err := extractZip(tempPath, directory); err != nil {
-			return InstallResult{}, err
+		if err := extractZip(ctx, tempPath, targetDirectory); err != nil {
+			return InstallResult{}, wrapGoInstallError("解压 Go SDK 失败", err)
 		}
 	} else if strings.HasSuffix(file.Filename, ".tar.gz") {
-		if err := extractTarGz(tempPath, directory); err != nil {
-			return InstallResult{}, err
+		if err := extractTarGz(ctx, tempPath, targetDirectory); err != nil {
+			return InstallResult{}, wrapGoInstallError("解压 Go SDK 失败", err)
 		}
 	} else {
-		return InstallResult{}, fmt.Errorf("暂不支持自动解压 %s", file.Filename)
+		return InstallResult{}, wrapGoInstallError("当前安装包格式暂不支持自动解压", fmt.Errorf("暂不支持自动解压 %s", file.Filename))
 	}
 
-	binaryPath := filepath.Join(directory, "bin", goExecutableName())
+	binaryPath := filepath.Join(targetDirectory, "bin", goExecutableName())
 	if _, err := os.Stat(binaryPath); err != nil {
-		return InstallResult{}, fmt.Errorf("安装完成后未找到 Go 可执行文件: %w", err)
+		return InstallResult{}, wrapGoInstallError("Go SDK 安装不完整", fmt.Errorf("安装完成后未找到 Go 可执行文件: %w", err))
 	}
+	emitGoInstallProgress(hooks, GoInstallProgress{
+		Message:         "Go SDK 安装完成",
+		Detail:          targetDirectory,
+		CurrentItem:     matched.Version,
+		ProgressPercent: 100,
+		Step:            4,
+		TotalSteps:      4,
+		Version:         matched.Version,
+		Directory:       targetDirectory,
+	})
 	return InstallResult{
 		Version:    matched.Version,
-		Directory:  directory,
+		Directory:  targetDirectory,
 		BinaryPath: binaryPath,
 	}, nil
 }
@@ -289,7 +484,7 @@ type candidatePath struct {
 }
 
 func collectCandidatePaths(cfg Config) []candidatePath {
-	seen := map[string]struct{}{}
+	seen := map[string]int{}
 	result := make([]candidatePath, 0, 16)
 	add := func(path string, source string) {
 		path = filepath.Clean(strings.TrimSpace(path))
@@ -297,10 +492,11 @@ func collectCandidatePaths(cfg Config) []candidatePath {
 			return
 		}
 		identity := fileIdentity(path)
-		if _, ok := seen[identity]; ok {
+		if index, ok := seen[identity]; ok {
+			result[index].source = preferCandidateSource(result[index].source, source)
 			return
 		}
-		seen[identity] = struct{}{}
+		seen[identity] = len(result)
 		result = append(result, candidatePath{path: path, source: source})
 	}
 
@@ -533,27 +729,198 @@ func ensureInstallDirectoryReady(directory string) error {
 		return fmt.Errorf("读取安装目录失败: %w", err)
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("安装位置不是空目录，请选择新的目录")
+		binaryPath := filepath.Join(directory, "bin", goExecutableName())
+		if version, versionErr := readGoVersion(binaryPath); versionErr == nil && version != "" {
+			return nil
+		}
+		return fmt.Errorf("目标版本目录已存在且内容不可复用，请选择新的位置")
 	}
 	return nil
 }
 
-func downloadToFile(url string, file *os.File) error {
-	resp, err := http.Get(url)
+func resolveInstalledGoBinary(directory string) (string, bool) {
+	binaryPath := filepath.Join(directory, "bin", goExecutableName())
+	version, err := readGoVersion(binaryPath)
+	return binaryPath, err == nil && strings.TrimSpace(version) != ""
+}
+
+func resolveInstallTargetDirectory(version string, directory string) string {
+	version = strings.ToLower(strings.TrimSpace(version))
+	baseDirectory := NormalizeInstallBaseDirectory(directory)
+	if baseDirectory == "" {
+		return ""
+	}
+	if version != "" && strings.EqualFold(filepath.Base(baseDirectory), version) {
+		return baseDirectory
+	}
+	if version == "" {
+		return baseDirectory
+	}
+	return filepath.Join(baseDirectory, version)
+}
+
+func NormalizeInstallBaseDirectory(directory string) string {
+	directory = filepath.Clean(strings.TrimSpace(directory))
+	if directory == "" || directory == "." {
+		return ""
+	}
+	base := filepath.Base(directory)
+	if goVersionDirectoryPattern.MatchString(base) {
+		parent := filepath.Dir(directory)
+		if parent != "" && parent != "." {
+			return parent
+		}
+	}
+	return directory
+}
+
+func preferCandidateSource(current string, incoming string) string {
+	sourceRank := map[string]int{
+		sourceConfigured: 0,
+		sourceRemembered: 1,
+		sourceDetected:   2,
+		sourcePath:       3,
+		sourceManaged:    4,
+	}
+	if sourceRank[incoming] > sourceRank[current] {
+		return incoming
+	}
+	return current
+}
+
+func readGoRuntimeDetails(binaryPath string) (RuntimeDetails, error) {
+	output, err := exec.Command(binaryPath, "env", "GOROOT", "GOPATH", "GOOS", "GOARCH", "GOVERSION").CombinedOutput()
 	if err != nil {
+		return RuntimeDetails{}, fmt.Errorf("读取 Go 环境详情失败: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	values := make([]string, 0, len(lines))
+	for _, line := range lines {
+		values = append(values, strings.Trim(strings.TrimSpace(line), `"`))
+	}
+	if len(values) < 5 {
+		return RuntimeDetails{}, fmt.Errorf("Go 环境详情输出不完整")
+	}
+	return RuntimeDetails{
+		GOROOT:    values[0],
+		GOPATH:    values[1],
+		GOOS:      values[2],
+		GOARCH:    values[3],
+		GOVERSION: values[4],
+	}, nil
+}
+
+func DeleteManagedGoEnvironment() (State, error) {
+	state, err := GetState()
+	if err != nil {
+		return State{}, err
+	}
+	activeBinary := strings.TrimSpace(state.ActiveBinary)
+	if activeBinary == "" {
+		return state, fmt.Errorf("当前没有可删除的 Go 环境")
+	}
+	managedRoot, err := defaultInstallDirectory()
+	if err != nil {
+		return state, err
+	}
+	targetDir, ok := resolveManagedGoDirectory(activeBinary, managedRoot)
+	if !ok {
+		return state, fmt.Errorf("当前 Go 环境不是托管 SDK，无法在这里删除")
+	}
+	if err := os.RemoveAll(targetDir); err != nil {
+		return state, fmt.Errorf("删除当前 Go 环境失败: %w", err)
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		return State{}, err
+	}
+	filtered := make([]string, 0, len(cfg.KnownBinaries))
+	for _, known := range cfg.KnownBinaries {
+		if sameFilePath(known, activeBinary) {
+			continue
+		}
+		filtered = append(filtered, known)
+	}
+	cfg.KnownBinaries = filtered
+	if sameFilePath(cfg.SelectedBinary, activeBinary) {
+		cfg.SelectedBinary = ""
+	}
+	if sameFilePath(cfg.LastInstallDirectory, targetDir) {
+		cfg.LastInstallDirectory = managedRoot
+	}
+	if err := SaveConfig(cfg); err != nil {
+		return State{}, err
+	}
+	return GetState()
+}
+
+func resolveManagedGoDirectory(binaryPath string, managedRoot string) (string, bool) {
+	binaryPath = filepath.Clean(strings.TrimSpace(binaryPath))
+	managedRoot = filepath.Clean(strings.TrimSpace(managedRoot))
+	if binaryPath == "" || managedRoot == "" {
+		return "", false
+	}
+	envDir := filepath.Dir(filepath.Dir(binaryPath))
+	rel, err := filepath.Rel(managedRoot, envDir)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return envDir, true
+}
+
+func downloadToFile(ctx context.Context, url string, file *os.File, onProgress func(downloaded int64, total int64, speed string)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("下载 Go SDK 失败: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return context.Canceled
+		}
 		return fmt.Errorf("下载 Go SDK 失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("下载 Go SDK 失败: %s", resp.Status)
 	}
-	if _, err := io.Copy(file, resp.Body); err != nil {
-		return fmt.Errorf("写入 Go SDK 失败: %w", err)
+	total := resp.ContentLength
+	buffer := make([]byte, 128*1024)
+	start := time.Now()
+	var downloaded int64
+	for {
+		if ctx.Err() != nil {
+			return context.Canceled
+		}
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			if _, err := file.Write(buffer[:n]); err != nil {
+				return fmt.Errorf("写入 Go SDK 失败: %w", err)
+			}
+			downloaded += int64(n)
+			if onProgress != nil {
+				elapsed := time.Since(start)
+				if elapsed <= 0 {
+					elapsed = time.Millisecond
+				}
+				speed := float64(downloaded) / elapsed.Seconds()
+				onProgress(downloaded, total, formatTransferRate(speed))
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			if errors.Is(readErr, context.Canceled) || ctx.Err() != nil {
+				return context.Canceled
+			}
+			return fmt.Errorf("下载 Go SDK 失败: %w", readErr)
+		}
 	}
 	return nil
 }
 
-func extractTarGz(archivePath string, targetDir string) error {
+func extractTarGz(ctx context.Context, archivePath string, targetDir string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("打开压缩包失败: %w", err)
@@ -568,6 +935,9 @@ func extractTarGz(archivePath string, targetDir string) error {
 
 	tarReader := tar.NewReader(gzipReader)
 	for {
+		if ctx.Err() != nil {
+			return context.Canceled
+		}
 		header, err := tarReader.Next()
 		if err == io.EOF {
 			break
@@ -596,8 +966,11 @@ func extractTarGz(archivePath string, targetDir string) error {
 			if err != nil {
 				return fmt.Errorf("写入文件失败: %w", err)
 			}
-			if _, err := io.Copy(out, tarReader); err != nil {
+			if _, err := io.Copy(out, &contextAwareReader{ctx: ctx, reader: tarReader}); err != nil {
 				out.Close()
+				if errors.Is(err, context.Canceled) {
+					return context.Canceled
+				}
 				return fmt.Errorf("解压文件失败: %w", err)
 			}
 			if err := out.Close(); err != nil {
@@ -608,7 +981,7 @@ func extractTarGz(archivePath string, targetDir string) error {
 	return nil
 }
 
-func extractZip(archivePath string, targetDir string) error {
+func extractZip(ctx context.Context, archivePath string, targetDir string) error {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return fmt.Errorf("打开压缩包失败: %w", err)
@@ -616,6 +989,9 @@ func extractZip(archivePath string, targetDir string) error {
 	defer reader.Close()
 
 	for _, file := range reader.File {
+		if ctx.Err() != nil {
+			return context.Canceled
+		}
 		relativePath, ok := stripArchiveRoot(file.Name)
 		if !ok {
 			continue
@@ -642,9 +1018,12 @@ func extractZip(archivePath string, targetDir string) error {
 			input.Close()
 			return fmt.Errorf("写入文件失败: %w", err)
 		}
-		if _, err := io.Copy(output, input); err != nil {
+		if _, err := io.Copy(output, &contextAwareReader{ctx: ctx, reader: input}); err != nil {
 			input.Close()
 			output.Close()
+			if errors.Is(err, context.Canceled) {
+				return context.Canceled
+			}
 			return fmt.Errorf("解压文件失败: %w", err)
 		}
 		input.Close()
@@ -653,6 +1032,46 @@ func extractZip(archivePath string, targetDir string) error {
 		}
 	}
 	return nil
+}
+
+type contextAwareReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextAwareReader) Read(p []byte) (int, error) {
+	if r.ctx != nil && r.ctx.Err() != nil {
+		return 0, context.Canceled
+	}
+	return r.reader.Read(p)
+}
+
+func emitGoInstallProgress(hooks *GoInstallHooks, progress GoInstallProgress) {
+	if hooks == nil || hooks.OnProgress == nil {
+		return
+	}
+	hooks.OnProgress(progress)
+}
+
+func formatByteCount(value int64) string {
+	if value < 1024 {
+		return fmt.Sprintf("%d B", value)
+	}
+	units := []string{"KB", "MB", "GB", "TB"}
+	size := float64(value)
+	unitIndex := -1
+	for size >= 1024 && unitIndex < len(units)-1 {
+		size /= 1024
+		unitIndex++
+	}
+	return fmt.Sprintf("%.1f %s", size, units[unitIndex])
+}
+
+func formatTransferRate(bytesPerSecond float64) string {
+	if bytesPerSecond <= 0 {
+		return "0 B/s"
+	}
+	return fmt.Sprintf("%s/s", formatByteCount(int64(bytesPerSecond)))
 }
 
 func stripArchiveRoot(name string) (string, bool) {

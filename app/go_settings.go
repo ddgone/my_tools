@@ -32,13 +32,40 @@ type GoToolchainState struct {
 	ActiveBinary              string                 `json:"activeBinary"`
 	ActiveVersion             string                 `json:"activeVersion"`
 	ActiveSource              string                 `json:"activeSource"`
+	RuntimeDetails            GoRuntimeDetails       `json:"runtimeDetails"`
 	StatusMessage             string                 `json:"statusMessage"`
 	SuggestedInstallDirectory string                 `json:"suggestedInstallDirectory"`
+}
+
+type GoRuntimeDetails struct {
+	GOROOT    string `json:"goroot"`
+	GOPATH    string `json:"gopath"`
+	GOOS      string `json:"goos"`
+	GOARCH    string `json:"goarch"`
+	GOVERSION string `json:"goversion"`
 }
 
 type GoOfficialRelease struct {
 	Version string `json:"version"`
 	Stable  bool   `json:"stable"`
+}
+
+type GoToolchainTaskState struct {
+	Kind             string  `json:"kind"`
+	Status           string  `json:"status"`
+	Message          string  `json:"message"`
+	Detail           string  `json:"detail,omitempty"`
+	CurrentItem      string  `json:"currentItem,omitempty"`
+	ProgressPercent  float64 `json:"progressPercent"`
+	Step             int     `json:"step"`
+	TotalSteps       int     `json:"totalSteps"`
+	Version          string  `json:"version,omitempty"`
+	Directory        string  `json:"directory,omitempty"`
+	TransferredBytes int64   `json:"transferredBytes,omitempty"`
+	TotalBytes       int64   `json:"totalBytes,omitempty"`
+	TransferSpeed    string  `json:"transferSpeed,omitempty"`
+	Error            string  `json:"error,omitempty"`
+	UpdatedAt        int64   `json:"updatedAt"`
 }
 
 type InstallGoToolchainRequest struct {
@@ -47,6 +74,15 @@ type InstallGoToolchainRequest struct {
 }
 
 func (a *App) GetGoToolchainState() (*GoToolchainState, error) {
+	state, err := toolchain.GetState()
+	if err != nil {
+		return nil, err
+	}
+	result := convertGoToolchainState(state)
+	return &result, nil
+}
+
+func (a *App) CheckGoToolchainEnvironment() (*GoToolchainState, error) {
 	state, err := toolchain.GetState()
 	if err != nil {
 		return nil, err
@@ -99,7 +135,7 @@ func (a *App) InstallGoToolchain(req InstallGoToolchainRequest) (*GoToolchainSta
 	}
 	cfg.SelectedBinary = installResult.BinaryPath
 	cfg.KnownBinaries = append(cfg.KnownBinaries, installResult.BinaryPath)
-	cfg.LastInstallDirectory = installResult.Directory
+	cfg.LastInstallDirectory = toolchain.NormalizeInstallBaseDirectory(req.Directory)
 	cfg.Disabled = false
 	if saveErr := toolchain.SaveConfig(cfg); saveErr != nil {
 		return nil, saveErr
@@ -110,6 +146,31 @@ func (a *App) InstallGoToolchain(req InstallGoToolchainRequest) (*GoToolchainSta
 	}
 	converted := convertGoToolchainState(state)
 	return &converted, nil
+}
+
+func (a *App) DeleteGoToolchainEnvironment() (*GoToolchainState, error) {
+	state, err := toolchain.DeleteManagedGoEnvironment()
+	if err != nil {
+		return nil, err
+	}
+	result := convertGoToolchainState(state)
+	return &result, nil
+}
+
+func (a *App) GetGoToolchainTaskState() *GoToolchainTaskState {
+	return convertGoToolchainTaskState(a.getGoToolchainTaskState())
+}
+
+func (a *App) StartInstallGoToolchain(req InstallGoToolchainRequest) (*GoToolchainTaskState, error) {
+	task, err := a.startInstallGoToolchainTask(req)
+	if err != nil {
+		return nil, err
+	}
+	return convertGoToolchainTaskState(task), nil
+}
+
+func (a *App) CancelActiveGoToolchainTask() error {
+	return a.cancelGoToolchainTask()
 }
 
 func convertGoToolchainState(state toolchain.State) GoToolchainState {
@@ -134,12 +195,42 @@ func convertGoToolchainState(state toolchain.State) GoToolchainState {
 			LastInstallDirectory: state.Config.LastInstallDirectory,
 			Disabled:             state.Config.Disabled,
 		},
-		Candidates:                candidates,
-		HasUsableBinary:           state.HasUsableBinary,
-		ActiveBinary:              state.ActiveBinary,
-		ActiveVersion:             state.ActiveVersion,
-		ActiveSource:              state.ActiveSource,
+		Candidates:      candidates,
+		HasUsableBinary: state.HasUsableBinary,
+		ActiveBinary:    state.ActiveBinary,
+		ActiveVersion:   state.ActiveVersion,
+		ActiveSource:    state.ActiveSource,
+		RuntimeDetails: GoRuntimeDetails{
+			GOROOT:    state.RuntimeDetails.GOROOT,
+			GOPATH:    state.RuntimeDetails.GOPATH,
+			GOOS:      state.RuntimeDetails.GOOS,
+			GOARCH:    state.RuntimeDetails.GOARCH,
+			GOVERSION: state.RuntimeDetails.GOVERSION,
+		},
 		StatusMessage:             state.StatusMessage,
 		SuggestedInstallDirectory: state.SuggestedInstallDirectory,
+	}
+}
+
+func convertGoToolchainTaskState(task *GoToolchainTask) *GoToolchainTaskState {
+	if task == nil {
+		return nil
+	}
+	return &GoToolchainTaskState{
+		Kind:             task.Kind,
+		Status:           task.Status,
+		Message:          task.Message,
+		Detail:           task.Detail,
+		CurrentItem:      task.CurrentItem,
+		ProgressPercent:  task.ProgressPercent,
+		Step:             task.Step,
+		TotalSteps:       task.TotalSteps,
+		Version:          task.Version,
+		Directory:        task.Directory,
+		TransferredBytes: task.TransferredBytes,
+		TotalBytes:       task.TotalBytes,
+		TransferSpeed:    task.TransferSpeed,
+		Error:            task.Error,
+		UpdatedAt:        task.UpdatedAt,
 	}
 }

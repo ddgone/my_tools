@@ -307,6 +307,26 @@ export namespace main {
 	        this.stable = source["stable"];
 	    }
 	}
+	export class GoRuntimeDetails {
+	    goroot: string;
+	    gopath: string;
+	    goos: string;
+	    goarch: string;
+	    goversion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoRuntimeDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.goroot = source["goroot"];
+	        this.gopath = source["gopath"];
+	        this.goos = source["goos"];
+	        this.goarch = source["goarch"];
+	        this.goversion = source["goversion"];
+	    }
+	}
 	export class GoToolchainCandidate {
 	    path: string;
 	    version: string;
@@ -360,6 +380,7 @@ export namespace main {
 	    activeBinary: string;
 	    activeVersion: string;
 	    activeSource: string;
+	    runtimeDetails: GoRuntimeDetails;
 	    statusMessage: string;
 	    suggestedInstallDirectory: string;
 	
@@ -375,6 +396,7 @@ export namespace main {
 	        this.activeBinary = source["activeBinary"];
 	        this.activeVersion = source["activeVersion"];
 	        this.activeSource = source["activeSource"];
+	        this.runtimeDetails = this.convertValues(source["runtimeDetails"], GoRuntimeDetails);
 	        this.statusMessage = source["statusMessage"];
 	        this.suggestedInstallDirectory = source["suggestedInstallDirectory"];
 	    }
@@ -396,6 +418,46 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class GoToolchainTaskState {
+	    kind: string;
+	    status: string;
+	    message: string;
+	    detail?: string;
+	    currentItem?: string;
+	    progressPercent: number;
+	    step: number;
+	    totalSteps: number;
+	    version?: string;
+	    directory?: string;
+	    transferredBytes?: number;
+	    totalBytes?: number;
+	    transferSpeed?: string;
+	    error?: string;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GoToolchainTaskState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.detail = source["detail"];
+	        this.currentItem = source["currentItem"];
+	        this.progressPercent = source["progressPercent"];
+	        this.step = source["step"];
+	        this.totalSteps = source["totalSteps"];
+	        this.version = source["version"];
+	        this.directory = source["directory"];
+	        this.transferredBytes = source["transferredBytes"];
+	        this.totalBytes = source["totalBytes"];
+	        this.transferSpeed = source["transferSpeed"];
+	        this.error = source["error"];
+	        this.updatedAt = source["updatedAt"];
+	    }
 	}
 	export class InstallGoToolchainRequest {
 	    version: string;

@@ -3,13 +3,19 @@
 import {main} from '../models';
 import {ssh} from '../models';
 
+export function CancelActiveGoToolchainTask():Promise<void>;
+
 export function CancelActivePythonToolchainTask():Promise<void>;
 
 export function CancelExecution(arg1:string):Promise<void>;
 
+export function CheckGoToolchainEnvironment():Promise<main.GoToolchainState>;
+
 export function CheckPythonToolchainEnvironment():Promise<main.PythonToolchainState>;
 
 export function ClearArtifactBatchTasks():Promise<void>;
+
+export function DeleteGoToolchainEnvironment():Promise<main.GoToolchainState>;
 
 export function DeletePythonToolchainEnvironment():Promise<main.PythonToolchainState>;
 
@@ -22,6 +28,8 @@ export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolR
 export function GetCurrentWindowState():Promise<main.WindowState>;
 
 export function GetGoToolchainState():Promise<main.GoToolchainState>;
+
+export function GetGoToolchainTaskState():Promise<main.GoToolchainTaskState>;
 
 export function GetPythonToolchainState():Promise<main.PythonToolchainState>;
 
@@ -68,6 +76,8 @@ export function SaveTextFile(arg1:string,arg2:string):Promise<void>;
 export function SaveWindowState(arg1:main.WindowState):Promise<void>;
 
 export function StartArtifactBatch(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchTask>;
+
+export function StartInstallGoToolchain(arg1:main.InstallGoToolchainRequest):Promise<main.GoToolchainTaskState>;
 
 export function StartInstallPythonDependencies():Promise<main.PythonToolchainTaskState>;
 

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, type CSSProperties } from 'vue'
 import { NButton, NIcon, NText } from 'naive-ui'
 import { CheckmarkCircle, TerminalOutline } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { getExecutionTheme } from '@/utils/executionTheme'
 
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
@@ -54,15 +55,37 @@ const pythonReady = computed(() =>
   && pythonEnv.state?.pipAvailable === true
   && pythonEnv.state?.dependenciesReady === true,
 )
+const goReadyTheme = getExecutionTheme('go', 'local')
+const pythonReadyTheme = getExecutionTheme('python', 'local')
 const goTagClass = computed(() =>
   goReady.value
-    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+    ? 'statusbar-env-tag--ready'
     : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
 )
 const pythonTagClass = computed(() =>
   pythonReady.value
-    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+    ? 'statusbar-env-tag--ready'
     : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
+)
+const goTagStyle = computed<CSSProperties>(() =>
+  goReady.value
+    ? {
+      '--statusbar-env-bg': goReadyTheme.accentSoftBg,
+      '--statusbar-env-bg-hover': goReadyTheme.accentSoftStrongBg,
+      '--statusbar-env-border': goReadyTheme.accentSoftBorder,
+      '--statusbar-env-text': goReadyTheme.accent,
+    } as CSSProperties
+    : {},
+)
+const pythonTagStyle = computed<CSSProperties>(() =>
+  pythonReady.value
+    ? {
+      '--statusbar-env-bg': pythonReadyTheme.accentSoftBg,
+      '--statusbar-env-bg-hover': pythonReadyTheme.accentSoftStrongBg,
+      '--statusbar-env-border': pythonReadyTheme.accentSoftBorder,
+      '--statusbar-env-text': pythonReadyTheme.accent,
+    } as CSSProperties
+    : {},
 )
 const goTooltip = computed(() => {
   if (!goReady.value) {
@@ -70,8 +93,10 @@ const goTooltip = computed(() => {
   }
   const version = goEnv.state?.activeVersion?.trim()?.replace(/^Go(?=\d)/, 'Go ') || 'Go'
   const binary = goEnv.state?.activeBinary?.trim()
+  const source = goEnv.state?.activeSource?.trim()
+  const sourceLabel = source ? `\n来源：${formatGoSource(source)}` : ''
   return binary
-    ? `当前使用 ${version}。\n本地运行不受影响；远程执行、导出和构建缓存已就绪。\n${binary}`
+    ? `当前使用 ${version}。\n本地运行不受影响；远程执行、导出和构建缓存已就绪。${sourceLabel}\n${binary}`
     : `当前使用 ${version}。`
 })
 const pythonTooltip = computed(() => {
@@ -117,6 +142,17 @@ const tooltipY = ref(0)
 
 let tooltipShowTimer: number | null = null
 let tooltipHideTimer: number | null = null
+
+function formatGoSource(source: string) {
+  const labels: Record<string, string> = {
+    configured: '自定义路径',
+    remembered: '历史路径',
+    path: 'PATH 中的 Go',
+    detected: '系统安装目录',
+    managed: '托管 SDK',
+  }
+  return labels[source] || '自动检测'
+}
 
 function clampTooltipX(anchorX: number) {
   const tooltipWidth = tooltipRef.value?.offsetWidth ?? 0
@@ -232,6 +268,7 @@ function hideTooltip() {
         type="button"
         class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[15.5rem] text-left"
         :class="goTagClass"
+        :style="goTagStyle"
         @mouseenter="showTooltip($event, goTooltip)"
         @mouseleave="hideTooltip"
         @click="openGoSettings"
@@ -242,6 +279,7 @@ function hideTooltip() {
         type="button"
         class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[17rem] text-left"
         :class="pythonTagClass"
+        :style="pythonTagStyle"
         @mouseenter="showTooltip($event, pythonTooltip)"
         @mouseleave="hideTooltip"
         @click="openPythonSettings"
@@ -268,3 +306,15 @@ function hideTooltip() {
     </Teleport>
   </footer>
 </template>
+
+<style scoped>
+.statusbar-env-tag--ready {
+  border-color: var(--statusbar-env-border);
+  background-color: var(--statusbar-env-bg);
+  color: var(--statusbar-env-text);
+}
+
+.statusbar-env-tag--ready:hover {
+  background-color: var(--statusbar-env-bg-hover);
+}
+</style>

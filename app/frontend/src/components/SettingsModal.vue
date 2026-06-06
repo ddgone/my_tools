@@ -27,6 +27,13 @@ const pythonEnv = usePythonEnvStore()
 const message = useMessage()
 const noSdkValue = '__no_sdk__'
 const noPythonValue = '__no_python__'
+const goSourceLabelMap: Record<string, string> = {
+  configured: '自定义路径',
+  remembered: '历史路径',
+  path: 'PATH 中的 Go',
+  detected: '系统安装目录',
+  managed: '托管 SDK',
+}
 
 const showDownloadPanel = ref(false)
 const downloadVersion = ref('')
@@ -38,7 +45,9 @@ const goCandidateOptions = computed(() =>
     ...(goEnv.state?.candidates ?? [])
       .filter(candidate => candidate.valid)
       .map(candidate => ({
-        label: candidate.detail ? `${candidate.label}  ${candidate.detail}` : candidate.label,
+        label: candidate.detail
+          ? `${candidate.label} · ${describeGoSource(candidate.source)}  ${candidate.detail}`
+          : `${candidate.label} · ${describeGoSource(candidate.source)}`,
         value: candidate.path,
       })),
   ],
@@ -67,6 +76,16 @@ const currentPythonBinary = computed(() => {
   }
   return pythonEnv.state?.config.selectedBinary || pythonEnv.state?.activeBaseBinary || null
 })
+const goInstallActionLabel = computed(() => {
+  const task = goEnv.task
+  if (task?.status === 'running' && task.kind === 'install') {
+    return '正在安装...'
+  }
+  if ((task?.status === 'failed' || task?.status === 'canceled') && task.kind === 'install') {
+    return '继续安装'
+  }
+  return '安装'
+})
 const pythonTaskActionLabel = computed(() => {
   const task = pythonEnv.task
   if (task?.status === 'running' && task.kind === 'prepare') {
@@ -88,6 +107,7 @@ const pythonInstallActionLabel = computed(() => {
   return '一键安装依赖'
 })
 const canInstall = computed(() => downloadVersion.value.trim() && downloadDirectory.value.trim())
+const resolvedGoInstallDirectory = computed(() => resolveGoInstallTargetDirectory(downloadVersion.value, downloadDirectory.value))
 
 function resetAll() {
   workspace.resetAllData()
@@ -121,17 +141,46 @@ function ensureDownloadDirectory(version?: string) {
   }
   const lastInstallDirectory = goEnv.state?.config.lastInstallDirectory?.trim()
   if (lastInstallDirectory) {
-    downloadDirectory.value = lastInstallDirectory
+    downloadDirectory.value = normalizeGoInstallBaseDirectory(lastInstallDirectory)
     return
   }
   const suggested = goEnv.state?.suggestedInstallDirectory?.trim()
   if (suggested) {
-    const normalizedVersion = targetVersion.toLowerCase()
-    const normalizedBase = suggested.replace(/[\\/]+$/, '')
-    downloadDirectory.value = normalizedBase.endsWith(normalizedVersion)
-      ? normalizedBase
-      : `${normalizedBase}/${normalizedVersion}`
+    downloadDirectory.value = normalizeGoInstallBaseDirectory(suggested)
   }
+}
+
+function describeGoSource(source?: string) {
+  return goSourceLabelMap[source || ''] || '自动检测'
+}
+
+function normalizeGoInstallBaseDirectory(directory?: string) {
+  const value = (directory || '').trim().replace(/[\\/]+$/, '')
+  if (!value) {
+    return ''
+  }
+  const segments = value.split(/[\\/]/)
+  const lastSegment = segments[segments.length - 1] || ''
+  if (/^go\d+(?:\.\d+)+(?:[-._a-z0-9]+)?$/i.test(lastSegment)) {
+    segments.pop()
+    return segments.join('/') || value
+  }
+  return value
+}
+
+function resolveGoInstallTargetDirectory(version?: string, directory?: string) {
+  const normalizedVersion = (version || '').trim().toLowerCase()
+  const baseDirectory = normalizeGoInstallBaseDirectory(directory)
+  if (!baseDirectory) {
+    return ''
+  }
+  if (!normalizedVersion) {
+    return baseDirectory
+  }
+  if (baseDirectory.toLowerCase().endsWith(`/${normalizedVersion}`)) {
+    return baseDirectory
+  }
+  return `${baseDirectory}/${normalizedVersion}`
 }
 
 async function handleOpenLocalGo() {
@@ -171,6 +220,41 @@ async function handleSelectGo(value: string | null) {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     message.error(detail || '切换 Go 环境失败')
+  }
+}
+
+async function handleCheckGoEnvironment() {
+  try {
+    const state = await goEnv.checkEnvironment()
+    if (state.hasUsableBinary) {
+      const version = state.activeVersion || 'Go'
+      message.success(`Go 环境检查通过：${version} · ${describeGoSource(state.activeSource)}`)
+      return
+    }
+    message.warning('未检测到可用的 Go 环境，请选择本地 Go 或下载 SDK')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '检查 Go 环境失败')
+  }
+}
+
+async function handleCancelGoTask() {
+  try {
+    await goEnv.cancelTask()
+    message.info('已请求停止当前 Go SDK 下载任务')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '停止 Go SDK 下载任务失败')
+  }
+}
+
+async function handleDeleteGoEnvironment() {
+  try {
+    await goEnv.deleteEnvironment()
+    message.success('当前托管 Go SDK 已删除')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '删除 Go 环境失败')
   }
 }
 
@@ -289,12 +373,42 @@ async function handleStartDownload() {
   }
   try {
     await goEnv.install(downloadVersion.value, downloadDirectory.value)
-    showDownloadPanel.value = false
-    message.success('Go SDK 安装完成，已自动设为当前环境')
+    message.info('已开始下载并安装 Go SDK')
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     message.error(detail || '安装 Go SDK 失败')
   }
+}
+
+function formatTransferSummary() {
+  const task = goEnv.task
+  if (!task) {
+    return ''
+  }
+  if (task.status !== 'running' || task.kind !== 'install') {
+    return ''
+  }
+  if ((task.totalBytes || 0) > 0) {
+    return `${formatByteCount(task.transferredBytes || 0)} / ${formatByteCount(task.totalBytes || 0)}${task.transferSpeed ? ` · ${task.transferSpeed}` : ''}`
+  }
+  if ((task.transferredBytes || 0) > 0) {
+    return `${formatByteCount(task.transferredBytes || 0)}${task.transferSpeed ? ` · ${task.transferSpeed}` : ''}`
+  }
+  return task.transferSpeed || ''
+}
+
+function formatByteCount(value: number) {
+  if (value < 1024) {
+    return `${Math.round(value)} B`
+  }
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let size = value
+  let unitIndex = -1
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`
 }
 
 async function handleGoMenuSelect(key: string) {
@@ -546,6 +660,67 @@ onMounted(async () => {
                     {{ goEnv.error }}
                   </NAlert>
 
+                  <div
+                    v-if="goEnv.task"
+                    class="rounded-xl border border-cyan-400/15 bg-cyan-500/[0.04] px-4 py-4"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <div class="text-sm font-medium text-dracula-text">
+                          Go SDK 下载任务
+                        </div>
+                        <div class="mt-1 text-xs text-white/70">
+                          {{ goEnv.task.message || '正在处理 Go SDK 下载任务' }}
+                        </div>
+                        <div
+                          v-if="goEnv.task.currentItem"
+                          class="mt-1 text-[11px] text-white/45 break-all"
+                        >
+                          当前项：{{ goEnv.task.currentItem }}
+                        </div>
+                        <div
+                          v-if="goEnv.task.detail && !formatTransferSummary()"
+                          class="mt-1 text-[11px] text-white/45 break-all"
+                        >
+                          {{ goEnv.task.detail }}
+                        </div>
+                        <div
+                          v-if="formatTransferSummary()"
+                          class="mt-1 text-[11px] text-cyan-200/80"
+                        >
+                          {{ formatTransferSummary() }}
+                        </div>
+                      </div>
+                      <NButton
+                        v-if="goEnv.task.status === 'running'"
+                        secondary
+                        size="small"
+                        @click="handleCancelGoTask"
+                      >
+                        停止
+                      </NButton>
+                    </div>
+                    <div class="mt-3">
+                      <NProgress
+                        type="line"
+                        :percentage="Math.max(0, Math.min(100, goEnv.task.progressPercent || 0))"
+                        :show-indicator="true"
+                        :format="(percentage: number) => `${Math.round(percentage)}%`"
+                        processing
+                      />
+                    </div>
+                    <div class="mt-2 text-[11px] text-white/45">
+                      状态：{{ goEnv.task.status }}
+                      <span v-if="goEnv.task.totalSteps > 0"> · 步骤 {{ goEnv.task.step }}/{{ goEnv.task.totalSteps }}</span>
+                    </div>
+                    <div
+                      v-if="goEnv.task.error"
+                      class="mt-2 text-[11px] text-rose-200/85 break-all"
+                    >
+                      {{ goEnv.task.error }}
+                    </div>
+                  </div>
+
                   <div class="settings-form">
                     <div class="settings-row">
                       <div class="settings-label">
@@ -558,6 +733,7 @@ onMounted(async () => {
                           :options="goCandidateOptions"
                           :placeholder="goEnv.loading ? '正在检测 Go 环境...' : '尚未选择 Go 环境'"
                           :loading="goEnv.loading"
+                          :disabled="goEnv.task?.status === 'running'"
                           @update:value="(v: string | null) => handleSelectGo(v)"
                         />
                         <NDropdown
@@ -571,6 +747,7 @@ onMounted(async () => {
                           <NButton
                             secondary
                             size="medium"
+                            :disabled="goEnv.task?.status === 'running'"
                           >
                             <template #icon>
                               <NIcon :component="Add" />
@@ -592,6 +769,93 @@ onMounted(async () => {
                           {{ goEnv.state.activeBinary }}
                         </div>
                       </div>
+                    </div>
+
+                    <div
+                      v-if="goEnv.state?.activeSource"
+                      class="settings-row"
+                    >
+                      <div class="settings-label">
+                        来源类型
+                      </div>
+                      <div class="settings-value">
+                        <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                          {{ describeGoSource(goEnv.state.activeSource) }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="goEnv.state?.hasUsableBinary"
+                      class="settings-row align-start"
+                    >
+                      <div class="settings-label">
+                        环境详情
+                      </div>
+                      <div class="settings-value">
+                        <div class="grid gap-2 md:grid-cols-2">
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              GOVERSION
+                            </div>
+                            <div class="break-all">
+                              {{ goEnv.state?.runtimeDetails?.goversion || goEnv.state?.activeVersion || '未知' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              GOOS / GOARCH
+                            </div>
+                            <div class="break-all">
+                              {{ [goEnv.state?.runtimeDetails?.goos, goEnv.state?.runtimeDetails?.goarch].filter(Boolean).join(' / ') || '未知' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 md:col-span-2">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              GOROOT
+                            </div>
+                            <div class="break-all">
+                              {{ goEnv.state?.runtimeDetails?.goroot || '未知' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 md:col-span-2">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              GOPATH
+                            </div>
+                            <div class="break-all">
+                              {{ goEnv.state?.runtimeDetails?.gopath || '未知' }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap justify-end gap-2">
+                      <NButton
+                        secondary
+                        size="small"
+                        :loading="goEnv.checking"
+                        :disabled="goEnv.loading || goEnv.task?.status === 'running' || goEnv.saving"
+                        @click="handleCheckGoEnvironment"
+                      >
+                        检查环境
+                      </NButton>
+                      <NPopconfirm
+                        @positive-click="handleDeleteGoEnvironment"
+                      >
+                        <template #trigger>
+                          <NButton
+                            secondary
+                            size="small"
+                            type="error"
+                            :loading="goEnv.deleting"
+                            :disabled="goEnv.state?.activeSource !== 'managed' || goEnv.task?.status === 'running'"
+                          >
+                            删除环境
+                          </NButton>
+                        </template>
+                        确定删除当前托管 Go SDK 吗？如果还有其他 Go 版本，程序会自动回退到可用环境。
+                      </NPopconfirm>
                     </div>
                   </div>
 
@@ -631,6 +895,7 @@ onMounted(async () => {
                             :value="downloadVersion"
                             :options="goEnv.releases.map(release => ({ label: release.version, value: release.version }))"
                             :loading="goEnv.releaseLoading"
+                            :disabled="goEnv.task?.status === 'running'"
                             placeholder="选择 Go 版本"
                             @update:value="(v: string | null) => downloadVersion = v || ''"
                           />
@@ -639,17 +904,19 @@ onMounted(async () => {
 
                       <div class="settings-row align-start">
                         <div class="settings-label">
-                          位置
+                          基目录
                         </div>
                         <div class="settings-value gap-2">
                           <NInput
                             class="settings-control"
                             :value="downloadDirectory"
-                            placeholder="选择 Go SDK 安装目录"
+                            placeholder="选择 Go SDK 集中安装目录"
+                            :disabled="goEnv.task?.status === 'running'"
                             @update:value="(v: string) => downloadDirectory = v"
                           />
                           <NButton
                             secondary
+                            :disabled="goEnv.task?.status === 'running'"
                             @click="handleBrowseInstallDirectory"
                           >
                             <template #icon>
@@ -658,15 +925,22 @@ onMounted(async () => {
                           </NButton>
                         </div>
                       </div>
+                      <div
+                        v-if="resolvedGoInstallDirectory"
+                        class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/55"
+                      >
+                        将安装到：{{ resolvedGoInstallDirectory }}
+                      </div>
                     </div>
 
                     <div class="flex justify-end">
                       <NButton
                         type="primary"
                         :loading="goEnv.installing"
+                        :disabled="goEnv.task?.status === 'running'"
                         @click="handleStartDownload"
                       >
-                        安装
+                        {{ goInstallActionLabel }}
                       </NButton>
                     </div>
                   </div>

@@ -235,13 +235,40 @@ export interface GoToolchainState {
   activeBinary: string
   activeVersion: string
   activeSource: string
+  runtimeDetails: GoRuntimeDetails
   statusMessage: string
   suggestedInstallDirectory: string
+}
+
+export interface GoRuntimeDetails {
+  goroot: string
+  gopath: string
+  goos: string
+  goarch: string
+  goversion: string
 }
 
 export interface GoOfficialRelease {
   version: string
   stable: boolean
+}
+
+export interface GoToolchainTaskState {
+  kind: string
+  status: string
+  message: string
+  detail?: string
+  currentItem?: string
+  progressPercent: number
+  step: number
+  totalSteps: number
+  version?: string
+  directory?: string
+  transferredBytes?: number
+  totalBytes?: number
+  transferSpeed?: string
+  error?: string
+  updatedAt: number
 }
 
 export interface PythonToolchainConfig {

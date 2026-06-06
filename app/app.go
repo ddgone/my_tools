@@ -27,6 +27,8 @@ type App struct {
 	cancels       map[string]context.CancelFunc
 	pythonTask    *PythonToolchainTask
 	pythonCancel  context.CancelFunc
+	goTask        *GoToolchainTask
+	goCancel      context.CancelFunc
 	sshStore      *ssh.Store
 }
 

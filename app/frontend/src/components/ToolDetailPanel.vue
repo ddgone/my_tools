@@ -454,9 +454,19 @@ onBeforeUnmount(() => {
 }
 
 .tool-detail-action-button {
-  background-color: v-bind(detailAccent);
-  border-color: v-bind(detailAccentSoftBorder);
-  color: v-bind(detailAccentText);
+  --n-color: v-bind(detailAccent) !important;
+  --n-color-hover: v-bind(detailAccentHover) !important;
+  --n-color-pressed: v-bind(detailAccentHover) !important;
+  --n-color-focus: v-bind(detailAccentHover) !important;
+  --n-border: 1px solid v-bind(detailAccentSoftBorder) !important;
+  --n-border-hover: 1px solid v-bind(detailAccentSoftStrongBorder) !important;
+  --n-border-pressed: 1px solid v-bind(detailAccentSoftStrongBorder) !important;
+  --n-border-focus: 1px solid v-bind(detailAccentSoftStrongBorder) !important;
+  --n-text-color: v-bind(detailAccentText) !important;
+  --n-text-color-hover: v-bind(detailAccentText) !important;
+  --n-text-color-pressed: v-bind(detailAccentText) !important;
+  --n-text-color-focus: v-bind(detailAccentText) !important;
+  --n-ripple-color: transparent !important;
   transition:
     background-color 160ms var(--ease-out-soft),
     border-color 160ms var(--ease-out-soft),
@@ -464,8 +474,11 @@ onBeforeUnmount(() => {
     box-shadow 160ms var(--ease-out-soft);
 }
 
-.tool-detail-action-button:hover:not(:disabled) {
-  background-color: v-bind(detailAccentHover) !important;
-  border-color: v-bind(detailAccentSoftStrongBorder) !important;
+.tool-detail-action-button :deep(.n-button__state-overlay) {
+  background-color: transparent !important;
+}
+
+.tool-detail-action-button :deep(.n-button__state-border) {
+  display: none !important;
 }
 </style>
