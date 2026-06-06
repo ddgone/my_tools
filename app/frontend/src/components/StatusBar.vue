@@ -18,9 +18,9 @@ const terminalToggleLabel = computed(() =>
 const goVersionLabel = computed(() => {
   const activeVersion = goEnv.state?.activeVersion?.trim()
   if (!activeVersion) {
-    return 'Go 未配置'
+    return 'Go 未配置 · 仅远程/导出受影响'
   }
-  return activeVersion.replace(/^Go(?=\d)/, 'Go ')
+  return `Go 已就绪 · ${activeVersion.replace(/^Go(?=\d)/, 'Go ')}`
 })
 
 const pythonVersionLabel = computed(() => 'Python --')
@@ -33,11 +33,13 @@ const goTagClass = computed(() =>
 const pythonTagClass = 'border-white/10 bg-white/5 text-white/45'
 const goTooltip = computed(() => {
   if (!goReady.value) {
-    return '未配置 Go 环境，点击前往设置'
+    return '未配置 Go 环境。\n本地运行不受影响；远程执行、导出和构建缓存需要 Go 环境。\n点击前往设置。'
   }
-  const version = goVersionLabel.value
+  const version = goEnv.state?.activeVersion?.trim()?.replace(/^Go(?=\d)/, 'Go ') || 'Go'
   const binary = goEnv.state?.activeBinary?.trim()
-  return binary ? `${version}\n${binary}` : version
+  return binary
+    ? `当前使用 ${version}。\n本地运行不受影响；远程执行、导出和构建缓存已就绪。\n${binary}`
+    : `当前使用 ${version}。`
 })
 const tooltipShow = ref(false)
 const tooltipRef = ref<HTMLElement | null>(null)
@@ -154,7 +156,7 @@ function hideGoTooltip() {
       </NButton>
       <button
         type="button"
-        class="rounded-md border px-2 py-0.5 text-[10px] transition-colors"
+        class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[15.5rem] text-left"
         :class="goTagClass"
         @mouseenter="showGoTooltip"
         @mouseleave="hideGoTooltip"

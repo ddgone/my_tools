@@ -16,7 +16,6 @@ interface GoEnvState {
   releaseLoading: boolean
   error: string
   releaseError: string
-  missingPromptShown: boolean
 }
 
 export const useGoEnvStore = defineStore('goenv', {
@@ -29,7 +28,6 @@ export const useGoEnvStore = defineStore('goenv', {
     releaseLoading: false,
     error: '',
     releaseError: '',
-    missingPromptShown: false,
   }),
   getters: {
     hasUsableBinary(state) {
@@ -118,9 +116,6 @@ export const useGoEnvStore = defineStore('goenv', {
       } finally {
         this.installing = false
       }
-    },
-    markPromptShown() {
-      this.missingPromptShown = true
     },
   },
 })

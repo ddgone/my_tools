@@ -351,22 +351,6 @@ const activeTask = computed(() =>
   activeTabTaskId.value ? execution.recentTasks.find((t) => t.id === activeTabTaskId.value) ?? null : null,
 )
 
-watch(
-  [() => workspace.activeToolTab?.toolId, () => goEnv.state?.hasUsableBinary, () => goEnv.loading],
-  async ([toolId, hasUsableBinary, loading]) => {
-    if (!toolId || loading) {
-      return
-    }
-    const tool = toolById(toolId)
-    if (!tool || tool.kind !== 'go' || hasUsableBinary || goEnv.missingPromptShown) {
-      return
-    }
-    goEnv.markPromptShown()
-    await openGoSettings('当前 Go 工具需要先配置 Go 环境')
-  },
-  { immediate: true },
-)
-
 async function handleExecute() {
   const tab = workspace.activeToolTab
   const tool = tab ? toolById(tab.toolId) : null
