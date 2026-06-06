@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, h, nextTick, type CSSProperties } from 'vue'
+import { computed, ref, watch, h, nextTick} from 'vue'
 import {
   NButton,
   NCard,
@@ -37,7 +37,7 @@ import type { ArtifactBatchTask, SSHConnection, ToolManifest } from '@/types/wor
 import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { ANIM } from '@/utils/animation'
-import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 
@@ -127,9 +127,9 @@ const activeSidebarTheme = computed(() =>
     workspace.activeTabType === 'tool' ? workspace.activeToolTab?.executionTarget ?? 'local' : 'local',
   ),
 )
-const sidebarThemeStyle = computed<CSSProperties>(() => ({
-  ...makeExecutionThemeVars(activeSidebarTheme.value, 'tool-sidebar'),
-}))
+const sidebarAccent = computed(() => activeSidebarTheme.value.accent)
+const sidebarAccentSoftBg = computed(() => activeSidebarTheme.value.accentSoftBg)
+const sidebarAccentSoftStrongBorder = computed(() => activeSidebarTheme.value.accentSoftStrongBorder)
 const treeThemeOverrides = computed(() => ({
   nodeColorActive: activeSidebarTheme.value.accentSoftBg,
   nodeColorHover: 'transparent',
@@ -372,6 +372,10 @@ function toolExecutionTheme(tool: ToolManifest) {
   return getExecutionTheme(tool.kind, toolExecutionTarget(tool.id))
 }
 
+function toolThemeClass(tool: ToolManifest) {
+  return `tool-theme-${toolExecutionTheme(tool).accentName}`
+}
+
 function kindIcon(kind: string) {
   return kind === 'python' ? LogoPython : CodeSlash
 }
@@ -498,13 +502,8 @@ function treeNodeProps({ option }: { option: TreeOption & { tool?: ToolManifest 
       class: 'category-tree-node',
     }
   }
-  const theme = toolExecutionTheme(tool)
   return {
-    class: 'tool-tree-node',
-    style: {
-      '--tool-node-hover-bg': `rgba(${theme.accentRgb}, 0.06)`,
-      '--tool-node-pressed-bg': `rgba(${theme.accentRgb}, 0.09)`,
-    },
+    class: ['tool-tree-node', toolThemeClass(tool)],
   }
 }
 
@@ -682,7 +681,6 @@ defineExpose({
     >
       <NScrollbar
         class="flex-1"
-        :style="sidebarThemeStyle"
       >
         <Transition
           name="slide"
@@ -758,20 +756,15 @@ defineExpose({
                 size="small"
                 :bordered="true"
                 hoverable
-                class="ui-surface-hover"
+                class="ui-surface-hover sidebar-collection-card"
+                :class="{ 'sidebar-collection-card-active': isToolActive(tool.id) }"
                 :content-style="{ padding: '8px 10px' }"
-                :style="isToolActive(tool.id)
-                  ? {
-                    borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
-                    backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
-                  }
-                  : {}"
                 @click="selectTool(tool)"
                 @contextmenu="openToolContextMenu($event, tool)"
               >
                 <div
-                  class="flex items-center gap-x-2 text-left"
-                  :style="isToolActive(tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
+                  class="sidebar-collection-card-content flex items-center gap-x-2 text-left"
+                  :class="{ 'sidebar-collection-card-content-active': isToolActive(tool.id) }"
                 >
                   <NIcon
                     :component="kindIcon(tool.kind)"
@@ -822,20 +815,15 @@ defineExpose({
                 size="small"
                 :bordered="true"
                 hoverable
-                class="ui-surface-hover"
+                class="ui-surface-hover sidebar-collection-card"
+                :class="{ 'sidebar-collection-card-active': isToolActive(entry.tool.id) }"
                 :content-style="{ padding: '8px 10px' }"
-                :style="isToolActive(entry.tool.id)
-                  ? {
-                    borderColor: 'var(--tool-sidebar-accent-soft-strong-border)',
-                    backgroundColor: 'var(--tool-sidebar-accent-soft-bg)',
-                  }
-                  : {}"
                 @click="selectTool(entry.tool)"
                 @contextmenu="openToolContextMenu($event, entry.tool)"
               >
                 <div
-                  class="flex items-center gap-x-2 text-left"
-                  :style="isToolActive(entry.tool.id) ? { color: 'var(--tool-sidebar-accent)' } : undefined"
+                  class="sidebar-collection-card-content flex items-center gap-x-2 text-left"
+                  :class="{ 'sidebar-collection-card-content-active': isToolActive(entry.tool.id) }"
                 >
                   <NIcon
                     :component="kindIcon(entry.tool.kind)"
@@ -1170,10 +1158,19 @@ defineExpose({
 
 <style>
 .category-tree {
-  --n-node-color-active: var(--tool-sidebar-accent-soft-bg);
+  --n-node-color-active: v-bind(sidebarAccentSoftBg);
   --n-line-color: rgba(255,255,255,0.10);
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
+}
+
+.sidebar-collection-card-active {
+  border-color: v-bind(sidebarAccentSoftStrongBorder) !important;
+  background-color: v-bind(sidebarAccentSoftBg) !important;
+}
+
+.sidebar-collection-card-content-active {
+  color: v-bind(sidebarAccent);
 }
 .category-tree .n-tree-node-content {
   padding-top: 2px;
@@ -1199,7 +1196,7 @@ defineExpose({
   stroke: rgba(255,255,255,0.7);
 }
 .category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
-  stroke: var(--tool-sidebar-accent-soft-strong-border);
+  stroke: v-bind(sidebarAccentSoftStrongBorder);
 }
 .category-tree .n-tree-node--selected .n-tree-node-indent {
   opacity: 0.3;
@@ -1208,13 +1205,25 @@ defineExpose({
   opacity: 1;
 }
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
-  stroke: var(--tool-sidebar-accent-soft-strong-border) !important;
+  stroke: v-bind(sidebarAccentSoftStrongBorder) !important;
 }
-.category-tree .tool-tree-node:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: var(--tool-node-hover-bg) !important;
+.category-tree .tool-tree-node.tool-theme-cyan:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(139, 233, 253, 0.06) !important;
 }
-.category-tree .tool-tree-node.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: var(--tool-node-pressed-bg) !important;
+.category-tree .tool-tree-node.tool-theme-cyan.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(139, 233, 253, 0.09) !important;
+}
+.category-tree .tool-tree-node.tool-theme-green:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(80, 250, 123, 0.06) !important;
+}
+.category-tree .tool-tree-node.tool-theme-green.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(80, 250, 123, 0.09) !important;
+}
+.category-tree .tool-tree-node.tool-theme-pink:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(255, 121, 198, 0.06) !important;
+}
+.category-tree .tool-tree-node.tool-theme-pink.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgba(255, 121, 198, 0.09) !important;
 }
 .category-tree .category-tree-node:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
   background: rgba(255, 255, 255, 0.05) !important;

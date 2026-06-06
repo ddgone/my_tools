@@ -5,7 +5,7 @@ import { Close, CopyOutline, HelpCircle, Remove, Search, SquareOutline } from '@
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { Quit, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime/runtime'
+import { Quit, WindowMinimise, WindowToggleMaximise } from '../../wailsjs/runtime'
 import { GetCurrentWindowState, PersistCurrentWindowState } from '../../wailsjs/go/main/App'
 
 interface WindowSnapshot {

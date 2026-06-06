@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type CSSProperties } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NButton, NIcon, NScrollbar, NText, NTooltip, useMessage } from 'naive-ui'
 import { Trash, Copy, Download } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
-import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 
 const props = defineProps<{
   taskId: string
@@ -21,12 +21,8 @@ const autoScroll = ref(true)
 let autoScrollResetFrame: number | null = null
 let isProgrammaticScroll = false
 const terminalTheme = computed(() => getExecutionTheme(props.toolKind, props.executionTarget))
-const terminalThemeStyle = computed<CSSProperties>(() => ({
-  ...makeExecutionThemeVars(terminalTheme.value, 'execution-terminal'),
-}))
-const followButtonStyle = computed<CSSProperties>(() => ({
-  color: autoScroll.value ? 'var(--execution-terminal-accent)' : '#94a3b8',
-}))
+const terminalAccent = computed(() => terminalTheme.value.accent)
+const followButtonColor = computed(() => (autoScroll.value ? terminalTheme.value.accent : '#94a3b8'))
 
 const logs = computed(() => execution.logsForTask(props.taskId))
 
@@ -194,7 +190,6 @@ watch(() => props.taskId, async () => {
 <template>
   <div
     class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-lg border-t border-white/15 shell-bg"
-    :style="terminalThemeStyle"
   >
     <div class="flex shrink-0 items-center justify-between bg-dracula-panel/30 px-3 py-1.5">
       <div class="flex items-center gap-x-1.5">
@@ -284,7 +279,6 @@ watch(() => props.taskId, async () => {
               text
               size="tiny"
               class="execution-terminal-follow-button"
-              :style="followButtonStyle"
               @click="toggleAutoScroll"
             >
               跟随
@@ -339,12 +333,13 @@ watch(() => props.taskId, async () => {
 
 <style scoped>
 .execution-terminal-follow-button {
+  color: v-bind(followButtonColor);
   transition:
     color 0.16s var(--ease-out-soft),
     opacity 0.16s var(--ease-out-soft);
 }
 
 .execution-terminal-follow-button:hover:not(:disabled) {
-  color: var(--execution-terminal-accent) !important;
+  color: v-bind(terminalAccent) !important;
 }
 </style>

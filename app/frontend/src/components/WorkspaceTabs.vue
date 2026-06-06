@@ -19,7 +19,7 @@ import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import { validateCliArgs } from '@/utils/cliArgs'
-import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import { findMissingRequiredParam } from '@/utils/toolParams'
 import gsap from 'gsap'
 
@@ -227,9 +227,11 @@ const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
 const activeExecutionTheme = computed(() =>
   getExecutionTheme(activeToolKind.value, activeTargetIsRemote.value ? 'remote' : 'local'),
 )
-const workspaceThemeStyle = computed<CSSProperties>(() => ({
-  ...makeExecutionThemeVars(activeExecutionTheme.value, 'workspace-tabs'),
-}))
+const workspaceAccent = computed(() => activeExecutionTheme.value.accent)
+const workspaceAccentSoftBg = computed(() => activeExecutionTheme.value.accentSoftBg)
+const workspaceAccentSoftStrongBg = computed(() => activeExecutionTheme.value.accentSoftStrongBg)
+const workspaceActiveTabBackground = computed(() => activeExecutionTheme.value.activeTabBackground)
+const workspaceDividerGradient = computed(() => activeExecutionTheme.value.dividerGradient)
 const activeToolTerminalHeight = computed(() =>
   workspace.activeToolTerminalHeight ?? initialTerminalHeight,
 )
@@ -676,9 +678,6 @@ async function handleTabContextMenuSelect(key: string) {
 
 function tabButtonStyle(item: UnifiedTabItem): CSSProperties | undefined {
   const style: CSSProperties = {}
-  if (isUnifiedTabActive(item)) {
-    style.backgroundColor = 'var(--workspace-tabs-active-tab-bg)'
-  }
   if (dragTabKey.value === item.key) {
     style.cursor = 'grabbing'
   }
@@ -933,7 +932,6 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
   <div
     ref="contentRef"
     class="flex flex-1 flex-col overflow-hidden"
-    :style="workspaceThemeStyle"
   >
     <div
       ref="tabBarRef"
@@ -947,7 +945,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1 overflow-hidden border-r border-white/15 px-3 py-1.5 pr-8"
           :class="
             isUnifiedTabActive(item)
-              ? 'text-dracula-text'
+              ? 'workspace-tab-active text-dracula-text'
               : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
           "
           :style="tabButtonStyle(item)"
@@ -1027,8 +1025,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           >×</span>
           <span
             v-if="isUnifiedTabActive(item)"
-            class="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-t-sm"
-            :style="{ backgroundColor: 'var(--workspace-tabs-accent)' }"
+            class="workspace-tabs-active-indicator pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-t-sm"
           />
         </button>
       </div>
@@ -1060,8 +1057,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             @update:export-target="onExportTargetUpdate"
           />
           <div
-            class="mx-4 mt-3 h-px"
-            :style="{ background: 'var(--workspace-tabs-divider-gradient)' }"
+            class="workspace-tabs-divider-line mx-4 mt-3 h-px"
           />
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
@@ -1274,15 +1270,27 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
 </template>
 
 <style scoped>
+.workspace-tab-active {
+  background-color: v-bind(workspaceActiveTabBackground);
+}
+
+.workspace-tabs-active-indicator {
+  background-color: v-bind(workspaceAccent);
+}
+
+.workspace-tabs-divider-line {
+  background: v-bind(workspaceDividerGradient);
+}
+
 .workspace-tabs-divider-glow {
   transition: background-color 0.16s var(--ease-out-soft);
 }
 
 .group:hover .workspace-tabs-divider-glow {
-  background-color: var(--workspace-tabs-accent-soft-bg);
+  background-color: v-bind(workspaceAccentSoftBg);
 }
 
 .group:active .workspace-tabs-divider-glow {
-  background-color: var(--workspace-tabs-accent-soft-strong-bg);
+  background-color: v-bind(workspaceAccentSoftStrongBg);
 }
 </style>

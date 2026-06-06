@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'vue'
-
 export type ExecutionAccentName = 'cyan' | 'green' | 'pink'
 
 export interface ExecutionTheme {
@@ -71,20 +69,4 @@ export function resolveExecutionAccent(kind: string | null | undefined, executio
 
 export function getExecutionTheme(kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionTheme {
   return THEMES[resolveExecutionAccent(kind, executionTarget)]
-}
-
-export function makeExecutionThemeVars(theme: ExecutionTheme, prefix: string): CSSProperties {
-  return {
-    [`--${prefix}-accent`]: theme.accent,
-    [`--${prefix}-accent-rgb`]: theme.accentRgb,
-    [`--${prefix}-accent-hover`]: theme.accentHover,
-    [`--${prefix}-accent-text`]: theme.accentText,
-    [`--${prefix}-accent-soft-bg`]: theme.accentSoftBg,
-    [`--${prefix}-accent-soft-border`]: theme.accentSoftBorder,
-    [`--${prefix}-accent-soft-strong-bg`]: theme.accentSoftStrongBg,
-    [`--${prefix}-accent-soft-strong-border`]: theme.accentSoftStrongBorder,
-    [`--${prefix}-active-tab-bg`]: theme.activeTabBackground,
-    [`--${prefix}-divider-gradient`]: theme.dividerGradient,
-    [`--${prefix}-rail-active`]: theme.railActive,
-  } as CSSProperties
 }

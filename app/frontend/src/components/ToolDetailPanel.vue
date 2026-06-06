@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NIcon, NInput, NSelect, NText, NTag, type SelectOption } from 'naive-ui'
 import {
   Play,
@@ -14,7 +14,7 @@ import {
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ExecutionTarget, ToolTabState } from '@/stores/workspace'
-import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
 const props = defineProps<{
@@ -64,16 +64,12 @@ watch(
 
 const isRemote = computed(() => props.tab?.executionTarget === 'remote')
 const detailTheme = computed(() => getExecutionTheme(props.tool?.kind, isRemote.value ? 'remote' : 'local'))
-const detailThemeStyle = computed<CSSProperties>(() => ({
-  ...makeExecutionThemeVars(detailTheme.value, 'tool-detail'),
-  '--tool-detail-panel-text': detailTheme.value.accentText,
-  '--tool-detail-transition': '160ms var(--ease-out-soft)',
-}))
-const executeButtonStyle = computed<CSSProperties>(() => ({
-  backgroundColor: 'var(--tool-detail-accent)',
-  borderColor: 'var(--tool-detail-accent-soft-border)',
-  color: 'var(--tool-detail-accent-text)',
-}))
+const detailAccent = computed(() => detailTheme.value.accent)
+const detailAccentHover = computed(() => detailTheme.value.accentHover)
+const detailAccentText = computed(() => detailTheme.value.accentText)
+const detailAccentSoftBg = computed(() => detailTheme.value.accentSoftBg)
+const detailAccentSoftBorder = computed(() => detailTheme.value.accentSoftBorder)
+const detailAccentSoftStrongBorder = computed(() => detailTheme.value.accentSoftStrongBorder)
 const switchTrackHoverClass = computed(() =>
   'hover:border-white/15',
 )
@@ -217,7 +213,6 @@ onBeforeUnmount(() => {
 <template>
   <div
     v-if="tool && tab"
-    :style="detailThemeStyle"
   >
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
@@ -324,7 +319,6 @@ onBeforeUnmount(() => {
           :disabled="isRunning || isLaunching"
           :loading="isLaunching"
           class="tool-detail-action-button border shadow-sm"
-          :style="executeButtonStyle"
           @click="emit('execute')"
         >
           <template #icon>
@@ -441,34 +435,37 @@ onBeforeUnmount(() => {
 <style scoped>
 .tool-detail-transition {
   transition:
-    color var(--tool-detail-transition),
-    background-color var(--tool-detail-transition),
-    border-color var(--tool-detail-transition),
-    box-shadow var(--tool-detail-transition),
-    fill var(--tool-detail-transition),
-    stroke var(--tool-detail-transition);
+    color 160ms var(--ease-out-soft),
+    background-color 160ms var(--ease-out-soft),
+    border-color 160ms var(--ease-out-soft),
+    box-shadow 160ms var(--ease-out-soft),
+    fill 160ms var(--ease-out-soft),
+    stroke 160ms var(--ease-out-soft);
 }
 
 .tool-detail-accent {
-  color: var(--tool-detail-accent);
+  color: v-bind(detailAccent);
 }
 
 .tool-kind-tag {
-  color: var(--tool-detail-accent) !important;
-  background-color: var(--tool-detail-accent-soft-bg) !important;
-  border: 1px solid var(--tool-detail-accent-soft-border) !important;
+  color: v-bind(detailAccent) !important;
+  background-color: v-bind(detailAccentSoftBg) !important;
+  border: 1px solid v-bind(detailAccentSoftBorder) !important;
 }
 
 .tool-detail-action-button {
+  background-color: v-bind(detailAccent);
+  border-color: v-bind(detailAccentSoftBorder);
+  color: v-bind(detailAccentText);
   transition:
-    background-color var(--tool-detail-transition),
-    border-color var(--tool-detail-transition),
-    color var(--tool-detail-transition),
-    box-shadow var(--tool-detail-transition);
+    background-color 160ms var(--ease-out-soft),
+    border-color 160ms var(--ease-out-soft),
+    color 160ms var(--ease-out-soft),
+    box-shadow 160ms var(--ease-out-soft);
 }
 
 .tool-detail-action-button:hover:not(:disabled) {
-  background-color: var(--tool-detail-accent-hover) !important;
-  border-color: var(--tool-detail-accent-soft-strong-border) !important;
+  background-color: v-bind(detailAccentHover) !important;
+  border-color: v-bind(detailAccentSoftStrongBorder) !important;
 }
 </style>

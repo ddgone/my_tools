@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, type CSSProperties } from 'vue'
+import { computed, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -23,7 +23,7 @@ import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
 import { validateCliArgs } from '@/utils/cliArgs'
 import type { ToolPanelMode } from '@/stores/workspace'
-import { getExecutionTheme, makeExecutionThemeVars } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import { getVisibleParams } from '@/utils/toolParams'
 
 const props = defineProps<{
@@ -42,6 +42,10 @@ const message = useMessage()
 const activeTab = computed(() => workspace.activeTab())
 const activeConfig = computed(() => workspace.activeExecutionConfig)
 const executionTheme = computed(() => getExecutionTheme(props.tool?.kind, props.executionTarget))
+const panelAccent = computed(() => executionTheme.value.accent)
+const panelAccentSoftBg = computed(() => executionTheme.value.accentSoftBg)
+const panelAccentSoftBorder = computed(() => executionTheme.value.accentSoftBorder)
+const panelRailActive = computed(() => executionTheme.value.railActive)
 
 type ParamMode = ToolPanelMode
 const activeMode = computed<ParamMode>({
@@ -160,21 +164,9 @@ function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: st
       return [{ key: 'directory', label: '浏览', target: 'directory' }]
   }
 }
-
-
-const panelThemeStyle = computed<CSSProperties>(() => ({
-  ...makeExecutionThemeVars(executionTheme.value, 'parameter-panel'),
-}))
-
-const switchStyle = computed(() => ({
-  '--n-rail-color-active': 'var(--parameter-panel-rail-active)',
-  '--n-button-color': '#f8f8f2',
-}))
-
-const accentTagStyle = computed<CSSProperties>(() => ({
-  color: 'var(--parameter-panel-accent)',
-  backgroundColor: 'var(--parameter-panel-accent-soft-bg)',
-  border: '1px solid var(--parameter-panel-accent-soft-border)',
+const switchThemeOverrides = computed(() => ({
+  railColorActive: executionTheme.value.railActive,
+  buttonColor: '#f8f8f2',
 }))
 
 const tabsKey = computed(() => `${activeTab.value?.tabId ?? 'none'}:${props.executionTarget}`)
@@ -203,7 +195,6 @@ async function copyCli() {
   <div
     v-if="tool"
     class="mt-4 parameter-panel"
-    :style="panelThemeStyle"
   >
     <NTabs
       :key="tabsKey"
@@ -342,7 +333,7 @@ async function copyCli() {
                   <NSwitch
                     v-else-if="param.type === 'boolean'"
                     :value="formBoolValue(param)"
-                    :style="switchStyle"
+                    :theme-overrides="switchThemeOverrides"
                     @update:value="onBoolUpdate(param, $event)"
                   />
 
@@ -394,7 +385,7 @@ async function copyCli() {
             <NTag
               size="tiny"
               :bordered="false"
-              :style="accentTagStyle"
+              class="parameter-panel-accent-tag"
             >
               使用说明
             </NTag>
@@ -491,7 +482,7 @@ async function copyCli() {
             <NTag
               size="tiny"
               :bordered="false"
-              :style="accentTagStyle"
+              class="parameter-panel-accent-tag"
             >
               远程配置
             </NTag>
@@ -566,20 +557,34 @@ async function copyCli() {
 
 .help-trigger:hover,
 .help-trigger:focus-visible {
-  color: var(--parameter-panel-accent);
+  color: v-bind(panelAccent);
   opacity: 1;
 }
 
 .parameter-panel-accent {
-  color: var(--parameter-panel-accent);
+  color: v-bind(panelAccent);
+}
+
+.parameter-panel-accent-tag {
+  color: v-bind(panelAccent) !important;
+  background-color: v-bind(panelAccentSoftBg) !important;
+  border: 1px solid v-bind(panelAccentSoftBorder) !important;
+}
+
+.parameter-panel :deep(.n-switch.n-switch--active .n-switch__rail) {
+  background-color: v-bind(panelRailActive);
+}
+
+.parameter-panel :deep(.n-switch .n-switch__button) {
+  background-color: #f8f8f2;
 }
 
 .parameter-panel :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),
 .parameter-panel :deep(.n-tabs-tab:hover .n-tabs-tab__label) {
-  color: var(--parameter-panel-accent);
+  color: v-bind(panelAccent);
 }
 
 .parameter-panel :deep(.n-tabs-bar) {
-  background-color: var(--parameter-panel-accent) !important;
+  background-color: v-bind(panelAccent) !important;
 }
 </style>
