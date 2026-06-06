@@ -50,6 +50,35 @@ PCD 文件名必须包含 MGRS 百米块格式（如 50QKL416457），脚本会�
   -input .\pcd_data -workers 4
 `,
 	},
+	"python_env_diagnostics.py": {
+		id:       "python_env_diagnostics",
+		name:     "Python 环境诊断与依赖验证",
+		category: "Python 脚本",
+		usage: `[yellow]Python 环境诊断与依赖验证[-]
+
+[cyan]功能说明:[-]
+验证当前 Python 工具是否真的运行在托管虚拟环境中，并输出一份环境诊断文件。
+脚本会导入 numpy 与 requests，执行一段小型数值计算，然后把解释器、依赖版本、
+site-packages、当前参数和计算结果写入指定 JSON 文件，便于验收 Python 环境配置是否生效。
+
+[cyan]参数说明:[-]
+  -output <文件>   必需，输出诊断 JSON 文件路径
+  -count  <数量>   可选，生成计算样本数量，默认 1024
+  -label  <文本>   可选，写入报告中的诊断标签
+
+[cyan]使用示例:[-]
+  -output /tmp/python-diag.json
+  -output /tmp/python-diag.json -count 4096 -label smoke-test
+`,
+	},
+}
+
+func ReadEmbeddedScript(scriptName string) ([]byte, error) {
+	scriptName = strings.TrimSpace(filepath.Base(scriptName))
+	if scriptName == "" {
+		return nil, fmt.Errorf("脚本名不能为空")
+	}
+	return pythonScripts.ReadFile("scripts/" + scriptName)
 }
 
 func init() {

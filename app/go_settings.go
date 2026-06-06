@@ -58,7 +58,7 @@ func (a *App) GetGoToolchainState() (*GoToolchainState, error) {
 func (a *App) SaveGoToolchainConfig(cfg GoToolchainConfig) (*GoToolchainState, error) {
 	normalized := toolchain.Config{
 		SelectedBinary:       strings.TrimSpace(cfg.SelectedBinary),
-		KnownBinaries:        append([]string(nil), cfg.KnownBinaries...),
+		KnownBinaries:        cloneStringSlice(cfg.KnownBinaries),
 		LastInstallDirectory: strings.TrimSpace(cfg.LastInstallDirectory),
 		Disabled:             cfg.Disabled,
 	}
@@ -130,7 +130,7 @@ func convertGoToolchainState(state toolchain.State) GoToolchainState {
 	return GoToolchainState{
 		Config: GoToolchainConfig{
 			SelectedBinary:       state.Config.SelectedBinary,
-			KnownBinaries:        append([]string(nil), state.Config.KnownBinaries...),
+			KnownBinaries:        cloneStringSlice(state.Config.KnownBinaries),
 			LastInstallDirectory: state.Config.LastInstallDirectory,
 			Disabled:             state.Config.Disabled,
 		},

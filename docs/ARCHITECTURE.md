@@ -20,6 +20,7 @@
 - `execution.go`：本地执行、远程执行、事件推送、任务生命周期。
 - `export.go`：单工具导出、最近导出目录、导出结果打开。
 - `go_settings.go`：Go 环境状态、Go SDK 选择、官方 SDK 下载与禁用态桥接 API。
+- `python_settings.go`：Python 环境状态、基础 Python 选择、托管虚拟环境创建/重建、依赖一键安装与禁用态桥接 API。
 - `legacy.go`：旧工具注册闭包向新宿主的桥接。
 
 ### `app/internal/ssh/`
@@ -40,11 +41,13 @@
 
 ### `app/internal/toolchain/`
 
-负责 Go 环境发现、状态计算、官方 SDK 列表拉取、下载安装和显式禁用。
+负责 Go / Python 环境发现、状态计算、依赖状态检查，以及 Go SDK 的下载安装与 Python 托管虚拟环境创建。
 
 - 支持“已配置路径 / 历史已知路径 / PATH / 常见系统路径 / 托管 SDK”多来源检测。
 - 支持 `disabled=true` 的显式关闭态；关闭后不会自动回退到可发现的 Go。
 - 默认把托管 SDK 放在运行时目录下的 `toolchains/`。
+- Python 当前不做托管下载，但已经管理“基础 Python + 托管 venv + 动态依赖扫描”。
+- Python 动态依赖扫描使用内置资源文件 `pythondata/mapping.txt` 与 `pythondata/stdlib.txt`；两者来自 `pipreqs` 数据，并由 Go 宿主通过 `go:embed` 内置到程序中。
 
 ### `app/internal/runtimeenv/`
 
@@ -73,7 +76,7 @@
 - 工具详情与执行：`ToolDetailPanel.vue`、`ParameterPanel.vue`、`ExecutionTerminal.vue`
 - 宿主设置与环境提示：`SettingsModal.vue`、`StatusBar.vue`
 - SSH 表单：`SSHDetailPanel.vue`
-- 状态存储：`src/stores/workspace.ts`、`src/stores/goenv.ts`
+- 状态存储：`src/stores/workspace.ts`、`src/stores/goenv.ts`、`src/stores/pythonenv.ts`
 
 当前没有 `vue-router` 依赖，也不再维护 `HomeView` / `ExecuteView` 的旧结构。
 
@@ -87,6 +90,8 @@
 4. 前端通过 Wails 事件更新标签状态和执行终端。
 
 本地执行不会现场调用 `go build`。对 Go 工具来说，它直接运行编译进宿主的 bridge 闭包，因此不依赖用户额外配置 Go 环境。
+
+对 Python 工具来说，本地执行会先解析当前基础 Python 对应的托管虚拟环境，并检查该工具脚本动态扫描出的第三方依赖是否已经安装；若未就绪，则阻断当前操作并引导用户进入 Python 设置页。
 
 ### 远程执行
 
@@ -102,6 +107,7 @@
 - 运行时配置：`build/runtime/config/` 或安装态用户目录。
 - SSH 连接：由后端存储在运行时配置目录下。
 - Go 环境配置：后端维护在运行时配置目录中的 `app.json`，当前稳定字段包括 `selectedBinary`、`knownBinaries`、`lastInstallDirectory`、`disabled`。
+- Python 环境配置：后端同样维护在运行时配置目录中的 `app.json`，当前稳定字段包括 `selectedBinary`、`knownBinaries`、`disabled`；托管虚拟环境元数据落在运行时目录 `toolchains/python/` 下。
 - 前端偏好：收藏夹、最近使用、参数历史、工具参数快照、导出目标平台、设置页签、固定标签与标签顺序等当前主要在 `localStorage`。
 - 任务日志：事件流为主，日志导出是当前已完成的持久化出口。
 - 单工具导出：最近导出目录由后端配置文件维护；导出模式、是否自动打开目录、工具级导出目标平台由前端偏好维护。
@@ -113,6 +119,7 @@
 - 构建链路对仓库目录和部分默认环境仍有依赖，但 Go SDK 默认落点已统一到运行时目录下的 `toolchains/`。
 - 部分设置项已经暴露到 UI，但仍有历史选项尚未接入实际业务逻辑。
 - Go 环境当前只影响远程执行、Go 导出和构建缓存，不影响 Go 工具的本地执行。
+- Python 环境当前直接影响 Python 工具的本地执行；当前通过托管虚拟环境隔离依赖，但仍不提供托管 Python 下载。
 
 ## 7. 文档维护规则
 
@@ -122,3 +129,4 @@
 - 历史方案、阶段计划、过程复盘不得回流到本文。
 
 如果需要从用户视角理解 Go 环境，而不是从架构视角理解它，直接看 [GO_ENVIRONMENT.md](./GO_ENVIRONMENT.md)。
+如果需要从用户视角理解 Python 环境，而不是从架构视角理解它，直接看 [PYTHON_ENVIRONMENT.md](./PYTHON_ENVIRONMENT.md)。

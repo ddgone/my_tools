@@ -3,9 +3,15 @@
 import {main} from '../models';
 import {ssh} from '../models';
 
+export function CancelActivePythonToolchainTask():Promise<void>;
+
 export function CancelExecution(arg1:string):Promise<void>;
 
+export function CheckPythonToolchainEnvironment():Promise<main.PythonToolchainState>;
+
 export function ClearArtifactBatchTasks():Promise<void>;
+
+export function DeletePythonToolchainEnvironment():Promise<main.PythonToolchainState>;
 
 export function DeleteSSHConnection(arg1:string):Promise<void>;
 
@@ -17,6 +23,10 @@ export function GetCurrentWindowState():Promise<main.WindowState>;
 
 export function GetGoToolchainState():Promise<main.GoToolchainState>;
 
+export function GetPythonToolchainState():Promise<main.PythonToolchainState>;
+
+export function GetPythonToolchainTaskState():Promise<main.PythonToolchainTaskState>;
+
 export function GetSSHConnection(arg1:string):Promise<ssh.Connection>;
 
 export function GetWindowConfig():Promise<main.WindowState>;
@@ -24,6 +34,8 @@ export function GetWindowConfig():Promise<main.WindowState>;
 export function GetWorkbenchBootstrap():Promise<main.WorkbenchBootstrap>;
 
 export function InstallGoToolchain(arg1:main.InstallGoToolchainRequest):Promise<main.GoToolchainState>;
+
+export function InstallPythonDependencies():Promise<main.PythonToolchainState>;
 
 export function IsWindowRectVisible(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
 
@@ -43,7 +55,11 @@ export function OpenSaveFileDialog(arg1:main.FileDialogRequest):Promise<string>;
 
 export function PersistCurrentWindowState():Promise<void>;
 
+export function PreparePythonToolchainEnvironment():Promise<main.PythonToolchainState>;
+
 export function SaveGoToolchainConfig(arg1:main.GoToolchainConfig):Promise<main.GoToolchainState>;
+
+export function SavePythonToolchainConfig(arg1:main.PythonToolchainConfig):Promise<main.PythonToolchainState>;
 
 export function SaveSSHConnection(arg1:ssh.Connection):Promise<ssh.Connection>;
 
@@ -53,7 +69,11 @@ export function SaveWindowState(arg1:main.WindowState):Promise<void>;
 
 export function StartArtifactBatch(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchTask>;
 
+export function StartInstallPythonDependencies():Promise<main.PythonToolchainTaskState>;
+
 export function StartLocalExecution(arg1:main.ExecutionRequest):Promise<main.ExecutionTask>;
+
+export function StartPreparePythonToolchainEnvironment():Promise<main.PythonToolchainTaskState>;
 
 export function StartRemoteExecution(arg1:main.RemoteExecRequest):Promise<main.ExecutionTask>;
 

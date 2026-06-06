@@ -15,6 +15,7 @@ import (
 	"fire-salamander-desktop/internal/runtime"
 	"fire-salamander-desktop/internal/runtimeenv"
 	"fire-salamander-desktop/internal/ssh"
+	"fire-salamander-desktop/internal/toolchain"
 	"my_tools/libs/framework"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -130,9 +131,16 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 		if legacyTool.runPython != nil {
 			pythonEnv := strings.TrimSpace(req.PythonEnv)
 			if pythonEnv == "" {
-				pythonEnv = "python"
+				pythonEnv, execErr = toolchain.ResolvePythonBinaryForTool(req.ToolID)
+				if execErr == nil {
+					a.mu.Lock()
+					task.PythonEnv = pythonEnv
+					a.mu.Unlock()
+				}
 			}
-			execErr = legacyTool.runPython(runCtx, pythonEnv, req.Args, writer)
+			if execErr == nil {
+				execErr = legacyTool.runPython(runCtx, pythonEnv, req.Args, writer)
+			}
 		} else if legacyTool.run != nil {
 			execErr = legacyTool.run(runCtx, req.Args, writer)
 		} else {

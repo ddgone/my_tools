@@ -1,0 +1,41 @@
+id: python_env_diagnostics
+name: Python 环境诊断与依赖验证
+kind: python
+category: Python 脚本 > 环境诊断
+icon: python
+description: 导入 numpy 与 requests，输出当前解释器、虚拟环境与依赖信息，帮助验证 Python 环境配置是否生效。
+docs:
+  summary: 验证当前 Python 工具是否真的运行在托管虚拟环境中，并生成一份诊断 JSON 文件。
+  usage: |
+    导入 numpy 与 requests，执行一段小型数值计算，并把当前 Python 解释器、site-packages、
+    虚拟环境路径、依赖版本和计算结果写入 JSON 文件，帮助验收 Python 环境配置是否生效。
+params:
+  - key: output
+    argKey: output
+    type: path
+    pathMode: file
+    label: 输出文件
+    placeholder: 选择输出 JSON 文件
+    required: true
+    help: 诊断报告输出路径，建议选择一个新的 .json 文件。
+  - key: count
+    argKey: count
+    type: number
+    label: 样本数量
+    default: 1024
+    help: 数值计算的样本数量，用于验证 numpy 是否真的运行在当前环境中。
+  - key: label
+    argKey: label
+    type: text
+    label: 诊断标签
+    placeholder: 可选，例如 smoke-test
+    help: 会写入报告文件，方便区分不同基础 Python 的验证结果。
+execution:
+  local:
+    adapter: python-script
+  remote:
+    strategy: upload-script-and-run
+export:
+  strategy: export-script
+source:
+  entry: tools/python_tools/scripts/python_env_diagnostics.py

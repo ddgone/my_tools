@@ -8,6 +8,8 @@
 - 已接通基础远程执行链路，包含 SSH 连接管理、远端上传、执行和清理。
 - 已接通单工具导出与产物中心，支持批量构建缓存、批量导出、任务历史持久化、任务快照回看，以及与远程执行共享构建缓存。
 - 已接通 Go 环境配置：支持本地 Go 选择、官方 SDK 下载、显式禁用当前 SDK，以及状态栏环境提示。
+- 已接通 Python 环境配置：支持基础 Python 选择、按解释器隔离的托管虚拟环境、可停止的环境/依赖任务、显式禁用当前环境、动态依赖扫描检查与一键安装，以及状态栏环境提示。
+- Python 动态依赖扫描当前使用内置的 `pipreqs` 数据文件 `mapping.txt` 与 `stdlib.txt`，由 Go 宿主统一管理并建议定期更新。
 - 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错和文档真相源漂移。
 
 ## 主要能力
@@ -16,6 +18,7 @@
 - 产物中心：支持工具 × 平台矩阵选择、批量构建缓存、批量导出、缓存命中预估、失败项重试和结果摘要导出。
 - 产物工作流：左侧侧栏提供产物工作台入口与任务历史卡片，右侧支持完整工作台页面和单次任务快照页。
 - Go 工具的本地执行不依赖运行时 Go 环境；Go 环境当前只影响远程执行、Go 导出和构建缓存准备。
+- Python 工具的本地执行依赖宿主管理的托管虚拟环境；当前通过“基础 Python + 托管 venv + 动态依赖扫描”模型接入。
 
 ## 仓库结构
 
@@ -75,6 +78,7 @@ cd app/frontend && npm run typecheck
 - [CONTEXT.md](CONTEXT.md)：领域术语表，只记录项目语言，不记录实现细节。
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：当前产品定位、能力边界和文档索引。
 - [docs/GO_ENVIRONMENT.md](docs/GO_ENVIRONMENT.md)：Go 环境的用户视角说明、影响范围、默认路径、`<无 SDK>` 语义与验收清单。
+- [docs/PYTHON_ENVIRONMENT.md](docs/PYTHON_ENVIRONMENT.md)：Python 环境的用户视角说明、基础 Python、托管虚拟环境、动态依赖扫描、一键安装与 `<无 Python>` 语义。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：当前真实落地架构、模块边界、执行链路和约束。
 - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)：最新开发环境、启动方式、校验命令和入口文件。
 - [docs/adr/0022-host-owned-background-artifact-preparation.md](docs/adr/0022-host-owned-background-artifact-preparation.md)：后台产物准备、缓存复用与产物中心工作区形态。

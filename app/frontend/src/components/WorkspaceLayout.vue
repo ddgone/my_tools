@@ -4,6 +4,7 @@ import gsap from 'gsap'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
+import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useResizable } from '@/composables/useResizable'
 import { ANIM } from '@/utils/animation'
@@ -21,6 +22,7 @@ import { ListSSHConnections } from '../../wailsjs/go/main/App'
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
+const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 
 const activityBarActiveView = ref<ActivityBarView | null>('tools')
@@ -61,7 +63,7 @@ function handleOpenSettings() {
 onMounted(async () => {
   try {
     const [, sshConnections] = await Promise.all([
-      Promise.all([workbench.loadBootstrap(), execution.hydrate(), goEnv.loadState()]),
+      Promise.all([workbench.loadBootstrap(), execution.hydrate(), goEnv.loadState(), pythonEnv.loadState()]),
       ListSSHConnections().catch(() => []),
     ])
     workspace.restorePinnedTabs(workbench.bootstrap?.tools ?? [], sshConnections)

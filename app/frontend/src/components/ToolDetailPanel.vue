@@ -412,18 +412,18 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="tool.kind === 'python'"
+      v-if="tool.kind === 'python' && isRemote"
       class="mt-4 flex items-center gap-x-2"
     >
       <NText
         depth="3"
         class="shrink-0 text-[11px] uppercase tracking-wide"
       >
-        {{ isRemote ? '远程 Python 环境' : '本地 Python 环境' }}
+        远程 Python 命令
       </NText>
       <NInput
         :value="pythonEnvValue"
-        placeholder="python"
+        placeholder="python3"
         size="small"
         class="w-36"
         @update:value="emit('update:python-env', $event)"

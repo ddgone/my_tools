@@ -6,6 +6,7 @@ import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, Bookm
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
+import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useResizable } from '@/composables/useResizable'
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
+const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 const message = useMessage()
 
@@ -278,6 +280,13 @@ function isMissingGoEnvError(detail: string) {
     || detail.includes('指定的 Go 工具链不存在')
 }
 
+function isMissingPythonEnvError(detail: string) {
+  return detail.includes('未检测到可用的基础 Python')
+    || detail.includes('当前 Python 工具环境尚未准备好')
+    || detail.includes('当前 Python 工具环境缺少 pip')
+    || detail.includes('当前 Python 工具依赖未安装')
+}
+
 async function openGoSettings(messageText?: string) {
   workspace.openSettings('go')
   if (messageText) {
@@ -285,6 +294,16 @@ async function openGoSettings(messageText?: string) {
   }
   if (!goEnv.state && !goEnv.loading) {
     await goEnv.loadState()
+  }
+}
+
+async function openPythonSettings(messageText?: string) {
+  workspace.openSettings('python')
+  if (messageText) {
+    message.warning(messageText)
+  }
+  if (!pythonEnv.state && !pythonEnv.loading) {
+    await pythonEnv.loadState()
   }
 }
 
@@ -397,13 +416,17 @@ async function handleExecute() {
       await execution.startLocalExecution({
         toolId: tool.id,
         args: config.rawArgs,
-        pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
+        pythonEnv: tool.kind === 'python' ? undefined : undefined,
       })
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     if (isMissingGoEnvError(detail)) {
       await openGoSettings('当前操作需要 Go 环境，已为你打开设置')
+      return
+    }
+    if (isMissingPythonEnvError(detail)) {
+      await openPythonSettings('当前操作需要 Python 环境，已为你打开设置')
       return
     }
     message.error(detail || '执行失败')

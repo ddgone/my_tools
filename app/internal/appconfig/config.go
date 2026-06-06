@@ -30,6 +30,11 @@ const DefaultAppConfigJSON = `{
     "lastInstallDirectory": "",
     "disabled": false
   },
+  "python": {
+    "selectedBinary": "",
+    "knownBinaries": [],
+    "disabled": false
+  },
   "ui": {
     "theme": "dracula",
     "verboseShortcuts": false

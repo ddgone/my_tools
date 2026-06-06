@@ -25,6 +25,8 @@ type App struct {
 	tasks         map[string]*ExecutionTask
 	artifactTasks map[string]*ArtifactBatchTask
 	cancels       map[string]context.CancelFunc
+	pythonTask    *PythonToolchainTask
+	pythonCancel  context.CancelFunc
 	sshStore      *ssh.Store
 }
 
@@ -100,6 +102,17 @@ const defaultAppConfigJSON = `{
     "lastDirectory": "",
     "goMode": "binary",
     "autoOpenDir": true
+  },
+  "go": {
+    "selectedBinary": "",
+    "knownBinaries": [],
+    "lastInstallDirectory": "",
+    "disabled": false
+  },
+  "python": {
+    "selectedBinary": "",
+    "knownBinaries": [],
+    "disabled": false
   },
   "ui": {
     "theme": "dracula",

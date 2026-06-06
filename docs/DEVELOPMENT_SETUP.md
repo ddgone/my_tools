@@ -89,7 +89,25 @@ cd app/frontend && npm run typecheck
 
 用户视角的说明、默认下载位置和 `<无 SDK>` 语义，统一见 [GO_ENVIRONMENT.md](./GO_ENVIRONMENT.md)。
 
-## 7. 常用入口文件
+## 7. Python 环境配置现状
+
+- 当前桌面宿主已经支持在系统首选项的 Python 页签里：
+  - 选择本地 Python 3 作为基础解释器
+  - 切换已检测到的基础 Python
+  - 创建或重建托管虚拟环境
+  - 选择 `<无 Python>` 禁用当前 Python 环境
+  - 按内置 Python 工具脚本的动态扫描结果一键安装 Python 包
+- 当前暂不支持托管 Python 下载。
+- Python 工具的本地执行会直接依赖这套运行时 Python 环境配置。
+- 当前实现使用“基础 Python + 托管 venv + 动态依赖扫描”模型，依赖安装统一通过托管虚拟环境执行 `python -m pip install ...`。
+- 动态依赖扫描的映射与标准库数据当前维护在 `app/internal/toolchain/pythondata/` 下：
+  - `mapping.txt`：导入名到 pip 包名映射
+  - `stdlib.txt`：标准库模块列表
+- 这两份数据当前来源于 `pipreqs`，建议后续定期同步更新，尤其是在接入新 Python 工具或遇到新的包名映射问题之后。
+
+用户视角的说明、动态依赖口径和 `<无 Python>` 语义，统一见 [PYTHON_ENVIRONMENT.md](./PYTHON_ENVIRONMENT.md)。
+
+## 8. 常用入口文件
 
 ### 宿主入口
 
@@ -119,10 +137,11 @@ cd app/frontend && npm run typecheck
 - `libs/catalog/builtin/service.go`
 - `libs/catalog/builtin/manifests/*.yaml`
 
-## 8. 开发注意事项
+## 9. 开发注意事项
 
 - 不要再引用 `app/desktop/`、`HomeView.vue`、`ExecuteView.vue` 等旧路径或旧页面名。
 - 当前前端是单页工作台，不再使用 Vue Router。
 - 不要把 `go build ./...` 生成的普通可执行文件当成正式桌面产物。
 - 不要把运行时目录下的 `toolchains/` 当成源码工作区的一部分，也不要再用仓库根的 `go vet ./...` 直接扫描整个仓库。
+- Python 环境配置当前已经切到托管虚拟环境；如果后续要引入托管 Python 下载，需要先更新当前文档和用户说明。
 - 新发现的问题先登记到 `docs/ISSUES_AND_REMEDIATION_PLAN.md`，再决定是否进入实现排期。

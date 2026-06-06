@@ -17,7 +17,7 @@ export interface ToolTabState {
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
-export type SettingsTab = 'general' | 'export' | 'go'
+export type SettingsTab = 'general' | 'export' | 'go' | 'python'
 export type GoExportMode = 'binary' | 'source'
 
 export interface ToolExecutionConfig {
@@ -74,7 +74,7 @@ const defaultSettings: UserSettings = {
   recentToolsCount: 5,
   historyRetention: 50,
   logExportDir: 'my_tools_logs',
-  defaultPythonPath: 'python',
+  defaultPythonPath: 'python3',
   confirmExit: false,
   autoWordWrap: true,
   autoExpandAll: false,
@@ -103,7 +103,7 @@ interface PersistedToolState {
 }
 
 function normalizeSettingsTab(value: unknown): SettingsTab {
-  if (value === 'export' || value === 'go') {
+  if (value === 'export' || value === 'go' || value === 'python') {
     return value
   }
   return 'general'

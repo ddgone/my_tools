@@ -296,10 +296,11 @@ func collectCandidatePaths(cfg Config) []candidatePath {
 		if path == "" {
 			return
 		}
-		if _, ok := seen[path]; ok {
+		identity := fileIdentity(path)
+		if _, ok := seen[identity]; ok {
 			return
 		}
-		seen[path] = struct{}{}
+		seen[identity] = struct{}{}
 		result = append(result, candidatePath{path: path, source: source})
 	}
 
@@ -447,7 +448,7 @@ func sameFilePath(left string, right string) bool {
 	if left == "" || right == "" {
 		return false
 	}
-	return left == right
+	return fileIdentity(left) == fileIdentity(right)
 }
 
 func dedupeStrings(values []string) []string {
@@ -458,13 +459,30 @@ func dedupeStrings(values []string) []string {
 		if value == "" {
 			continue
 		}
-		if _, ok := seen[value]; ok {
+		identity := fileIdentity(value)
+		if _, ok := seen[identity]; ok {
 			continue
 		}
-		seen[value] = struct{}{}
+		seen[identity] = struct{}{}
 		result = append(result, value)
 	}
 	return result
+}
+
+func fileIdentity(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" {
+		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	resolved = filepath.Clean(strings.TrimSpace(resolved))
+	if resolved == "" {
+		return path
+	}
+	return resolved
 }
 
 func fetchOfficialReleases() ([]officialRelease, error) {

@@ -83,9 +83,10 @@ export const useGoEnvStore = defineStore('goenv', {
         lastInstallDirectory: '',
         disabled: false,
       }
+      const knownBinaries = current.knownBinaries ?? []
       return this.saveConfig({
         selectedBinary: binaryPath,
-        knownBinaries: Array.from(new Set([binaryPath, ...current.knownBinaries])),
+        knownBinaries: Array.from(new Set([binaryPath, ...knownBinaries])),
         lastInstallDirectory: current.lastInstallDirectory,
         disabled: false,
       })
@@ -97,9 +98,10 @@ export const useGoEnvStore = defineStore('goenv', {
         lastInstallDirectory: '',
         disabled: false,
       }
+      const knownBinaries = current.knownBinaries ?? []
       return this.saveConfig({
         selectedBinary: '',
-        knownBinaries: current.knownBinaries,
+        knownBinaries,
         lastInstallDirectory: current.lastInstallDirectory,
         disabled: true,
       })

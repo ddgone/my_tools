@@ -4,10 +4,12 @@ import { NButton, NIcon, NText } from 'naive-ui'
 import { CheckmarkCircle, TerminalOutline } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
+import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
+const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 
 const activeTaskCount = computed(() => execution.tasks.filter((t) => t.status === 'running').length)
@@ -23,14 +25,45 @@ const goVersionLabel = computed(() => {
   return `Go 已就绪 · ${activeVersion.replace(/^Go(?=\d)/, 'Go ')}`
 })
 
-const pythonVersionLabel = computed(() => 'Python --')
+const pythonVersionLabel = computed(() => {
+  const state = pythonEnv.state
+  const task = pythonEnv.task
+  if (task?.status === 'running') {
+    return task.kind === 'install'
+      ? 'Python 正在安装依赖 · 点击查看'
+      : 'Python 正在创建环境 · 点击查看'
+  }
+  if (!state?.hasUsableBaseBinary) {
+    return 'Python 未配置 · 本地运行受影响'
+  }
+  if (!state.hasUsableBinary) {
+    return 'Python 工具环境未创建 · 点击处理'
+  }
+  if (!state.pipAvailable) {
+    return 'Python 工具环境缺少 pip · 点击处理'
+  }
+  if (!state.dependenciesReady) {
+    return 'Python 依赖未就绪 · 点击安装'
+  }
+  const activeVersion = state.activeVersion?.trim()
+  return `Python 已就绪 · ${activeVersion || 'Python'}`
+})
 const goReady = computed(() => goEnv.state?.hasUsableBinary === true)
+const pythonReady = computed(() =>
+  pythonEnv.state?.hasUsableBinary === true
+  && pythonEnv.state?.pipAvailable === true
+  && pythonEnv.state?.dependenciesReady === true,
+)
 const goTagClass = computed(() =>
   goReady.value
     ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
     : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
 )
-const pythonTagClass = 'border-white/10 bg-white/5 text-white/45'
+const pythonTagClass = computed(() =>
+  pythonReady.value
+    ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+    : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
+)
 const goTooltip = computed(() => {
   if (!goReady.value) {
     return '未配置 Go 环境。\n本地运行不受影响；远程执行、导出和构建缓存需要 Go 环境。\n点击前往设置。'
@@ -41,7 +74,43 @@ const goTooltip = computed(() => {
     ? `当前使用 ${version}。\n本地运行不受影响；远程执行、导出和构建缓存已就绪。\n${binary}`
     : `当前使用 ${version}。`
 })
+const pythonTooltip = computed(() => {
+  const state = pythonEnv.state
+  const task = pythonEnv.task
+  if (task?.status === 'running') {
+    const stepLabel = task.totalSteps > 0 ? `\n步骤 ${task.step}/${task.totalSteps}` : ''
+    const currentItem = task.currentItem ? `\n当前项：${task.currentItem}` : ''
+    return `${task.message || '正在处理 Python 环境任务'}${stepLabel}${currentItem}\n点击前往设置。`
+  }
+  if (!state?.hasUsableBaseBinary) {
+    return '未配置基础 Python。\n请选择一个本地 Python 3，程序会自动创建托管虚拟环境。\n点击前往设置。'
+  }
+  if (!state.hasUsableBinary) {
+    const baseVersion = state.activeBaseVersion?.trim() || 'Python'
+    const baseBinary = state.activeBaseBinary?.trim()
+    return baseBinary
+      ? `当前基础解释器是 ${baseVersion}。\n托管工具环境尚未创建或需要重建。\n点击前往设置。\n${baseBinary}`
+      : `当前基础解释器是 ${baseVersion}。\n托管工具环境尚未创建或需要重建。`
+  }
+  const version = state.activeVersion?.trim() || 'Python'
+  const binary = state.activeBinary?.trim()
+  if (!state.pipAvailable) {
+    return binary
+      ? `当前工具环境使用 ${version}。\n未检测到 pip，建议重建工具环境。\n${binary}`
+      : `当前工具环境使用 ${version}。\n未检测到 pip，建议重建工具环境。`
+  }
+  if (!state.dependenciesReady) {
+    const missing = state.missingPackages.length > 0 ? state.missingPackages.join('、') : '存在未安装依赖'
+    return binary
+      ? `当前工具环境使用 ${version}。\n还有依赖未安装：${missing}。\n点击前往设置并一键安装。\n${binary}`
+      : `当前工具环境使用 ${version}。\n还有依赖未安装：${missing}。`
+  }
+  return binary
+    ? `当前基础解释器：${state.activeBaseVersion || 'Python'}。\n当前工具环境使用 ${version}。\npip 与动态扫描依赖已就绪。\n${binary}`
+    : `当前工具环境使用 ${version}。`
+})
 const tooltipShow = ref(false)
+const tooltipText = ref('')
 const tooltipRef = ref<HTMLElement | null>(null)
 const tooltipX = ref(0)
 const tooltipY = ref(0)
@@ -79,11 +148,16 @@ function openGoSettings() {
   workspace.openSettings('go')
 }
 
-function showGoTooltip(event: MouseEvent) {
+function openPythonSettings() {
+  workspace.openSettings('python')
+}
+
+function showTooltip(event: MouseEvent, text: string) {
   const target = event.currentTarget as HTMLElement | null
   if (!target) {
     return
   }
+  tooltipText.value = text
   if (tooltipHideTimer) {
     window.clearTimeout(tooltipHideTimer)
     tooltipHideTimer = null
@@ -103,7 +177,7 @@ function showGoTooltip(event: MouseEvent) {
   }, 180)
 }
 
-function hideGoTooltip() {
+function hideTooltip() {
   if (tooltipShowTimer) {
     window.clearTimeout(tooltipShowTimer)
     tooltipShowTimer = null
@@ -158,18 +232,22 @@ function hideGoTooltip() {
         type="button"
         class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[15.5rem] text-left"
         :class="goTagClass"
-        @mouseenter="showGoTooltip"
-        @mouseleave="hideGoTooltip"
+        @mouseenter="showTooltip($event, goTooltip)"
+        @mouseleave="hideTooltip"
         @click="openGoSettings"
       >
         {{ goVersionLabel }}
       </button>
-      <div
-        class="rounded-md border px-2 py-0.5 text-[10px]"
+      <button
+        type="button"
+        class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[17rem] text-left"
         :class="pythonTagClass"
+        @mouseenter="showTooltip($event, pythonTooltip)"
+        @mouseleave="hideTooltip"
+        @click="openPythonSettings"
       >
         {{ pythonVersionLabel }}
-      </div>
+      </button>
       <NText
         depth="3"
         class="text-[10px]"
@@ -181,11 +259,11 @@ function hideGoTooltip() {
       <div
         v-if="tooltipShow"
         ref="tooltipRef"
-        class="workbench-tooltip pointer-events-none fixed z-[100] -translate-x-1/2 -translate-y-full px-2.5 py-1.5 text-xs whitespace-pre-line break-all max-w-[min(28rem,calc(100vw-24px))]"
+        class="workbench-tooltip pointer-events-none fixed z-[100] -translate-x-1/2 -translate-y-full px-2.5 py-1.5 text-xs whitespace-pre-line break-all w-[min(22rem,calc(100vw-24px))]"
         :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
       >
         <div class="workbench-tooltip-arrow absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45" />
-        {{ goTooltip }}
+        {{ tooltipText }}
       </div>
     </Teleport>
   </footer>

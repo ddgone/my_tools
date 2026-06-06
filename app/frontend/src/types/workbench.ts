@@ -243,3 +243,74 @@ export interface GoOfficialRelease {
   version: string
   stable: boolean
 }
+
+export interface PythonToolchainConfig {
+  selectedBinary: string
+  knownBinaries: string[]
+  disabled: boolean
+}
+
+export interface PythonToolchainCandidate {
+  path: string
+  version: string
+  source: string
+  label: string
+  detail: string
+  error?: string
+  valid: boolean
+  selected: boolean
+  active: boolean
+}
+
+export interface PythonDependencyStatus {
+  packageName: string
+  moduleName: string
+  installed: boolean
+  version?: string
+  error?: string
+  requiredBy: string[]
+}
+
+export interface PythonToolchainState {
+  config: PythonToolchainConfig
+  candidates: PythonToolchainCandidate[]
+  hasUsableBaseBinary: boolean
+  activeBaseBinary: string
+  activeBaseVersion: string
+  activeBaseSource: string
+  hasUsableBinary: boolean
+  activeBinary: string
+  activeVersion: string
+  activeSource: string
+  pipAvailable: boolean
+  dependenciesReady: boolean
+  missingPackages: string[]
+  statusMessage: string
+  dependencies: PythonDependencyStatus[]
+  dependencyToolCount: number
+  dependencyTotalCount: number
+  managedEnvDirectory: string
+  needsRebuild: boolean
+  managedBaseBinary: string
+  managedBaseVersion: string
+}
+
+export interface PythonToolchainTaskState {
+  kind: string
+  status: string
+  message: string
+  detail?: string
+  currentItem?: string
+  progressPercent: number
+  step: number
+  totalSteps: number
+  baseBinary?: string
+  environmentDirectory?: string
+  error?: string
+  updatedAt: number
+}
+
+export interface PythonEnvironmentCheckResult {
+  ok: boolean
+  message: string
+}

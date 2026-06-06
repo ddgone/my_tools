@@ -411,6 +411,176 @@ export namespace main {
 	        this.directory = source["directory"];
 	    }
 	}
+	export class PythonDependencyStatus {
+	    packageName: string;
+	    moduleName: string;
+	    installed: boolean;
+	    version?: string;
+	    error?: string;
+	    requiredBy: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PythonDependencyStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.packageName = source["packageName"];
+	        this.moduleName = source["moduleName"];
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.error = source["error"];
+	        this.requiredBy = source["requiredBy"];
+	    }
+	}
+	export class PythonToolchainCandidate {
+	    path: string;
+	    version: string;
+	    source: string;
+	    label: string;
+	    detail: string;
+	    error?: string;
+	    valid: boolean;
+	    selected: boolean;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PythonToolchainCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.source = source["source"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.error = source["error"];
+	        this.valid = source["valid"];
+	        this.selected = source["selected"];
+	        this.active = source["active"];
+	    }
+	}
+	export class PythonToolchainConfig {
+	    selectedBinary: string;
+	    knownBinaries: string[];
+	    disabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PythonToolchainConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selectedBinary = source["selectedBinary"];
+	        this.knownBinaries = source["knownBinaries"];
+	        this.disabled = source["disabled"];
+	    }
+	}
+	export class PythonToolchainState {
+	    config: PythonToolchainConfig;
+	    candidates: PythonToolchainCandidate[];
+	    hasUsableBaseBinary: boolean;
+	    activeBaseBinary: string;
+	    activeBaseVersion: string;
+	    activeBaseSource: string;
+	    hasUsableBinary: boolean;
+	    activeBinary: string;
+	    activeVersion: string;
+	    activeSource: string;
+	    pipAvailable: boolean;
+	    dependenciesReady: boolean;
+	    missingPackages: string[];
+	    statusMessage: string;
+	    dependencies: PythonDependencyStatus[];
+	    dependencyToolCount: number;
+	    dependencyTotalCount: number;
+	    managedEnvDirectory: string;
+	    needsRebuild: boolean;
+	    managedBaseBinary: string;
+	    managedBaseVersion: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PythonToolchainState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.config = this.convertValues(source["config"], PythonToolchainConfig);
+	        this.candidates = this.convertValues(source["candidates"], PythonToolchainCandidate);
+	        this.hasUsableBaseBinary = source["hasUsableBaseBinary"];
+	        this.activeBaseBinary = source["activeBaseBinary"];
+	        this.activeBaseVersion = source["activeBaseVersion"];
+	        this.activeBaseSource = source["activeBaseSource"];
+	        this.hasUsableBinary = source["hasUsableBinary"];
+	        this.activeBinary = source["activeBinary"];
+	        this.activeVersion = source["activeVersion"];
+	        this.activeSource = source["activeSource"];
+	        this.pipAvailable = source["pipAvailable"];
+	        this.dependenciesReady = source["dependenciesReady"];
+	        this.missingPackages = source["missingPackages"];
+	        this.statusMessage = source["statusMessage"];
+	        this.dependencies = this.convertValues(source["dependencies"], PythonDependencyStatus);
+	        this.dependencyToolCount = source["dependencyToolCount"];
+	        this.dependencyTotalCount = source["dependencyTotalCount"];
+	        this.managedEnvDirectory = source["managedEnvDirectory"];
+	        this.needsRebuild = source["needsRebuild"];
+	        this.managedBaseBinary = source["managedBaseBinary"];
+	        this.managedBaseVersion = source["managedBaseVersion"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PythonToolchainTaskState {
+	    kind: string;
+	    status: string;
+	    message: string;
+	    detail?: string;
+	    currentItem?: string;
+	    progressPercent: number;
+	    step: number;
+	    totalSteps: number;
+	    baseBinary?: string;
+	    environmentDirectory?: string;
+	    error?: string;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PythonToolchainTaskState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.detail = source["detail"];
+	        this.currentItem = source["currentItem"];
+	        this.progressPercent = source["progressPercent"];
+	        this.step = source["step"];
+	        this.totalSteps = source["totalSteps"];
+	        this.baseBinary = source["baseBinary"];
+	        this.environmentDirectory = source["environmentDirectory"];
+	        this.error = source["error"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class RemoteExecRequest {
 	    toolId: string;
 	    connId: string;
