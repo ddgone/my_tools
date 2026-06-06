@@ -63,7 +63,7 @@ const filteredGoTools = computed(() => goTools.value.filter((tool) => matchesToo
 const filteredPythonTools = computed(() => pythonTools.value.filter((tool) => matchesToolFilter(tool)))
 const estimatedCachedCount = computed(() => artifactCenter.estimate?.cachedCount ?? 0)
 const estimatedBuildCount = computed(() => artifactCenter.estimate?.buildCount ?? 0)
-let estimateTimer: ReturnType<typeof window.setTimeout> | null = null
+let estimateTimer: number | null = null
 
 onMounted(() => {
   artifactCenter.ensureSubscriptions()
@@ -473,7 +473,7 @@ function openContainingDirectory(path?: string) {
                 size="small"
               />
             </label>
-            <label class="space-y-1">
+            <div class="space-y-1">
               <span class="text-xs text-slate-400">导出根目录</span>
               <div class="flex gap-2">
                 <NInput
@@ -492,7 +492,7 @@ function openContainingDirectory(path?: string) {
                   </template>
                 </NButton>
               </div>
-            </label>
+            </div>
           </div>
 
           <div class="grid gap-2 text-sm">

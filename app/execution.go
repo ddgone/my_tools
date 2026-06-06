@@ -16,8 +16,9 @@ import (
 	"fire-salamander-desktop/internal/runtime"
 	"fire-salamander-desktop/internal/runtimeenv"
 	"fire-salamander-desktop/internal/ssh"
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"my_tools/libs/framework"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type ExecutionRequest struct {

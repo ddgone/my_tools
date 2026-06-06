@@ -11,19 +11,19 @@ export function useTruncationTooltip(options: { placement?: TooltipPlacement; de
   const tooltipShow = ref(false)
   const arrowPlacement = placement
 
-  let showTimer: ReturnType<typeof setTimeout> | null = null
-  let hideTimer: ReturnType<typeof setTimeout> | null = null
+  let showTimer: number | null = null
+  let hideTimer: number | null = null
 
   function onEnter(e: MouseEvent, fullText: string) {
     const el = e.currentTarget as HTMLElement
     if (el.scrollWidth <= el.clientWidth) return
 
     if (showTimer) {
-      clearTimeout(showTimer)
+      window.clearTimeout(showTimer)
       showTimer = null
     }
     if (hideTimer) {
-      clearTimeout(hideTimer)
+      window.clearTimeout(hideTimer)
       hideTimer = null
     }
     tooltipShow.value = false
@@ -39,17 +39,17 @@ export function useTruncationTooltip(options: { placement?: TooltipPlacement; de
       tooltipY.value = rect.bottom + 4
     }
 
-    showTimer = setTimeout(() => {
+    showTimer = window.setTimeout(() => {
       tooltipShow.value = true
     }, delay)
   }
 
   function onLeave() {
     if (showTimer) {
-      clearTimeout(showTimer)
+      window.clearTimeout(showTimer)
       showTimer = null
     }
-    hideTimer = setTimeout(() => {
+    hideTimer = window.setTimeout(() => {
       tooltipShow.value = false
     }, 100)
   }

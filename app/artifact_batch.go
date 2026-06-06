@@ -15,6 +15,7 @@ import (
 
 	"fire-salamander-desktop/internal/builder"
 	"fire-salamander-desktop/internal/runtimeenv"
+
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

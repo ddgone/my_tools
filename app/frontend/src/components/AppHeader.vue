@@ -34,9 +34,9 @@ const appTitle = computed(() => workbench.bootstrap?.appTitle ?? '火蜥蜴工�
 const brandTitle = computed(() => appTitle.value.replace(/\s+Desktop$/, ''))
 
 let trackingEnabled = false
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let startupTimer: ReturnType<typeof setTimeout> | null = null
+let saveTimer: number | null = null
+let pollTimer: number | null = null
+let startupTimer: number | null = null
 let lastObservedKey = ''
 let lastPersistedKey = ''
 
@@ -88,8 +88,8 @@ async function persistWindowStateNow() {
 
 function scheduleSaveWindowState() {
   if (!trackingEnabled) return
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
+  if (saveTimer) window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
     saveTimer = null
     void persistWindowStateNow()
   }, SAVE_DEBOUNCE_MS)
@@ -157,9 +157,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
-  if (saveTimer) clearTimeout(saveTimer)
-  if (pollTimer) clearInterval(pollTimer)
-  if (startupTimer) clearTimeout(startupTimer)
+  if (saveTimer) window.clearTimeout(saveTimer)
+  if (pollTimer) window.clearInterval(pollTimer)
+  if (startupTimer) window.clearTimeout(startupTimer)
 })
 </script>
 
@@ -233,7 +233,6 @@ onUnmounted(() => {
 
       <template v-if="isWindows">
         <button
-          v-press
           class="wails-no-drag ui-interactive ml-2 flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
           type="button"
           aria-label="最小化"
@@ -245,7 +244,6 @@ onUnmounted(() => {
           />
         </button>
         <button
-          v-press
           class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
           type="button"
           :aria-label="isMaximised ? '还原窗口' : '最大化窗口'"
@@ -257,7 +255,6 @@ onUnmounted(() => {
           />
         </button>
         <button
-          v-press
           class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-red-500/90 hover:text-white"
           type="button"
           aria-label="关闭窗口"
