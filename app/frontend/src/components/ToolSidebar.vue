@@ -36,6 +36,7 @@ import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../.
 import type { ArtifactBatchTask, SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
+import BuiltinSidebarPanel from './BuiltinSidebarPanel.vue'
 import { ANIM } from '@/utils/animation'
 import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
@@ -723,6 +724,13 @@ defineExpose({
                 @update:expanded-keys="handleExpandKeys"
               />
             </div>
+          </div>
+
+          <div
+            v-else-if="activeView === 'builtin'"
+            key="builtin"
+          >
+            <BuiltinSidebarPanel />
           </div>
 
           <div

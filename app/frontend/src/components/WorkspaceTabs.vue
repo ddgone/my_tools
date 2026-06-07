@@ -8,6 +8,7 @@ import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { getBuiltinToolById, getBuiltinToolIcon } from '@/builtin/registry'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
@@ -17,6 +18,7 @@ import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
 import SSHDetailPanel from './SSHDetailPanel.vue'
+import BuiltinToolPanel from './BuiltinToolPanel.vue'
 import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
@@ -45,7 +47,7 @@ const contentRef = ref<HTMLElement | null>(null)
 const tabBarRef = ref<HTMLElement | null>(null)
 let disposeExportProgress: (() => void) | null = null
 type UnifiedTabItem = {
-  type: 'tool' | 'ssh' | 'artifact'
+  type: 'tool' | 'builtin' | 'ssh' | 'artifact'
   key: string
   label: string
   openedAt: number
@@ -272,6 +274,10 @@ watch(
 
 function toolById(id: string) {
   return workbench.bootstrap?.tools.find((t) => t.id === id) ?? null
+}
+
+function builtinToolById(id: string) {
+  return getBuiltinToolById(id) ?? null
 }
 
 function isMissingGoEnvError(detail: string) {
@@ -586,14 +592,36 @@ function toolNameStyleForTool(id: string): CSSProperties {
   }
 }
 
+function builtinTagStyleForTool(id: string): CSSProperties {
+  const tool = builtinToolById(id)
+  return {
+    color: tool?.accent ?? '#8be9fd',
+    backgroundColor: `${tool?.accent ?? '#8be9fd'}14`,
+    border: `1px solid ${(tool?.accent ?? '#8be9fd')}30`,
+  }
+}
+
+function builtinNameStyleForTool(id: string): CSSProperties {
+  return {
+    color: builtinToolById(id)?.accent ?? '#8be9fd',
+  }
+}
+
 function isUnifiedTabActive(item: { type: string; arrayIndex: number }) {
   return (item.type === 'tool' && workspace.activeTabType === 'tool' && item.arrayIndex === workspace.activeTabIndex)
+    || (item.type === 'builtin' && workspace.activeTabType === 'builtin' && item.arrayIndex === workspace.activeBuiltinTabIndex)
     || (item.type === 'ssh' && workspace.activeTabType === 'ssh' && item.arrayIndex === workspace.activeSSHTabIndex)
     || (item.type === 'artifact' && workspace.activeTabType === 'artifact' && item.arrayIndex === workspace.activeArtifactTabIndex)
 }
 
 function unifiedTabDisplayName(item: UnifiedTabItem) {
-  return item.type === 'tool' ? (toolById(item.label)?.name ?? item.label) : item.label
+  if (item.type === 'tool') {
+    return toolById(item.label)?.name ?? item.label
+  }
+  if (item.type === 'builtin') {
+    return builtinToolById(item.label)?.name ?? item.label
+  }
+  return item.label
 }
 
 function handleTabLabelMouseEnter(event: MouseEvent, item: UnifiedTabItem) {
@@ -1042,6 +1070,22 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             </template>
             {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
           </NTag>
+          <NTag
+            v-if="item.type === 'builtin'"
+            :bordered="false"
+            size="tiny"
+            class="shrink-0"
+            :style="builtinTagStyleForTool(item.label)"
+          >
+            <template #icon>
+              <NIcon
+                :component="getBuiltinToolIcon(item.label)"
+                size="10"
+                :color="builtinToolById(item.label)?.accent"
+              />
+            </template>
+            内置
+          </NTag>
           <NIcon
             v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
             :component="Star"
@@ -1062,7 +1106,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           />
           <span
             class="min-w-0 truncate text-xs"
-            :style="item.type === 'tool' ? toolNameStyleForTool(item.label) : undefined"
+            :style="item.type === 'tool' ? toolNameStyleForTool(item.label) : item.type === 'builtin' ? builtinNameStyleForTool(item.label) : undefined"
             :data-fullname="unifiedTabDisplayName(item)"
             @mouseenter="handleTabLabelMouseEnter($event, item)"
             @mouseleave="onTooltipLeave"
@@ -1154,6 +1198,10 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         @saved-one="handleSSHSavedOne"
         @deleted="handleSSHDeleted"
       />
+    </template>
+
+    <template v-else-if="workspace.activeTabType === 'builtin' && workspace.activeBuiltinTab">
+      <BuiltinToolPanel :builtin-tool-id="workspace.activeBuiltinTab.builtinToolId" />
     </template>
 
     <template v-else-if="workspace.activeTabType === 'artifact' && workspace.activeArtifactTab">

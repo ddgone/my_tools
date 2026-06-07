@@ -6,6 +6,7 @@ import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { builtinTools } from '@/builtin/registry'
 import { useResizable } from '@/composables/useResizable'
 import { ANIM } from '@/utils/animation'
 import type { SSHConnection } from '@/types/workbench'
@@ -66,7 +67,7 @@ onMounted(async () => {
       Promise.all([workbench.loadBootstrap(), execution.hydrate(), goEnv.loadState(), pythonEnv.loadState()]),
       ListSSHConnections().catch(() => []),
     ])
-    workspace.restorePinnedTabs(workbench.bootstrap?.tools ?? [], sshConnections)
+    workspace.restorePinnedTabs(workbench.bootstrap?.tools ?? [], sshConnections, builtinTools)
   } catch {
     // 各个 store 内部已有错误状态记录，此处仅防止未处理拒绝
   }

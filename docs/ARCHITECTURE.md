@@ -8,6 +8,7 @@
 - 前端：Vue 3 + TypeScript + Pinia + Naive UI 的单页工作台。
 - 后端：Go 宿主编排层，负责 bootstrap、执行、SSH、窗口状态和运行时目录。
 - 工具实现：Go 工具与 Python 脚本继续复用既有资产，通过统一工具规格和桥接层接入。
+- 工作区内置工具：由前端本地页面提供的轻量工具箱能力，独立于 Go/Python 工具执行链路。
 
 ## 2. 模块边界
 
@@ -74,11 +75,20 @@
 - 左侧导航：`ActivityBar.vue`、`ToolSidebar.vue`
 - 主工作区：`WorkspaceTabs.vue`
 - 工具详情与执行：`ToolDetailPanel.vue`、`ParameterPanel.vue`、`ExecutionTerminal.vue`
+- 工作区内置工具：`src/builtin/registry.ts`、`BuiltinSidebarPanel.vue`、`BuiltinToolPanel.vue`、`src/components/builtin/*.vue`
 - 宿主设置与环境提示：`SettingsModal.vue`、`StatusBar.vue`
 - SSH 表单：`SSHDetailPanel.vue`
 - 状态存储：`src/stores/workspace.ts`、`src/stores/goenv.ts`、`src/stores/pythonenv.ts`
 
 当前没有 `vue-router` 依赖，也不再维护 `HomeView` / `ExecuteView` 的旧结构。
+
+### 工作区内置工具
+
+- 入口位于活动栏的“内置工具”按钮，经 `BuiltinSidebarPanel.vue` 以搜索 + 卡片形式展示。
+- 打开后在 `WorkspaceTabs.vue` 中以独立标签类型渲染，不复用普通工具的参数区、执行终端、远程执行或导出入口。
+- 当前实现全部位于前端本地页面，状态由浏览器内存和现有工作区标签体系管理。
+- 这条链路不消费 `toolspec.ToolManifest`，也不进入 `app/execution.go`、`app/export.go` 或 `app/internal/builder/`。
+- 当前已落地的工具包括时间处理、JSON 工具、Base64 工具、URL 工具、Hash 摘要、JWT 查看。
 
 ## 4. 执行链路
 
@@ -109,6 +119,7 @@
 - Go 环境配置：后端维护在运行时配置目录中的 `app.json`，当前稳定字段包括 `selectedBinary`、`knownBinaries`、`lastInstallDirectory`、`disabled`。
 - Python 环境配置：后端同样维护在运行时配置目录中的 `app.json`，当前稳定字段包括 `selectedBinary`、`knownBinaries`、`disabled`；托管虚拟环境元数据落在运行时目录 `toolchains/python/` 下。
 - 前端偏好：收藏夹、最近使用、参数历史、工具参数快照、导出目标平台、设置页签、固定标签与标签顺序等当前主要在 `localStorage`。
+- 工作区内置工具：当前不做独立持久化数据存储，但可通过现有固定标签机制恢复其页签入口。
 - 任务日志：事件流为主，日志导出是当前已完成的持久化出口。
 - 单工具导出：最近导出目录由后端配置文件维护；导出模式、是否自动打开目录、工具级导出目标平台由前端偏好维护。
 
@@ -120,6 +131,7 @@
 - 部分设置项已经暴露到 UI，但仍有历史选项尚未接入实际业务逻辑。
 - Go 环境当前只影响远程执行、Go 导出和构建缓存，不影响 Go 工具的本地执行。
 - Python 环境当前直接影响 Python 工具的本地执行；当前通过托管虚拟环境隔离依赖，但仍不提供托管 Python 下载。
+- 工作区内置工具当前运行在前端本地，适合即时转换、编解码、解析和校验类能力，不适合需要远端环境、长任务或导出产物的工具。
 
 ## 7. 文档维护规则
 
@@ -130,3 +142,4 @@
 
 如果需要从用户视角理解 Go 环境，而不是从架构视角理解它，直接看 [GO_ENVIRONMENT.md](./GO_ENVIRONMENT.md)。
 如果需要从用户视角理解 Python 环境，而不是从架构视角理解它，直接看 [PYTHON_ENVIRONMENT.md](./PYTHON_ENVIRONMENT.md)。
+如果需要从用户和实现视角理解工作区内置工具，直接看 [WORKSPACE_BUILTINS.md](./WORKSPACE_BUILTINS.md)。

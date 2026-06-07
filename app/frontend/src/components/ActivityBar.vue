@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { NButton, NIcon, NTooltip } from 'naive-ui'
-import { Apps, ServerOutline, Star, TimeOutline, List, CloudUpload, Settings } from '@vicons/ionicons5'
+import { Apps, ConstructOutline, ServerOutline, Star, TimeOutline, List, CloudUpload, Settings } from '@vicons/ionicons5'
 
-export type ActivityBarView = 'tools' | 'ssh' | 'favorites' | 'recent' | 'artifact'
+export type ActivityBarView = 'tools' | 'builtin' | 'ssh' | 'favorites' | 'recent' | 'artifact'
 
 const props = defineProps<{
   activeView: ActivityBarView | null
@@ -27,6 +27,7 @@ function openSettings() {
 
 const topItems: { key: ActivityBarView | 'tasks'; icon: typeof Apps; label: string }[] = [
   { key: 'tools', icon: Apps, label: '工具浏览器' },
+  { key: 'builtin', icon: ConstructOutline, label: '内置工具' },
   { key: 'ssh', icon: ServerOutline, label: 'SSH 连接管理' },
   { key: 'favorites', icon: Star, label: '收藏夹' },
   { key: 'recent', icon: TimeOutline, label: '最近使用' },

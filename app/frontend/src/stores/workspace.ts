@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
+import type { BuiltinToolDefinition, BuiltinToolTabState } from '@/types/builtin'
 import { getVisibleParams, shouldEmitParam } from '@/utils/toolParams'
 
 export interface ToolTabState {
@@ -351,6 +352,14 @@ export interface ArtifactCenterTabState {
   openedAt: number
 }
 
+function createBuiltinTabState(tool: BuiltinToolDefinition): BuiltinToolTabState {
+  return {
+    tabId: `builtin_${tool.id}`,
+    builtinToolId: tool.id,
+    openedAt: Date.now(),
+  }
+}
+
 function formatNewSSHLabel(savedCount: number): string {
   return savedCount <= 0 ? '新建连接' : `新建连接 ${savedCount + 1}`
 }
@@ -358,6 +367,8 @@ function formatNewSSHLabel(savedCount: number): string {
 export const useWorkspaceStore = defineStore('workspace', () => {
   const openTabs = ref<ToolTabState[]>([])
   const activeTabIndex = ref(-1)
+  const builtinTabs = ref<BuiltinToolTabState[]>([])
+  const activeBuiltinTabIndex = ref(-1)
   const sshTabs = ref<SSHTabState[]>([])
   const activeSSHTabIndex = ref(-1)
   const artifactTabs = ref<ArtifactCenterTabState[]>([])
@@ -398,6 +409,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   const activeTabType = computed(() => {
     if (activeArtifactTabIndex.value >= 0) return 'artifact'
+    if (activeBuiltinTabIndex.value >= 0) return 'builtin'
     if (activeSSHTabIndex.value >= 0) return 'ssh'
     if (activeTabIndex.value >= 0) return 'tool'
     return 'none'
@@ -422,6 +434,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeSSHTabIndex.value >= 0 ? sshTabs.value[activeSSHTabIndex.value] : undefined,
   )
 
+  const activeBuiltinTab = computed(() =>
+    activeBuiltinTabIndex.value >= 0 ? builtinTabs.value[activeBuiltinTabIndex.value] : undefined,
+  )
+
   const activeArtifactTab = computed(() =>
     activeArtifactTabIndex.value >= 0 ? artifactTabs.value[activeArtifactTabIndex.value] : undefined,
   )
@@ -429,7 +445,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const activeTab = () => (activeTabIndex.value >= 0 ? openTabs.value[activeTabIndex.value] : undefined)
 
   interface UnifiedTabItem {
-    type: 'tool' | 'ssh' | 'artifact'
+    type: 'tool' | 'builtin' | 'ssh' | 'artifact'
     key: string
     label: string
     openedAt: number
@@ -441,6 +457,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (key === 'artifact:artifact_center') {
       return true
     }
+    if (key.startsWith('builtin:builtin_')) {
+      return true
+    }
     if (key.startsWith('tool:tool_')) {
       return true
     }
@@ -450,6 +469,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function buildCurrentTabKeys(): string[] {
     return [
       ...artifactTabs.value.map((tab) => `artifact:${tab.tabId}`),
+      ...builtinTabs.value.map((tab) => `builtin:${tab.tabId}`),
       ...openTabs.value.map((tab) => `tool:${tab.tabId}`),
       ...sshTabs.value.map((tab) => `ssh:${tab.tabId}`),
     ]
@@ -476,7 +496,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  watch([artifactTabs, openTabs, sshTabs], () => {
+  watch([artifactTabs, builtinTabs, openTabs, sshTabs], () => {
     reconcileTabLayout()
   }, { deep: true, immediate: true })
 
@@ -491,6 +511,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         openedAt: tab.openedAt,
         arrayIndex: i,
         pinned: pinnedKeySet.has(`artifact:${tab.tabId}`),
+      })),
+      ...builtinTabs.value.map((tab, i) => ({
+        type: 'builtin' as const,
+        key: `builtin:${tab.tabId}`,
+        label: tab.builtinToolId,
+        openedAt: tab.openedAt,
+        arrayIndex: i,
+        pinned: pinnedKeySet.has(`builtin:${tab.tabId}`),
       })),
       ...openTabs.value.map((t, i) => ({
         type: 'tool' as const,
@@ -602,14 +630,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (item.type === 'tool') {
       activeTabIndex.value = item.arrayIndex
       activeSSHTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
+    } else if (item.type === 'builtin') {
+      activeBuiltinTabIndex.value = item.arrayIndex
+      activeTabIndex.value = -1
+      activeSSHTabIndex.value = -1
       activeArtifactTabIndex.value = -1
     } else if (item.type === 'ssh') {
       activeSSHTabIndex.value = item.arrayIndex
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeArtifactTabIndex.value = -1
     } else {
       activeArtifactTabIndex.value = item.arrayIndex
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeSSHTabIndex.value = -1
     }
   }
@@ -625,6 +661,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       } else if (item.arrayIndex < activeTabIndex.value) {
         activeTabIndex.value--
+      }
+    } else if (item.type === 'builtin') {
+      builtinTabs.value.splice(item.arrayIndex, 1)
+      if (item.arrayIndex === activeBuiltinTabIndex.value) {
+        if (builtinTabs.value.length === 0) {
+          activeBuiltinTabIndex.value = -1
+        } else if (item.arrayIndex >= builtinTabs.value.length) {
+          activeBuiltinTabIndex.value = builtinTabs.value.length - 1
+        }
+      } else if (item.arrayIndex < activeBuiltinTabIndex.value) {
+        activeBuiltinTabIndex.value--
       }
     } else if (item.type === 'ssh') {
       sshTabs.value.splice(item.arrayIndex, 1)
@@ -656,6 +703,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (existing >= 0) {
       activeArtifactTabIndex.value = existing
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeSSHTabIndex.value = -1
       return
     }
@@ -667,6 +715,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
     activeArtifactTabIndex.value = artifactTabs.value.length - 1
     activeTabIndex.value = -1
+    activeBuiltinTabIndex.value = -1
     activeSSHTabIndex.value = -1
   }
 
@@ -677,6 +726,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       artifactTabs.value[existing].label = label
       activeArtifactTabIndex.value = existing
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeSSHTabIndex.value = -1
       return
     }
@@ -689,6 +739,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
     activeArtifactTabIndex.value = artifactTabs.value.length - 1
     activeTabIndex.value = -1
+    activeBuiltinTabIndex.value = -1
     activeSSHTabIndex.value = -1
   }
 
@@ -696,6 +747,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const existing = openTabs.value.findIndex((t) => t.toolId === tool.id)
     if (existing >= 0) {
       activeTabIndex.value = existing
+      activeBuiltinTabIndex.value = -1
       activeSSHTabIndex.value = -1
       activeArtifactTabIndex.value = -1
       return
@@ -708,6 +760,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const tab = createTabState(tool, persistedState, lastEntry, settings.value.defaultPythonPath)
     openTabs.value.push(tab)
     activeTabIndex.value = openTabs.value.length - 1
+    activeBuiltinTabIndex.value = -1
+    activeSSHTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
+  }
+
+  function openBuiltinTool(tool: BuiltinToolDefinition) {
+    const existing = builtinTabs.value.findIndex((tab) => tab.builtinToolId === tool.id)
+    if (existing >= 0) {
+      activeBuiltinTabIndex.value = existing
+      activeTabIndex.value = -1
+      activeSSHTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
+      return
+    }
+
+    builtinTabs.value.push(createBuiltinTabState(tool))
+    activeBuiltinTabIndex.value = builtinTabs.value.length - 1
+    activeTabIndex.value = -1
     activeSSHTabIndex.value = -1
     activeArtifactTabIndex.value = -1
   }
@@ -864,6 +934,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (existing >= 0) {
       activeSSHTabIndex.value = existing
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeArtifactTabIndex.value = -1
       return
     }
@@ -878,6 +949,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     sshTabs.value.push(tab)
     activeSSHTabIndex.value = sshTabs.value.length - 1
     activeTabIndex.value = -1
+    activeBuiltinTabIndex.value = -1
     activeArtifactTabIndex.value = -1
   }
 
@@ -886,6 +958,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (existing >= 0) {
       activeSSHTabIndex.value = existing
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
+      activeArtifactTabIndex.value = -1
       return
     }
     const tab: SSHTabState = {
@@ -898,6 +972,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     sshTabs.value.push(tab)
     activeSSHTabIndex.value = sshTabs.value.length - 1
     activeTabIndex.value = -1
+    activeBuiltinTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
   }
 
   function closeSSHTab(index: number) {
@@ -937,14 +1013,28 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  function restorePinnedTabs(tools: ToolManifest[], sshConnections: SSHConnection[] = []) {
+  function restorePinnedTabs(
+    tools: ToolManifest[],
+    sshConnections: SSHConnection[] = [],
+    builtinTools: BuiltinToolDefinition[] = [],
+  ) {
     if (pinnedTabsRestored.value) return
     pinnedTabsRestored.value = true
 
     const toolById = new Map(tools.map((tool) => [tool.id, tool]))
     const sshById = new Map(sshConnections.map((conn) => [conn.id, conn]))
+    const builtinById = new Map(builtinTools.map((tool) => [tool.id, tool]))
 
     for (const key of orderedPinnedTabKeys()) {
+      if (key.startsWith('builtin:builtin_')) {
+        const builtinToolId = key.slice('builtin:builtin_'.length)
+        const builtinTool = builtinById.get(builtinToolId as BuiltinToolDefinition['id'])
+        if (builtinTool) {
+          openBuiltinTool(builtinTool)
+        }
+        continue
+      }
+
       if (key.startsWith('tool:tool_')) {
         const toolId = key.slice('tool:tool_'.length)
         const tool = toolById.get(toolId)
@@ -973,6 +1063,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (index >= 0 && index < sshTabs.value.length) {
       activeSSHTabIndex.value = index
       activeTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeArtifactTabIndex.value = -1
     }
   }
@@ -981,6 +1072,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (index >= 0 && index < openTabs.value.length) {
       activeTabIndex.value = index
       activeSSHTabIndex.value = -1
+      activeBuiltinTabIndex.value = -1
       activeArtifactTabIndex.value = -1
     }
   }
@@ -988,6 +1080,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     openTabs,
     activeTabIndex,
+    builtinTabs,
+    activeBuiltinTabIndex,
     sshTabs,
     activeSSHTabIndex,
     artifactTabs,
@@ -998,6 +1092,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeToolTerminalHeight,
     activeExecutionConfig,
     activeSSHTab,
+    activeBuiltinTab,
     activeArtifactTab,
     activeTab,
     unifiedTabs,
@@ -1018,6 +1113,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     toolHistory,
     settings,
     openTool,
+    openBuiltinTool,
     closeTab,
     updateRawArgs,
     setExecutionTarget,
