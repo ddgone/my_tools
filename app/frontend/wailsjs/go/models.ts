@@ -425,6 +425,7 @@ export namespace main {
 	    message: string;
 	    detail?: string;
 	    currentItem?: string;
+	    currentSource?: string;
 	    progressPercent: number;
 	    step: number;
 	    totalSteps: number;
@@ -447,6 +448,7 @@ export namespace main {
 	        this.message = source["message"];
 	        this.detail = source["detail"];
 	        this.currentItem = source["currentItem"];
+	        this.currentSource = source["currentSource"];
 	        this.progressPercent = source["progressPercent"];
 	        this.step = source["step"];
 	        this.totalSteps = source["totalSteps"];

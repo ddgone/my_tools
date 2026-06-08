@@ -98,8 +98,8 @@ export const useGoEnvStore = defineStore('goenv', {
         this.loading = false
       }
     },
-    async ensureReleases() {
-      if (this.releases.length > 0 || this.releaseLoading) {
+    async ensureReleases(force = false) {
+      if ((!force && this.releases.length > 0) || this.releaseLoading) {
         return
       }
       this.releaseLoading = true

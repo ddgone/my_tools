@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"fire-salamander-desktop/internal/runtimeenv"
+	"my_tools/libs/core/procutil"
 )
 
 type PythonOperationKind string
@@ -291,7 +291,7 @@ func percentForStep(step int, totalSteps int) float64 {
 }
 
 func runPythonCommand(ctx context.Context, binary string, args ...string) error {
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd := procutil.CommandContext(ctx, binary, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {

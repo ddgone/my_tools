@@ -259,6 +259,7 @@ export interface GoToolchainTaskState {
   message: string
   detail?: string
   currentItem?: string
+  currentSource?: string
   progressPercent: number
   step: number
   totalSteps: number

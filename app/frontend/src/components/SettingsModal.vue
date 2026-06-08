@@ -38,6 +38,10 @@ const goSourceLabelMap: Record<string, string> = {
 const showDownloadPanel = ref(false)
 const downloadVersion = ref('')
 const downloadDirectory = ref('')
+const manualGoDownloadLinks = [
+  { label: 'Go 官方下载页', href: 'https://go.dev/dl/' },
+  { label: 'Go 国内镜像页', href: 'https://golang.google.cn/dl/' },
+]
 
 const goCandidateOptions = computed(() =>
   [
@@ -131,6 +135,23 @@ async function ensureGoReleases() {
   await goEnv.ensureReleases()
   if (!downloadVersion.value && goEnv.releases.length > 0) {
     downloadVersion.value = goEnv.releases[0].version
+  }
+}
+
+async function handleRetryGoReleases() {
+  try {
+    await goEnv.ensureReleases(true)
+    if (!downloadVersion.value && goEnv.releases.length > 0) {
+      downloadVersion.value = goEnv.releases[0].version
+    }
+    if (goEnv.releases.length > 0) {
+      message.success('Go 版本列表已刷新')
+      return
+    }
+    message.warning('暂未获取到可用的 Go 版本列表')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '重新获取 Go 版本列表失败')
   }
 }
 
@@ -378,6 +399,16 @@ async function handleStartDownload() {
     const detail = error instanceof Error ? error.message : String(error)
     message.error(detail || '安装 Go SDK 失败')
   }
+}
+
+async function handleRetryGoInstall() {
+  if (!downloadVersion.value && goEnv.task?.version) {
+    downloadVersion.value = goEnv.task.version
+  }
+  if (!downloadDirectory.value && goEnv.task?.directory) {
+    downloadDirectory.value = normalizeGoInstallBaseDirectory(goEnv.task.directory)
+  }
+  await handleStartDownload()
 }
 
 function formatTransferSummary() {
@@ -690,6 +721,12 @@ onMounted(async () => {
                         >
                           {{ formatTransferSummary() }}
                         </div>
+                        <div
+                          v-if="goEnv.task.currentSource"
+                          class="mt-1 text-[11px] text-white/45 break-all"
+                        >
+                          下载源：{{ goEnv.task.currentSource }}
+                        </div>
                       </div>
                       <NButton
                         v-if="goEnv.task.status === 'running'"
@@ -698,6 +735,15 @@ onMounted(async () => {
                         @click="handleCancelGoTask"
                       >
                         停止
+                      </NButton>
+                      <NButton
+                        v-else-if="goEnv.task.kind === 'install' && (goEnv.task.status === 'failed' || goEnv.task.status === 'canceled')"
+                        secondary
+                        size="small"
+                        :disabled="!(canInstall || (goEnv.task.version && goEnv.task.directory))"
+                        @click="handleRetryGoInstall"
+                      >
+                        重试安装
                       </NButton>
                     </div>
                     <div class="mt-3">
@@ -718,6 +764,22 @@ onMounted(async () => {
                       class="mt-2 text-[11px] text-rose-200/85 break-all"
                     >
                       {{ goEnv.task.error }}
+                    </div>
+                    <div
+                      v-if="goEnv.task.kind === 'install' && (goEnv.task.error || goEnv.task.status === 'failed' || goEnv.task.status === 'canceled')"
+                      class="mt-3 text-[11px] text-white/55 leading-6"
+                    >
+                      自动安装不通时，可手动下载后通过“本地”选择 go.exe：
+                      <a
+                        v-for="link in manualGoDownloadLinks"
+                        :key="link.href"
+                        :href="link.href"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="ml-2 text-cyan-200 hover:text-cyan-100 underline underline-offset-2"
+                      >
+                        {{ link.label }}
+                      </a>
                     </div>
                   </div>
 
@@ -881,7 +943,27 @@ onMounted(async () => {
                       type="error"
                       :show-icon="false"
                     >
-                      {{ goEnv.releaseError }}
+                      <div>{{ goEnv.releaseError }}</div>
+                      <div class="mt-2 flex flex-wrap items-center gap-3 text-[12px]">
+                        <NButton
+                          secondary
+                          size="tiny"
+                          :loading="goEnv.releaseLoading"
+                          @click="handleRetryGoReleases"
+                        >
+                          重试获取版本
+                        </NButton>
+                        <a
+                          v-for="link in manualGoDownloadLinks"
+                          :key="`release-${link.href}`"
+                          :href="link.href"
+                          target="_blank"
+                          rel="noreferrer"
+                          class="text-cyan-200 hover:text-cyan-100 underline underline-offset-2"
+                        >
+                          {{ link.label }}
+                        </a>
+                      </div>
                     </NAlert>
 
                     <div class="settings-form">

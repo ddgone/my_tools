@@ -154,6 +154,7 @@ arg1 "arg 2 with space" --flag value
 			} else {
 				cmd = procutil.CommandContext(runCtx, env, cmdArgs...)
 			}
+			preparePythonUTF8Env(cmd)
 
 			cmd.Stdout = out
 			cmd.Stderr = out
@@ -212,6 +213,7 @@ arg1 "arg 2 with space" --flag value
 		} else {
 			cmd = procutil.CommandContext(runCtx, env, cmdArgs...)
 		}
+		preparePythonUTF8Env(cmd)
 
 		// Fallback logic is removed because user explicitly specified the env
 		// The TUI enforces "python" as the default if empty
@@ -240,4 +242,14 @@ arg1 "arg 2 with space" --flag value
 
 		return cmd.Wait()
 	})
+}
+
+func preparePythonUTF8Env(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	cmd.Env = append(os.Environ(),
+		"PYTHONIOENCODING=UTF-8",
+		"PYTHONUTF8=1",
+	)
 }

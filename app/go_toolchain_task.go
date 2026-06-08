@@ -17,6 +17,7 @@ type GoToolchainTask struct {
 	Message          string  `json:"message"`
 	Detail           string  `json:"detail,omitempty"`
 	CurrentItem      string  `json:"currentItem,omitempty"`
+	CurrentSource    string  `json:"currentSource,omitempty"`
 	ProgressPercent  float64 `json:"progressPercent"`
 	Step             int     `json:"step"`
 	TotalSteps       int     `json:"totalSteps"`
@@ -78,6 +79,7 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 					task.Message = strings.TrimSpace(progress.Message)
 					task.Detail = strings.TrimSpace(progress.Detail)
 					task.CurrentItem = strings.TrimSpace(progress.CurrentItem)
+					task.CurrentSource = strings.TrimSpace(progress.CurrentSource)
 					task.ProgressPercent = progress.ProgressPercent
 					task.Step = progress.Step
 					task.TotalSteps = progress.TotalSteps

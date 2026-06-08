@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 
 	"fire-salamander-desktop/internal/appconfig"
 	"fire-salamander-desktop/internal/runtimeenv"
+	"my_tools/libs/core/procutil"
 )
 
 const (
@@ -31,9 +33,27 @@ const (
 	sourceDetected     = "detected"
 	sourceManaged      = "managed"
 	officialReleasesEP = "https://go.dev/dl/?mode=json&include=all"
+	goMirrorReleasesEP = "https://golang.google.cn/dl/?mode=json&include=all"
+	goDownloadBaseURL  = "https://go.dev/dl/"
+	goMirrorBaseURL    = "https://golang.google.cn/dl/"
+	goGoogleBaseURL    = "https://dl.google.com/go/"
+	goRetryPerSource   = 2
 )
 
 var goVersionDirectoryPattern = regexp.MustCompile(`(?i)^go\d+(?:\.\d+)+(?:[-._a-z0-9]+)?$`)
+
+var goReleaseEndpoints = []string{
+	officialReleasesEP,
+	goMirrorReleasesEP,
+}
+
+var goDownloadBaseURLs = []string{
+	goDownloadBaseURL,
+	goMirrorBaseURL,
+	goGoogleBaseURL,
+}
+
+var goReleaseClient = &http.Client{Timeout: 20 * time.Second}
 
 type Config struct {
 	SelectedBinary       string   `json:"selectedBinary"`
@@ -78,6 +98,7 @@ type GoInstallProgress struct {
 	Message          string  `json:"message"`
 	Detail           string  `json:"detail,omitempty"`
 	CurrentItem      string  `json:"currentItem,omitempty"`
+	CurrentSource    string  `json:"currentSource,omitempty"`
 	ProgressPercent  float64 `json:"progressPercent"`
 	Step             int     `json:"step"`
 	TotalSteps       int     `json:"totalSteps"`
@@ -411,7 +432,7 @@ func InstallOfficialReleaseWithOptions(ctx context.Context, version string, dire
 		Version:         version,
 		Directory:       targetDirectory,
 	})
-	if err := downloadToFile(ctx, "https://go.dev/dl/"+file.Filename, tempFile, func(downloaded int64, total int64, speed string) {
+	if err := downloadToFile(ctx, file.Filename, tempFile, func(downloaded int64, total int64, speed string, source string) {
 		progress := 45.0
 		if total > 0 {
 			progress = 8 + float64(downloaded)*57/float64(total)
@@ -419,6 +440,7 @@ func InstallOfficialReleaseWithOptions(ctx context.Context, version string, dire
 		emitGoInstallProgress(hooks, GoInstallProgress{
 			Message:          "正在下载 Go SDK",
 			CurrentItem:      file.Filename,
+			CurrentSource:    source,
 			ProgressPercent:  roundProgressPercent(progress),
 			Step:             2,
 			TotalSteps:       4,
@@ -541,7 +563,7 @@ func readGoVersion(binaryPath string) (string, error) {
 	if _, err := os.Stat(binaryPath); err != nil {
 		return "", fmt.Errorf("路径不存在")
 	}
-	output, err := exec.Command(binaryPath, "version").CombinedOutput()
+	output, err := procutil.Command(binaryPath, "version").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("无法读取版本")
 	}
@@ -682,13 +704,34 @@ func fileIdentity(path string) string {
 }
 
 func fetchOfficialReleases() ([]officialRelease, error) {
-	resp, err := http.Get(officialReleasesEP)
+	failures := make([]string, 0, len(goReleaseEndpoints)*goRetryPerSource)
+	for _, endpoint := range goReleaseEndpoints {
+		for attempt := 1; attempt <= goRetryPerSource; attempt++ {
+			releases, err := fetchOfficialReleasesFromURL(endpoint)
+			if err == nil {
+				return releases, nil
+			}
+			if errors.Is(err, context.Canceled) {
+				return nil, context.Canceled
+			}
+			failures = append(failures, fmt.Sprintf("%s（第 %d 次）: %s", endpoint, attempt, err.Error()))
+		}
+	}
+	return nil, fmt.Errorf("获取 Go 版本列表失败: %s", strings.Join(uniqueStrings(failures), "；"))
+}
+
+func fetchOfficialReleasesFromURL(endpoint string) ([]officialRelease, error) {
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("获取 Go 版本列表失败: %w", err)
+		return nil, fmt.Errorf("创建版本列表请求失败: %w", err)
+	}
+	resp, err := goReleaseClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求版本列表失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("获取 Go 版本列表失败: %s", resp.Status)
+		return nil, fmt.Errorf("请求版本列表失败: %s", resp.Status)
 	}
 	var releases []officialRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
@@ -789,7 +832,7 @@ func preferCandidateSource(current string, incoming string) string {
 }
 
 func readGoRuntimeDetails(binaryPath string) (RuntimeDetails, error) {
-	output, err := exec.Command(binaryPath, "env", "GOROOT", "GOPATH", "GOOS", "GOARCH", "GOVERSION").CombinedOutput()
+	output, err := procutil.Command(binaryPath, "env", "GOROOT", "GOPATH", "GOOS", "GOARCH", "GOVERSION").CombinedOutput()
 	if err != nil {
 		return RuntimeDetails{}, fmt.Errorf("读取 Go 环境详情失败: %w", err)
 	}
@@ -868,21 +911,46 @@ func resolveManagedGoDirectory(binaryPath string, managedRoot string) (string, b
 	return envDir, true
 }
 
-func downloadToFile(ctx context.Context, url string, file *os.File, onProgress func(downloaded int64, total int64, speed string)) error {
+func downloadToFile(ctx context.Context, filename string, file *os.File, onProgress func(downloaded int64, total int64, speed string, source string)) error {
+	failures := make([]string, 0, len(goDownloadBaseURLs)*goRetryPerSource)
+	for _, baseURL := range goDownloadBaseURLs {
+		url := joinGoDownloadURL(baseURL, filename)
+		source := describeGoDownloadSource(baseURL)
+		for attempt := 1; attempt <= goRetryPerSource; attempt++ {
+			if err := resetDownloadFile(file); err != nil {
+				return fmt.Errorf("重置下载缓存失败: %w", err)
+			}
+			if onProgress != nil {
+				onProgress(0, 0, "", source)
+			}
+			err := downloadFromURL(ctx, url, file, source, onProgress)
+			if err == nil {
+				return nil
+			}
+			if errors.Is(err, context.Canceled) {
+				return context.Canceled
+			}
+			failures = append(failures, fmt.Sprintf("%s（第 %d 次）: %s", url, attempt, err.Error()))
+		}
+	}
+	return fmt.Errorf("下载 Go SDK 失败: %s", strings.Join(uniqueStrings(failures), "；"))
+}
+
+func downloadFromURL(ctx context.Context, url string, file *os.File, source string, onProgress func(downloaded int64, total int64, speed string, source string)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("下载 Go SDK 失败: %w", err)
+		return fmt.Errorf("创建下载请求失败: %w", err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return context.Canceled
 		}
-		return fmt.Errorf("下载 Go SDK 失败: %w", err)
+		return fmt.Errorf("请求下载地址失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载 Go SDK 失败: %s", resp.Status)
+		return fmt.Errorf("请求下载地址失败: %s", resp.Status)
 	}
 	total := resp.ContentLength
 	buffer := make([]byte, 128*1024)
@@ -904,7 +972,7 @@ func downloadToFile(ctx context.Context, url string, file *os.File, onProgress f
 					elapsed = time.Millisecond
 				}
 				speed := float64(downloaded) / elapsed.Seconds()
-				onProgress(downloaded, total, formatTransferRate(speed))
+				onProgress(downloaded, total, formatTransferRate(speed), source)
 			}
 		}
 		if readErr == io.EOF {
@@ -914,10 +982,50 @@ func downloadToFile(ctx context.Context, url string, file *os.File, onProgress f
 			if errors.Is(readErr, context.Canceled) || ctx.Err() != nil {
 				return context.Canceled
 			}
-			return fmt.Errorf("下载 Go SDK 失败: %w", readErr)
+			return fmt.Errorf("下载响应中断: %w", readErr)
 		}
 	}
 	return nil
+}
+
+func resetDownloadFile(file *os.File) error {
+	if err := file.Truncate(0); err != nil {
+		return err
+	}
+	_, err := file.Seek(0, io.SeekStart)
+	return err
+}
+
+func joinGoDownloadURL(baseURL string, filename string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/" + strings.TrimLeft(strings.TrimSpace(filename), "/")
+}
+
+func describeGoDownloadSource(baseURL string) string {
+	parsedURL, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return strings.TrimSpace(baseURL)
+	}
+	if parsedURL.Host != "" {
+		return parsedURL.Host
+	}
+	return strings.TrimSpace(baseURL)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func extractTarGz(ctx context.Context, archivePath string, targetDir string) error {

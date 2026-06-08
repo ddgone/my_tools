@@ -18,6 +18,7 @@ import (
 	"fire-salamander-desktop/internal/appconfig"
 	"fire-salamander-desktop/internal/runtimeenv"
 	"my_tools/libs/catalog/builtin"
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/core/toolspec"
 	python_tools "my_tools/tools/python_tools"
 )
@@ -431,9 +432,9 @@ func readPythonVersionInfo(binaryPath string) (pythonVersionInfo, error) {
 	if _, err := os.Stat(binaryPath); err != nil {
 		return pythonVersionInfo{}, fmt.Errorf("路径不存在")
 	}
-	output, err := exec.Command(binaryPath, "--version").CombinedOutput()
+	output, err := procutil.Command(binaryPath, "--version").CombinedOutput()
 	if err != nil {
-		output, err = exec.Command(binaryPath, "-V").CombinedOutput()
+		output, err = procutil.Command(binaryPath, "-V").CombinedOutput()
 		if err != nil {
 			return pythonVersionInfo{}, fmt.Errorf("无法读取版本")
 		}
@@ -463,7 +464,7 @@ func readPythonVersionInfo(binaryPath string) (pythonVersionInfo, error) {
 }
 
 func hasPythonVenvSupport(binaryPath string) bool {
-	return exec.Command(binaryPath, "-c", "import venv").Run() == nil
+	return procutil.Command(binaryPath, "-c", "import venv").Run() == nil
 }
 
 func pythonExecutableNames() []string {
@@ -577,7 +578,7 @@ func inspectPythonDependencies(binaryPath string, manifest pythonRequirementMani
 }
 
 func hasUsablePip(binaryPath string) bool {
-	return exec.Command(binaryPath, "-m", "pip", "--version").Run() == nil
+	return procutil.Command(binaryPath, "-m", "pip", "--version").Run() == nil
 }
 
 func probePythonDependencies(binaryPath string, requirements []pythonPackageRequirement) (map[string]pythonDependencyProbe, error) {
@@ -620,7 +621,7 @@ func probePythonDependencies(binaryPath string, requirements []pythonPackageRequ
 		"    })",
 		"print(json.dumps(result))",
 	}, "\n")
-	cmd := exec.Command(binaryPath, "-c", script)
+	cmd := procutil.Command(binaryPath, "-c", script)
 	cmd.Stdin = bytes.NewReader(payload)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

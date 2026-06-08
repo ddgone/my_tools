@@ -56,6 +56,7 @@ type GoToolchainTaskState struct {
 	Message          string  `json:"message"`
 	Detail           string  `json:"detail,omitempty"`
 	CurrentItem      string  `json:"currentItem,omitempty"`
+	CurrentSource    string  `json:"currentSource,omitempty"`
 	ProgressPercent  float64 `json:"progressPercent"`
 	Step             int     `json:"step"`
 	TotalSteps       int     `json:"totalSteps"`
@@ -222,6 +223,7 @@ func convertGoToolchainTaskState(task *GoToolchainTask) *GoToolchainTaskState {
 		Message:          task.Message,
 		Detail:           task.Detail,
 		CurrentItem:      task.CurrentItem,
+		CurrentSource:    task.CurrentSource,
 		ProgressPercent:  task.ProgressPercent,
 		Step:             task.Step,
 		TotalSteps:       task.TotalSteps,

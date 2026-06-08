@@ -19,6 +19,9 @@ const terminalToggleLabel = computed(() =>
   workspace.activeToolTerminalVisible ? '隐藏终端' : '显示终端',
 )
 const goVersionLabel = computed(() => {
+  if (goEnv.loading && !goEnv.state) {
+    return 'Go 检测中 · 正在读取环境'
+  }
   const activeVersion = goEnv.state?.activeVersion?.trim()
   if (!activeVersion) {
     return 'Go 未配置 · 仅远程/导出受影响'
@@ -29,6 +32,9 @@ const goVersionLabel = computed(() => {
 const pythonVersionLabel = computed(() => {
   const state = pythonEnv.state
   const task = pythonEnv.task
+  if (pythonEnv.loading && !state) {
+    return 'Python 检测中 · 正在读取环境'
+  }
   if (task?.status === 'running') {
     return task.kind === 'install'
       ? 'Python 正在安装依赖 · 点击查看'
@@ -88,6 +94,9 @@ const pythonTagStyle = computed<CSSProperties>(() =>
     : {},
 )
 const goTooltip = computed(() => {
+  if (goEnv.loading && !goEnv.state) {
+    return '正在检测 Go 环境。\n会扫描已配置路径、PATH、系统安装目录和托管 SDK。\n请稍候。'
+  }
   if (!goReady.value) {
     return '未配置 Go 环境。\n本地运行不受影响；远程执行、导出和构建缓存需要 Go 环境。\n点击前往设置。'
   }
@@ -102,6 +111,9 @@ const goTooltip = computed(() => {
 const pythonTooltip = computed(() => {
   const state = pythonEnv.state
   const task = pythonEnv.task
+  if (pythonEnv.loading && !state) {
+    return '正在检测 Python 环境。\n会检查基础解释器、托管工具环境和依赖状态。\n请稍候。'
+  }
   if (task?.status === 'running') {
     const stepLabel = task.totalSteps > 0 ? `\n步骤 ${task.step}/${task.totalSteps}` : ''
     const currentItem = task.currentItem ? `\n当前项：${task.currentItem}` : ''
