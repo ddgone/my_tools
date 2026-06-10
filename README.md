@@ -1,6 +1,6 @@
 # 火蜥蜴工具箱
 
-火蜥蜴工具箱是一个桌面宿主型工具平台：用一个单页工作台统一承载 Go/Python 工具的本地执行、基础远程执行、日志导出、单工具导出，以及面向多工具多平台的产物中心。
+火蜥蜴工具箱当前定位为一个个人桌面工具工作台：用一个单页工作台统一承载 Go/Python 工具的本地执行、基础远程执行、日志导出、单工具导出，以及面向多工具多平台的产物中心。当前目标是把这条主链路做稳、做顺手，而不是继续推进成轻量 IDE 或重型任务系统。
 
 ## 当前状态
 
@@ -10,7 +10,8 @@
 - 已接通 Go 环境配置：支持本地 Go 选择、官方 SDK 下载、下载任务进度/速度/停止、环境检查、删除当前托管 SDK、显式禁用当前 SDK，以及状态栏环境提示。
 - 已接通 Python 环境配置：支持基础 Python 选择、按解释器隔离的托管虚拟环境、可停止的环境/依赖任务、显式禁用当前环境、动态依赖扫描检查与一键安装，以及状态栏环境提示。
 - Python 动态依赖扫描当前使用内置的 `pipreqs` 数据文件 `mapping.txt` 与 `stdlib.txt`，由 Go 宿主统一管理并建议定期更新。
-- 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错和文档真相源漂移。
+- 当前主要风险集中在 SSH 安全、运行时鲁棒性、构建脚本容错，以及远程执行后的结果回收体验仍未闭环。
+- 当前不再把“工作区模型、文件管理器、编辑器、重型任务中心”视为近期主线。
 
 ## 主要能力
 
@@ -19,6 +20,7 @@
 - 产物工作流：左侧侧栏提供产物工作台入口与任务历史卡片，右侧支持完整工作台页面和单次任务快照页。
 - Go 工具的本地执行不依赖运行时 Go 环境；Go 环境当前只影响远程执行、Go 导出和构建缓存准备。
 - Python 工具的本地执行依赖宿主管理的托管虚拟环境；当前通过“基础 Python + 托管 venv + 动态依赖扫描”模型接入。
+- 当前优先补的不是新模块，而是三条顺手能力：远程结果探测与手动下载、参数级远程路径选择、独立 SSH 终端页签。
 
 ## 仓库结构
 
@@ -77,12 +79,14 @@ cd app/frontend && npm run typecheck
 
 - [CONTEXT.md](CONTEXT.md)：领域术语表，只记录项目语言，不记录实现细节。
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)：当前产品定位、能力边界和文档索引。
+- [docs/CURRENT_DEVELOPMENT_BRIEF.md](docs/CURRENT_DEVELOPMENT_BRIEF.md)：当前开发边界、首个实现包、涉及文件与完成标准。
+- [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md)：按“个人桌面工具工作台”定位收缩后的当前开发顺序。
 - [docs/GO_ENVIRONMENT.md](docs/GO_ENVIRONMENT.md)：Go 环境的用户视角说明、影响范围、下载任务、失败提示、默认路径、`<无 SDK>` 语义与验收清单。
 - [docs/PYTHON_ENVIRONMENT.md](docs/PYTHON_ENVIRONMENT.md)：Python 环境的用户视角说明、基础 Python、托管虚拟环境、动态依赖扫描、一键安装与 `<无 Python>` 语义。
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：当前真实落地架构、模块边界、执行链路和约束。
 - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md)：最新开发环境、启动方式、校验命令和入口文件。
 - [docs/adr/0022-host-owned-background-artifact-preparation.md](docs/adr/0022-host-owned-background-artifact-preparation.md)：后台产物准备、缓存复用与产物中心工作区形态。
-- [docs/ISSUES_AND_REMEDIATION_PLAN.md](docs/ISSUES_AND_REMEDIATION_PLAN.md)：本轮梳理出的全部问题，以及严格按 1 到 2 个问题拆分的修复步骤。
+- [docs/ISSUES_AND_REMEDIATION_PLAN.md](docs/ISSUES_AND_REMEDIATION_PLAN.md)：当前已确认的问题清单与修复顺序。
 - [docs/archive/README.md](docs/archive/README.md)：历史计划、旧版说明和归档原因。
 - [docs/adr/](docs/adr/)：仍有效的架构决策记录。
 
