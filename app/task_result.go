@@ -53,7 +53,10 @@ func resolveRemoteResultHint(params []toolspec.ParameterSpec, rawArgs string, re
 	}
 	value, ok := extractParamValue(parsedArgs, outputParam)
 	if !ok || strings.TrimSpace(value) == "" {
-		return remoteResultHint{}, nil
+		value, ok = inferDefaultOutputValue(params, parsedArgs, outputParam, remoteWorkDir)
+		if !ok || strings.TrimSpace(value) == "" {
+			return remoteResultHint{}, nil
+		}
 	}
 
 	kind := "directory"
@@ -66,21 +69,96 @@ func resolveRemoteResultHint(params []toolspec.ParameterSpec, rawArgs string, re
 	}, nil
 }
 
-func findLikelyOutputParam(params []toolspec.ParameterSpec) (toolspec.ParameterSpec, bool) {
+func inferDefaultOutputValue(params []toolspec.ParameterSpec, parsedArgs []string, outputParam toolspec.ParameterSpec, remoteWorkDir string) (string, bool) {
+	if !supportsDefaultOutputInference(outputParam) {
+		return "", false
+	}
+
+	inputValue, inputParam, ok := findLikelyInputParamValue(params, parsedArgs, outputParam)
+	if !ok {
+		return "", false
+	}
+	resolvedInputPath := resolveRemotePath(inputValue, remoteWorkDir)
+	if strings.TrimSpace(resolvedInputPath) == "" {
+		return "", false
+	}
+
+	switch strings.TrimSpace(inputParam.PathMode) {
+	case "file":
+		return path.Join(path.Dir(resolvedInputPath), "output"), true
+	case "directory":
+		return path.Join(resolvedInputPath, "output"), true
+	default:
+		if looksLikeFilePath(resolvedInputPath) {
+			return path.Join(path.Dir(resolvedInputPath), "output"), true
+		}
+		return path.Join(resolvedInputPath, "output"), true
+	}
+}
+
+func supportsDefaultOutputInference(outputParam toolspec.ParameterSpec) bool {
+	if outputParam.Type != toolspec.FieldTypePath {
+		return false
+	}
+	if strings.TrimSpace(outputParam.PathMode) == "file" {
+		return false
+	}
+	if !isLikelyOutputParam(outputParam) {
+		return false
+	}
+
+	text := strings.ToLower(strings.Join([]string{
+		strings.TrimSpace(outputParam.Placeholder),
+		strings.TrimSpace(outputParam.Help),
+	}, " "))
+	return (strings.Contains(text, "默认") || strings.Contains(text, "留空")) && strings.Contains(text, "output")
+}
+
+func findLikelyInputParamValue(params []toolspec.ParameterSpec, parsedArgs []string, outputParam toolspec.ParameterSpec) (string, toolspec.ParameterSpec, bool) {
 	for _, param := range params {
 		if param.Type != toolspec.FieldTypePath {
 			continue
 		}
-		argKey := strings.TrimSpace(param.ArgKey)
-		key := strings.TrimSpace(param.Key)
-		switch {
-		case argKey == "output":
-			return param, true
-		case key == "output", key == "outputDir":
+		if isSameParam(param, outputParam) || isLikelyOutputParam(param) {
+			continue
+		}
+		value, ok := extractParamValue(parsedArgs, param)
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		return value, param, true
+	}
+	return "", toolspec.ParameterSpec{}, false
+}
+
+func findLikelyOutputParam(params []toolspec.ParameterSpec) (toolspec.ParameterSpec, bool) {
+	for _, param := range params {
+		if isLikelyOutputParam(param) {
 			return param, true
 		}
 	}
 	return toolspec.ParameterSpec{}, false
+}
+
+func isLikelyOutputParam(param toolspec.ParameterSpec) bool {
+	if param.Type != toolspec.FieldTypePath {
+		return false
+	}
+	argKey := strings.TrimSpace(param.ArgKey)
+	key := strings.TrimSpace(param.Key)
+	switch {
+	case argKey == "output":
+		return true
+	case key == "output", key == "outputDir":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSameParam(left toolspec.ParameterSpec, right toolspec.ParameterSpec) bool {
+	return strings.TrimSpace(left.Key) == strings.TrimSpace(right.Key) &&
+		strings.TrimSpace(left.ArgKey) == strings.TrimSpace(right.ArgKey)
 }
 
 func extractParamValue(parsedArgs []string, param toolspec.ParameterSpec) (string, bool) {
@@ -127,6 +205,12 @@ func resolveRemotePath(value string, remoteWorkDir string) string {
 		return path.Clean(trimmed)
 	}
 	return path.Clean(path.Join(strings.TrimSpace(remoteWorkDir), trimmed))
+}
+
+func looksLikeFilePath(value string) bool {
+	base := path.Base(strings.TrimSpace(value))
+	ext := path.Ext(base)
+	return base != "" && ext != "" && ext != "."
 }
 
 func probeRemoteResult(ctx context.Context, executor *runtime.RemoteExecutor, remotePath string) (remoteResultProbe, error) {
