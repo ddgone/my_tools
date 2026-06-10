@@ -38,6 +38,10 @@ export function DeleteSSHConnection(arg1) {
   return window['go']['main']['App']['DeleteSSHConnection'](arg1);
 }
 
+export function DownloadTaskResult(arg1) {
+  return window['go']['main']['App']['DownloadTaskResult'](arg1);
+}
+
 export function EstimateArtifactBatchCache(arg1) {
   return window['go']['main']['App']['EstimateArtifactBatchCache'](arg1);
 }
@@ -92,6 +96,10 @@ export function IsWindowRectVisible(arg1, arg2, arg3, arg4) {
 
 export function ListArtifactBatchTasks() {
   return window['go']['main']['App']['ListArtifactBatchTasks']();
+}
+
+export function ListDownloadTasks() {
+  return window['go']['main']['App']['ListDownloadTasks']();
 }
 
 export function ListOfficialGoReleases() {
@@ -168,6 +176,10 @@ export function StartPreparePythonToolchainEnvironment() {
 
 export function StartRemoteExecution(arg1) {
   return window['go']['main']['App']['StartRemoteExecution'](arg1);
+}
+
+export function StartTaskResultDownload(arg1) {
+  return window['go']['main']['App']['StartTaskResultDownload'](arg1);
 }
 
 export function TestSSHConnection(arg1) {

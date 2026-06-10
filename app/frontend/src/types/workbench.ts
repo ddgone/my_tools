@@ -87,12 +87,18 @@ export interface ExecutionTask {
   toolName: string
   status: string
   target: string
+  remoteConnId?: string
   args: string
   pythonEnv?: string
   usage: string
   startedAt: number
   endedAt?: number
   exitMessage?: string
+  remoteResultStatus?: string
+  remoteResultPath?: string
+  remoteResultKind?: string
+  remoteResultMessage?: string
+  remoteResultDownloadedPath?: string
 }
 
 export interface ExportToolRequest {
@@ -198,6 +204,24 @@ export interface RemoteExecRequest {
   connId: string
   args: string
   pythonEnv?: string
+}
+
+export interface DownloadTask {
+  id: string
+  sourceTaskId: string
+  toolId: string
+  toolName: string
+  status: string
+  remoteResultPath: string
+  remoteResultKind: string
+  localPath?: string
+  directory?: string
+  message?: string
+  downloadedBytes: number
+  totalBytes: number
+  progressPercent: number
+  startedAt: number
+  endedAt?: number
 }
 
 export interface FileDialogRequest {

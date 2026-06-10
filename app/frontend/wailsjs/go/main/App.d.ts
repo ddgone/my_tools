@@ -21,6 +21,8 @@ export function DeletePythonToolchainEnvironment():Promise<main.PythonToolchainS
 
 export function DeleteSSHConnection(arg1:string):Promise<void>;
 
+export function DownloadTaskResult(arg1:string):Promise<string>;
+
 export function EstimateArtifactBatchCache(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchEstimate>;
 
 export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolResult>;
@@ -48,6 +50,8 @@ export function InstallPythonDependencies():Promise<main.PythonToolchainState>;
 export function IsWindowRectVisible(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
 
 export function ListArtifactBatchTasks():Promise<Array<main.ArtifactBatchTask>>;
+
+export function ListDownloadTasks():Promise<Array<main.DownloadTask>>;
 
 export function ListOfficialGoReleases():Promise<Array<main.GoOfficialRelease>>;
 
@@ -86,6 +90,8 @@ export function StartLocalExecution(arg1:main.ExecutionRequest):Promise<main.Exe
 export function StartPreparePythonToolchainEnvironment():Promise<main.PythonToolchainTaskState>;
 
 export function StartRemoteExecution(arg1:main.RemoteExecRequest):Promise<main.ExecutionTask>;
+
+export function StartTaskResultDownload(arg1:string):Promise<main.DownloadTask>;
 
 export function TestSSHConnection(arg1:string):Promise<ssh.TestResult>;
 

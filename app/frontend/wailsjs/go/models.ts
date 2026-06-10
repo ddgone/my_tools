@@ -179,6 +179,46 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class DownloadTask {
+	    id: string;
+	    sourceTaskId: string;
+	    toolId: string;
+	    toolName: string;
+	    status: string;
+	    remoteResultPath: string;
+	    remoteResultKind: string;
+	    localPath?: string;
+	    directory?: string;
+	    message?: string;
+	    downloadedBytes: number;
+	    totalBytes: number;
+	    progressPercent: number;
+	    startedAt: number;
+	    endedAt?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sourceTaskId = source["sourceTaskId"];
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.status = source["status"];
+	        this.remoteResultPath = source["remoteResultPath"];
+	        this.remoteResultKind = source["remoteResultKind"];
+	        this.localPath = source["localPath"];
+	        this.directory = source["directory"];
+	        this.message = source["message"];
+	        this.downloadedBytes = source["downloadedBytes"];
+	        this.totalBytes = source["totalBytes"];
+	        this.progressPercent = source["progressPercent"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	    }
+	}
 	export class ExecutionRequest {
 	    toolId: string;
 	    args: string;
@@ -201,12 +241,18 @@ export namespace main {
 	    toolName: string;
 	    status: string;
 	    target: string;
+	    remoteConnId?: string;
 	    args: string;
 	    pythonEnv?: string;
 	    usage: string;
 	    startedAt: number;
 	    endedAt?: number;
 	    exitMessage?: string;
+	    remoteResultStatus?: string;
+	    remoteResultPath?: string;
+	    remoteResultKind?: string;
+	    remoteResultMessage?: string;
+	    remoteResultDownloadedPath?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExecutionTask(source);
@@ -219,12 +265,18 @@ export namespace main {
 	        this.toolName = source["toolName"];
 	        this.status = source["status"];
 	        this.target = source["target"];
+	        this.remoteConnId = source["remoteConnId"];
 	        this.args = source["args"];
 	        this.pythonEnv = source["pythonEnv"];
 	        this.usage = source["usage"];
 	        this.startedAt = source["startedAt"];
 	        this.endedAt = source["endedAt"];
 	        this.exitMessage = source["exitMessage"];
+	        this.remoteResultStatus = source["remoteResultStatus"];
+	        this.remoteResultPath = source["remoteResultPath"];
+	        this.remoteResultKind = source["remoteResultKind"];
+	        this.remoteResultMessage = source["remoteResultMessage"];
+	        this.remoteResultDownloadedPath = source["remoteResultDownloadedPath"];
 	    }
 	}
 	export class ExportToolRequest {

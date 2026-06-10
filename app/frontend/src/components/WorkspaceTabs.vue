@@ -5,6 +5,7 @@ import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
+import { useDownloadStore } from '@/stores/downloads'
 import { useGoEnvStore } from '@/stores/goenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
+const downloads = useDownloadStore()
 const goEnv = useGoEnvStore()
 const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
@@ -40,6 +42,7 @@ const message = useMessage()
 
 const launching = ref(false)
 const exporting = ref(false)
+const downloadingResult = ref(false)
 const exportProgressText = ref('')
 const searchInput = ref('')
 const activeSearchIndex = ref(0)
@@ -497,6 +500,28 @@ async function handleExport() {
   } finally {
     exporting.value = false
     exportProgressText.value = ''
+  }
+}
+
+async function handleDownloadResult() {
+  const task = activeTask.value
+  if (!task || task.remoteResultStatus !== 'available') {
+    message.warning('当前任务没有可下载结果')
+    return
+  }
+
+  downloadingResult.value = true
+  try {
+    const downloadTask = await downloads.startTaskResultDownload(task.id)
+    if (!downloadTask?.id) {
+      return
+    }
+    message.success('已加入下载任务')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '下载结果失败')
+  } finally {
+    downloadingResult.value = false
   }
 }
 
@@ -1137,9 +1162,11 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             :tool="toolById(workspace.activeToolTab.toolId)"
             :tab="workspace.activeToolTab"
             :active-task-id="activeTabTaskId"
+            :active-task="activeTask"
             :is-running="activeTask?.status === 'running'"
             :is-launching="launching"
             :is-exporting="exporting"
+            :is-downloading-result="downloadingResult"
             :export-target="activeExportTarget"
             :export-target-options="exportTargetOptions"
             :export-button-label="activeExportButtonLabel"
@@ -1147,6 +1174,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             @execute="handleExecute"
             @cancel="handleCancel"
             @export="handleExport"
+            @download-result="handleDownloadResult"
             @update:execution-target="onExecutionTargetUpdate"
             @update:python-env="onPythonEnvUpdate"
             @update:remote-conn-id="onRemoteConnIdUpdate"

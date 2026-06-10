@@ -16,6 +16,7 @@ import (
 	"fire-salamander-desktop/internal/runtimeenv"
 	"fire-salamander-desktop/internal/ssh"
 	"fire-salamander-desktop/internal/toolchain"
+	"my_tools/libs/core/toolspec"
 	"my_tools/libs/framework"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -28,17 +29,25 @@ type ExecutionRequest struct {
 }
 
 type ExecutionTask struct {
-	ID          string `json:"id"`
-	ToolID      string `json:"toolId"`
-	ToolName    string `json:"toolName"`
-	Status      string `json:"status"`
-	Target      string `json:"target"`
-	Args        string `json:"args"`
-	PythonEnv   string `json:"pythonEnv,omitempty"`
-	Usage       string `json:"usage"`
-	StartedAt   int64  `json:"startedAt"`
-	EndedAt     int64  `json:"endedAt,omitempty"`
-	ExitMessage string `json:"exitMessage,omitempty"`
+	ID                         string `json:"id"`
+	ToolID                     string `json:"toolId"`
+	ToolName                   string `json:"toolName"`
+	Status                     string `json:"status"`
+	Target                     string `json:"target"`
+	RemoteConnID               string `json:"remoteConnId,omitempty"`
+	Args                       string `json:"args"`
+	PythonEnv                  string `json:"pythonEnv,omitempty"`
+	Usage                      string `json:"usage"`
+	StartedAt                  int64  `json:"startedAt"`
+	EndedAt                    int64  `json:"endedAt,omitempty"`
+	ExitMessage                string `json:"exitMessage,omitempty"`
+	RemoteResultStatus         string `json:"remoteResultStatus,omitempty"`
+	RemoteResultPath           string `json:"remoteResultPath,omitempty"`
+	RemoteResultKind           string `json:"remoteResultKind,omitempty"`
+	RemoteResultMessage        string `json:"remoteResultMessage,omitempty"`
+	RemoteResultDownloadedPath string `json:"remoteResultDownloadedPath,omitempty"`
+
+	remoteWorkDir string
 }
 
 type TaskLogEvent struct {
@@ -252,14 +261,15 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 	}
 
 	task := &ExecutionTask{
-		ID:        fmt.Sprintf("task_%d", time.Now().UnixNano()),
-		ToolID:    req.ToolID,
-		ToolName:  manifest.Name,
-		Status:    "running",
-		Target:    "remote:" + target.Host,
-		Args:      req.Args,
-		PythonEnv: req.PythonEnv,
-		StartedAt: time.Now().UnixMilli(),
+		ID:           fmt.Sprintf("task_%d", time.Now().UnixNano()),
+		ToolID:       req.ToolID,
+		ToolName:     manifest.Name,
+		Status:       "running",
+		Target:       "remote:" + target.Host,
+		RemoteConnID: req.ConnID,
+		Args:         req.Args,
+		PythonEnv:    req.PythonEnv,
+		StartedAt:    time.Now().UnixMilli(),
 	}
 
 	if task.ToolName == "" && manifestOK {
@@ -280,7 +290,7 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 		writer := &taskEventWriter{taskID: task.ID, app: a}
 		defer writer.Flush()
 
-		execErr := executeRemotely(runCtx, writer, remoteExecParams{
+		outcome, execErr := executeRemotely(runCtx, writer, remoteExecParams{
 			host:               target.Host,
 			port:               target.Port,
 			user:               target.User,
@@ -294,6 +304,7 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 			args:               req.Args,
 			pythonEnv:          req.PythonEnv,
 			sourceEntry:        manifest.Source.Entry,
+			manifestParams:     manifest.Params,
 		})
 
 		a.mu.Lock()
@@ -313,6 +324,11 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 			task.Status = "success"
 			task.ExitMessage = "远程任务执行完成"
 		}
+		task.remoteWorkDir = outcome.keepWorkDir
+		task.RemoteResultStatus = outcome.result.Status
+		task.RemoteResultPath = outcome.result.Path
+		task.RemoteResultKind = outcome.result.Kind
+		task.RemoteResultMessage = outcome.result.Message
 		a.emitTaskUpdate(task)
 	}()
 
@@ -328,15 +344,29 @@ type remoteExecParams struct {
 	taskID, toolName     string
 	pythonEnv            string
 	sourceEntry          string
+	manifestParams       []toolspec.ParameterSpec
 }
 
-func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) error {
+type remoteResultProbe struct {
+	Status  string
+	Path    string
+	Kind    string
+	Message string
+}
+
+type remoteExecutionOutcome struct {
+	result      remoteResultProbe
+	keepWorkDir string
+}
+
+func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) (remoteExecutionOutcome, error) {
+	var outcome remoteExecutionOutcome
 	fmt.Fprintf(writer, "[远程] 正在连接 %s@%s:%d ...\n", params.user, params.host, params.port)
 
 	verifier := ssh.NewHostKeyVerifier(params.hostKeyFingerprint)
 	executor, err := runtime.DialRemote(params.host, params.port, params.user, params.password, params.keyPath, verifier.Callback())
 	if err != nil {
-		return fmt.Errorf("SSH连接失败: %w", err)
+		return outcome, fmt.Errorf("SSH连接失败: %w", err)
 	}
 	defer executor.Close()
 
@@ -344,21 +374,21 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 
 	platform, err := executor.DetectPlatform(ctx)
 	if err != nil {
-		return err
+		return outcome, err
 	}
 	fmt.Fprintf(writer, "[远程] 目标平台: %s/%s\n", platform.OS, platform.Arch)
 
 	layout, err := runtimeenv.ResolveLayout()
 	if err != nil {
-		return fmt.Errorf("初始化运行时目录失败: %w", err)
+		return outcome, fmt.Errorf("初始化运行时目录失败: %w", err)
 	}
 	if err := layout.Ensure(); err != nil {
-		return fmt.Errorf("准备运行时目录失败: %w", err)
+		return outcome, fmt.Errorf("准备运行时目录失败: %w", err)
 	}
 
 	repoRoot, ok := locateRepoRoot()
 	if !ok {
-		return fmt.Errorf("当前运行环境缺少源码工作区，暂时无法构建单工具远程产物")
+		return outcome, fmt.Errorf("当前运行环境缺少源码工作区，暂时无法构建单工具远程产物")
 	}
 
 	fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
@@ -376,18 +406,22 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 		Progress:         writer,
 	})
 	if err != nil {
-		return err
+		return outcome, err
 	}
 	pkgPath := buildResult.Path
 	fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
 
-	remoteDir, err := executor.RunOutput(ctx, "mktemp -d /tmp/fire-salamander-XXXXXX")
-	if err != nil {
-		return fmt.Errorf("创建远端临时目录失败: %w", err)
+	remoteDir := buildRemoteWorkDir(params.taskID)
+	if err := executor.Execute(ctx, fmt.Sprintf("mkdir -p %s", runtime.ShellQuote(remoteDir)), writer); err != nil {
+		return outcome, fmt.Errorf("创建远端临时目录失败: %w", err)
 	}
-	remoteDir = strings.TrimSpace(remoteDir)
 	fmt.Fprintf(writer, "[远程] 远端工作目录: %s\n", remoteDir)
+	keepRemoteDir := false
 	defer func() {
+		if keepRemoteDir {
+			fmt.Fprintf(writer, "[远程] 已保留远端工作目录，供后续下载结果使用: %s\n", remoteDir)
+			return
+		}
 		cleanupCmd := fmt.Sprintf("rm -rf %s", runtime.ShellQuote(remoteDir))
 		if cleanupErr := executor.Execute(context.Background(), cleanupCmd, writer); cleanupErr != nil {
 			fmt.Fprintf(writer, "[远程] 清理远端临时目录失败: %v\n", cleanupErr)
@@ -399,21 +433,57 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 	remoteEntry := path.Join(remoteDir, filepath.Base(pkgPath))
 	fmt.Fprintf(writer, "[远程] 正在上传产物到 %s ...\n", remoteEntry)
 	if err := executor.Upload(ctx, pkgPath, remoteEntry); err != nil {
-		return err
+		return outcome, err
 	}
 
 	runCmd, chmodCmd, err := buildRemoteRunCommand(remoteEntry, params)
 	if err != nil {
-		return err
+		return outcome, err
 	}
 	if chmodCmd != "" {
 		if err := executor.Execute(ctx, chmodCmd, writer); err != nil {
-			return fmt.Errorf("设置远端产物权限失败: %w", err)
+			return outcome, fmt.Errorf("设置远端产物权限失败: %w", err)
+		}
+	}
+
+	resultHint, hintErr := resolveRemoteResultHint(params.manifestParams, params.args, remoteDir)
+	if hintErr != nil {
+		fmt.Fprintf(writer, "[远程] 结果探测规则解析失败: %v\n", hintErr)
+		outcome.result = remoteResultProbe{
+			Status:  "error",
+			Message: fmt.Sprintf("结果探测规则解析失败：%v", hintErr),
 		}
 	}
 
 	fmt.Fprintf(writer, "[远程] 执行: %s\n", runCmd)
-	return executor.Execute(ctx, runCmd, writer)
+	runErr := executor.Execute(ctx, runCmd, writer)
+
+	if ctx.Err() == nil && resultHint.Path != "" {
+		probe, probeErr := probeRemoteResult(ctx, executor, resultHint.Path)
+		if probeErr != nil {
+			fmt.Fprintf(writer, "[远程] 结果探测失败: %v\n", probeErr)
+			outcome.result = remoteResultProbe{
+				Status:  "error",
+				Path:    resultHint.Path,
+				Kind:    resultHint.Kind,
+				Message: fmt.Sprintf("结果探测失败：%v", probeErr),
+			}
+		} else {
+			outcome.result = probe
+			switch probe.Status {
+			case "available":
+				fmt.Fprintf(writer, "[远程] 已探测到可下载结果: %s\n", probe.Path)
+				if pathWithinRemoteBase(remoteDir, probe.Path) {
+					keepRemoteDir = true
+					outcome.keepWorkDir = remoteDir
+				}
+			case "missing":
+				fmt.Fprintf(writer, "[远程] 未发现结果路径: %s\n", probe.Path)
+			}
+		}
+	}
+
+	return outcome, runErr
 }
 
 func builderKind(kind string) builder.ToolKind {
@@ -461,4 +531,25 @@ func joinRemoteShellArgs(args []string) string {
 		parts = append(parts, runtime.ShellQuote(arg))
 	}
 	return strings.Join(parts, " ")
+}
+
+func buildRemoteWorkDir(taskID string) string {
+	safeTaskID := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, strings.TrimSpace(taskID))
+	if safeTaskID == "" {
+		safeTaskID = fmt.Sprintf("task-%d", time.Now().UnixNano())
+	}
+	return path.Join("/tmp", "fire-salamander-"+safeTaskID)
 }

@@ -15,6 +15,7 @@ import ActivityBar from './ActivityBar.vue'
 import type { ActivityBarView } from './ActivityBar.vue'
 import ToolSidebar from './ToolSidebar.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
+import DownloadTaskDrawer from './DownloadTaskDrawer.vue'
 import StatusBar from './StatusBar.vue'
 import HotkeyHelpModal from './HotkeyHelpModal.vue'
 import SettingsModal from './SettingsModal.vue'
@@ -130,6 +131,7 @@ function onSidebarLeave(el: Element, done: () => void) {
       <WorkspaceTabs @refresh-ssh-list="handleRefreshSSHList" />
     </div>
     <StatusBar />
+    <DownloadTaskDrawer />
     <HotkeyHelpModal />
     <SettingsModal />
   </div>

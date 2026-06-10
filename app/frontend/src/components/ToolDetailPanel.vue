@@ -5,6 +5,7 @@ import {
   Play,
   Stop,
   CloudUpload,
+  DownloadOutline,
   ServerOutline,
   CodeSlash,
   LogoPython,
@@ -12,7 +13,7 @@ import {
   LaptopOutline,
 } from '@vicons/ionicons5'
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
-import type { SSHConnection, ToolManifest } from '@/types/workbench'
+import type { ExecutionTask, SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ExecutionTarget, ToolTabState } from '@/stores/workspace'
 import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
@@ -21,9 +22,11 @@ const props = defineProps<{
   tool: ToolManifest | null
   tab: ToolTabState | undefined
   activeTaskId: string
+  activeTask: ExecutionTask | null
   isRunning: boolean
   isLaunching: boolean
   isExporting: boolean
+  isDownloadingResult: boolean
   exportTarget: string
   exportTargetOptions: SelectOption[]
   exportButtonLabel: string
@@ -34,6 +37,7 @@ const emit = defineEmits<{
   execute: []
   cancel: []
   export: []
+  'download-result': []
   'update:execution-target': [value: ExecutionTarget]
   'update:python-env': [value: string]
   'update:remote-conn-id': [value: string]
@@ -111,7 +115,12 @@ const remoteConnectionOptions = computed<SelectOption[]>(() =>
   })),
 )
 const canExport = computed(() => Boolean(props.tool?.export?.strategy))
-
+const canDownloadResult = computed(() =>
+  isRemote.value
+  && !props.isRunning
+  && props.activeTask?.remoteResultStatus === 'available'
+  && Boolean(props.activeTask?.remoteResultPath),
+)
 async function animateSwitchThumb(immediate = false) {
   await nextTick()
   const background = switchBackgroundRef.value
@@ -408,6 +417,20 @@ onBeforeUnmount(() => {
           class="max-w-[420px] flex-1"
           @update:value="updateRemoteConnId"
         />
+        <NButton
+          v-press
+          size="small"
+          :secondary="!canDownloadResult"
+          :class="canDownloadResult ? 'tool-detail-action-button border shadow-sm' : ''"
+          :disabled="!canDownloadResult || isDownloadingResult"
+          :loading="isDownloadingResult"
+          @click="emit('download-result')"
+        >
+          <template #icon>
+            <NIcon :component="DownloadOutline" />
+          </template>
+          下载输出结果
+        </NButton>
       </div>
     </div>
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { NButton, NIcon, NInput, NTooltip } from 'naive-ui'
-import { Close, CopyOutline, HelpCircle, Remove, Search, SquareOutline } from '@vicons/ionicons5'
+import { ArrowDownCircleOutline, Close, CopyOutline, HelpCircle, Remove, Search, SquareOutline } from '@vicons/ionicons5'
+import { useDownloadStore } from '@/stores/downloads'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -22,10 +23,13 @@ const SAVE_DEBOUNCE_MS = 400
 const POLL_INTERVAL_MS = 750
 
 const execution = useExecutionStore()
+const downloads = useDownloadStore()
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 
 const runningCount = computed(() => execution.tasks.filter((t) => t.status === 'running').length)
+const downloadCount = computed(() => downloads.activeCount)
+const hasDownloadTasks = computed(() => downloadCount.value > 0)
 const isMaximised = ref(false)
 const platform = computed(() => workbench.bootstrap?.platform.split('/')[0] ?? 'windows')
 const isWindows = computed(() => platform.value === 'windows')
@@ -119,6 +123,10 @@ function openHotkeyHelp() {
   workspace.showHotkeyHelp = true
 }
 
+function openDownloadDrawer() {
+  downloads.openDrawer()
+}
+
 function minimiseWindow() {
   WindowMinimise()
 }
@@ -144,6 +152,7 @@ function handleWindowResize() {
 }
 
 onMounted(() => {
+  void downloads.hydrate()
   void syncWindowState()
   window.addEventListener('resize', handleWindowResize)
   pollTimer = window.setInterval(() => {
@@ -204,6 +213,36 @@ onUnmounted(() => {
       class="flex items-center gap-x-1"
       :class="isWindows ? '' : 'pr-1'"
     >
+      <NTooltip placement="bottom-end">
+        <template #trigger>
+          <NButton
+            quaternary
+            circle
+            size="small"
+            class="wails-no-drag relative text-dracula-soft hover:text-dracula-text"
+            @click="openDownloadDrawer"
+          >
+            <template #icon>
+              <div class="relative flex h-5 w-5 items-center justify-center overflow-visible">
+                <NIcon
+                  class="relative z-10"
+                  :component="ArrowDownCircleOutline"
+                  size="18"
+                  :color="hasDownloadTasks ? '#ff79c6' : undefined"
+                />
+                <span
+                  v-if="hasDownloadTasks"
+                  class="absolute -right-1 -top-1 z-20 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-dracula-pink px-[3px] text-[8px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(31,35,49,0.95)]"
+                >
+                  {{ downloadCount > 9 ? '9+' : downloadCount }}
+                </span>
+              </div>
+            </template>
+          </NButton>
+        </template>
+        下载任务
+      </NTooltip>
+
       <NTooltip placement="bottom-end">
         <template #trigger>
           <NButton

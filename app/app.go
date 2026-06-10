@@ -23,6 +23,7 @@ type App struct {
 	legacy        map[string]*legacyTool
 	manifests     map[string]toolspec.ToolManifest
 	tasks         map[string]*ExecutionTask
+	downloadTasks map[string]*DownloadTask
 	artifactTasks map[string]*ArtifactBatchTask
 	cancels       map[string]context.CancelFunc
 	pythonTask    *PythonToolchainTask
@@ -136,6 +137,7 @@ func NewApp() *App {
 		legacy:        map[string]*legacyTool{},
 		manifests:     map[string]toolspec.ToolManifest{},
 		tasks:         map[string]*ExecutionTask{},
+		downloadTasks: map[string]*DownloadTask{},
 		artifactTasks: map[string]*ArtifactBatchTask{},
 		cancels:       map[string]context.CancelFunc{},
 		sshStore:      ssh.NewStore(),
