@@ -11,7 +11,7 @@ docs:
 
     运行模式：
     1. 批量处理：扫描 out_source 目录下的子文件夹，自动寻找 utm.txt 或 process_result_0.tar.gz
-    2. 直接转换：转换单个 utm.txt、单个目录，或一次输入多个目录/文件批量转换
+    2. 直接转换：支持单个 utm.txt、单个已解压目录，或一次输入多个目录/文件批量转换
     3. 合并 GeoJSON：合并已有 GeoJSON 文件，重新生成 merged_tracks 结果
 
     输出规则：
@@ -26,6 +26,7 @@ docs:
     常用示例：
     - 批量处理：-input "D:\out_source" -workers 4 -extract-mode quick -artifact-set all
     - 单文件转换：-convert "D:\track\utm.txt" -output "D:\track\output" -zone 50
+    - 单目录转换：-convert "D:\track\folder" -output "D:\track\output" -artifact-set all -zone 50
     - 多目录合并：-convert "D:\a,D:\b,D:\c" -output "D:\track\output" -artifact-set shp -zone 50
     - 合并已有结果：-merge "D:\track\geojson" -output "D:\track\output" -artifact-set shp
 params:
@@ -38,7 +39,7 @@ params:
     help: |
       选择当前要执行的任务类型：
       - 批量处理：从 out_source 子目录中提取或解压 utm.txt 后统一转换
-      - 直接转换：转换一个 utm.txt，或扫描目录内已有 utm.txt
+      - 直接转换：转换一个 utm.txt、扫描单个目录内已有 utm.txt，或一次输入多个路径统一转换
       - 合并 GeoJSON：合并目录内现有 GeoJSON 文件并输出 merged_tracks
     options:
       - label: 批量处理
@@ -79,7 +80,7 @@ params:
     help: |
       支持输入单个或多个路径，可用逗号、分号或换行分隔。
       - 单个 utm.txt：只输出当前轨迹
-      - 单个目录：若目录下有 utm.txt 或 process_result_0.tar.gz，会直接提取/转换当前轨迹
+      - 单个目录：会优先扫描目录内已有 utm.txt；若目录根下只有 process_result_0.tar.gz，也会自动提取后转换
       - 目录集合：会把多个输入目录中的轨迹统一转换，并额外输出 merged_tracks
   - key: mergeDir
     argKey: merge

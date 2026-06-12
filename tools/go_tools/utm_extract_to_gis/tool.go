@@ -1085,7 +1085,7 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 将点云/无人车资料中的 UTM 轨迹文本转换为 GIS 可直接使用的 GeoJSON 与 Shapefile。
 支持三种工作模式：
   1. 批量处理 out_source 目录，自动从 process_result_0.tar.gz 中提取或解压 utm.txt
-  2. 直接转换单个 utm.txt，或转换包含多个 utm.txt 的目录
+  2. 直接转换模式：支持单个 utm.txt、单个已解压目录，或多个路径批量转换
   3. 合并已有的 GeoJSON 结果，重新输出 merged_tracks 结果
 
 [cyan]输出规则:[-]
@@ -1099,6 +1099,9 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 [cyan]参数说明:[-]
   -input <目录路径>             [批量模式] 批量处理 out_source 目录
   -convert <路径列表>           [转换模式] 支持单个 utm.txt、单个目录，或多个路径批量转换
+                              - 单个 utm.txt：直接转换当前轨迹
+                              - 单个目录：扫描目录内已有 utm.txt；若目录根下只有 process_result_0.tar.gz，则自动提取后转换
+                              - 多个路径：统一转换并额外输出 merged_tracks
   -merge <目录路径>             [合并模式] 合并目录内所有 .geojson 文件
   -output <目录路径>            可选，指定输出目录
   -artifact-set <geojson|shp|all>
@@ -1125,10 +1128,13 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 3. 转换单个 utm.txt 到指定目录:
    -convert "<utm.txt文件路径>" -output "<输出目录>" -zone 50
 
-4. 转换多个目录并合并输出:
+4. 转换一个已解压目录中的多个 utm.txt:
+   -convert "<目录路径>" -output "<输出目录>" -artifact-set all -zone 50
+
+5. 转换多个目录并合并输出:
    -convert "D:\a,D:\b,D:\c" -output "D:\merged_output" -artifact-set shp -zone 50
 
-5. 合并目录内已有 GeoJSON:
+6. 合并目录内已有 GeoJSON:
    -merge "<geojson目录>" -output "<输出目录>" -artifact-set shp
 `
 
