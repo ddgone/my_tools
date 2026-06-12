@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"my_tools/libs/framework"
@@ -20,6 +21,7 @@ import (
 const (
 	defaultNamenode = "10.11.5.136:50070"
 	defaultUser     = "hdfs"
+	defaultParallel = 4
 	maxRetries      = 3
 	httpTimeout     = 60 * time.Second
 )
@@ -60,8 +62,19 @@ type fileEntry struct {
 }
 
 type batch struct {
-	Files    []fileEntry
-	HdfsPath string
+	Files     []fileEntry
+	HdfsPath  string
+	LocalPath string
+}
+
+type downloadTask struct {
+	Index int
+	Entry fileEntry
+}
+
+type downloadResult struct {
+	Task downloadTask
+	Err  error
 }
 
 type HDFSDownloadTool struct{}
@@ -82,6 +95,7 @@ func (t *HDFSDownloadTool) Execute(ctx framework.AppContext) {
   -output <本地目录>      本地保存目录。
   -client <host:port>     WebHDFS Namenode 地址。默认: 10.11.5.136:50070
   -user <用户名>          WebHDFS 用户名。默认: hdfs
+  -parallel <并发数>      并发下载文件数。默认: 4
   -skip                   如果本地已有同名文件且大小一致，则跳过下载。
 
 示例:
@@ -108,12 +122,14 @@ func (t *HDFSDownloadTool) Execute(ctx framework.AppContext) {
 		var outputDir string
 		var clientStr string
 		var username string
+		var parallel int
 		var skip bool
 
 		fs.StringVar(&inputRaw, "input", "", "")
 		fs.StringVar(&outputDir, "output", "", "")
 		fs.StringVar(&clientStr, "client", defaultNamenode, "")
 		fs.StringVar(&username, "user", defaultUser, "")
+		fs.IntVar(&parallel, "parallel", defaultParallel, "")
 		fs.BoolVar(&skip, "skip", false, "")
 
 		if err := fs.Parse(parsedArgs); err != nil {
@@ -125,6 +141,7 @@ func (t *HDFSDownloadTool) Execute(ctx framework.AppContext) {
 			OutputDir: outputDir,
 			Client:    clientStr,
 			User:      username,
+			Parallel:  parallel,
 			Skip:      skip,
 		}, out)
 	})
@@ -319,6 +336,7 @@ type downloadConfig struct {
 	OutputDir string
 	Client    string
 	User      string
+	Parallel  int
 	Skip      bool
 }
 
@@ -344,6 +362,9 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 	if username == "" {
 		username = defaultUser
 	}
+	if cfg.Parallel < 1 {
+		return fmt.Errorf("错误：-parallel 必须大于等于 1")
+	}
 
 	cleanPaths := parseInputPaths(inputRaw)
 	if len(cleanPaths) == 0 {
@@ -353,6 +374,7 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 	client := NewHDFSClient(clientStr, username)
 	hadFailures := false
 	batches := make([]batch, 0, len(cleanPaths))
+	localRoots := buildUniqueLocalRoots(cleanPaths)
 
 	fmt.Fprintf(out, "连接 WebHDFS: %s (user=%s)\n", clientStr, username)
 	fmt.Fprintf(out, "输出目录: %s\n", outputDir)
@@ -372,11 +394,7 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 
 		switch status.Type {
 		case "DIRECTORY":
-			dirName := filepath.Base(strings.TrimRight(hdfsPath, "/"))
-			if dirName == "." || dirName == string(filepath.Separator) || dirName == "" {
-				dirName = "root"
-			}
-			localBase := filepath.Join(outputDir, dirName)
+			localBase := filepath.Join(outputDir, localRoots[hdfsPath])
 			if err := os.MkdirAll(localBase, 0755); err != nil {
 				fmt.Fprintf(out, "[警告] 创建本地目录失败 %s: %v，已跳过\n", localBase, err)
 				hadFailures = true
@@ -388,16 +406,17 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 				hadFailures = true
 				continue
 			}
-			batches = append(batches, batch{Files: files, HdfsPath: hdfsPath})
+			batches = append(batches, batch{Files: files, HdfsPath: hdfsPath, LocalPath: localBase})
 		case "FILE":
-			localPath := filepath.Join(outputDir, filepath.Base(hdfsPath))
+			localPath := filepath.Join(outputDir, localRoots[hdfsPath])
 			batches = append(batches, batch{
 				Files: []fileEntry{{
 					HdfsPath:  hdfsPath,
 					LocalPath: localPath,
 					Size:      status.Length,
 				}},
-				HdfsPath: hdfsPath,
+				HdfsPath:  hdfsPath,
+				LocalPath: localPath,
 			})
 		default:
 			fmt.Fprintf(out, "[警告] 不支持的路径类型 %s: %s，已跳过\n", status.Type, hdfsPath)
@@ -417,37 +436,32 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 		return nil
 	}
 
-	current := 0
+	tasks := make([]downloadTask, 0, totalFiles)
 	for _, currentBatch := range batches {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
 		if len(currentBatch.Files) > 1 {
-			fmt.Fprintf(out, "处理目录: %s (%d files)\n", currentBatch.HdfsPath, len(currentBatch.Files))
+			fmt.Fprintf(out, "处理目录: %s -> %s (%d files)\n", currentBatch.HdfsPath, currentBatch.LocalPath, len(currentBatch.Files))
 		}
 
 		for _, entry := range currentBatch.Files {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-
-			current++
-			prefix := fmt.Sprintf("[%d/%d]", current, totalFiles)
-			fmt.Fprintf(out, "%s 下载: %s -> %s", prefix, entry.HdfsPath, entry.LocalPath)
-
-			err := client.downloadFile(ctx, entry, cfg.Skip)
-			switch {
-			case errors.Is(err, errSkipExisting):
-				fmt.Fprintln(out, " ... Skipped (already exists & size match)")
-			case err != nil:
-				fmt.Fprintf(out, " ... FAILED: %v\n", err)
-				hadFailures = true
-			default:
-				fmt.Fprintf(out, " ... Done (%s)\n", formatSize(entry.Size))
-			}
+			tasks = append(tasks, downloadTask{Index: len(tasks) + 1, Entry: entry})
 		}
 	}
+
+	workers := cfg.Parallel
+	if workers > len(tasks) {
+		workers = len(tasks)
+	}
+	fmt.Fprintf(out, "\n开始下载: 文件数=%d, 并发数=%d\n", totalFiles, workers)
+
+	workerFailures, err := runDownloadTasks(ctx, client, tasks, cfg.Skip, workers, out)
+	if err != nil {
+		return err
+	}
+	hadFailures = hadFailures || workerFailures
 
 	if hadFailures {
 		fmt.Fprintln(out, "\n部分路径处理失败，详情见上方日志。")
@@ -456,6 +470,61 @@ func runDownload(ctx context.Context, cfg downloadConfig, out io.Writer) error {
 
 	fmt.Fprintln(out, "\n全部下载完成。")
 	return nil
+}
+
+func runDownloadTasks(ctx context.Context, client *HDFSClient, tasks []downloadTask, skipExisting bool, workers int, out io.Writer) (bool, error) {
+	taskCh := make(chan downloadTask)
+	resultCh := make(chan downloadResult, len(tasks))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskCh {
+				err := client.downloadFile(ctx, task.Entry, skipExisting)
+				resultCh <- downloadResult{Task: task, Err: err}
+			}
+		}()
+	}
+
+	go func() {
+		defer close(taskCh)
+		for _, task := range tasks {
+			select {
+			case <-ctx.Done():
+				return
+			case taskCh <- task:
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	hadFailures := false
+	total := len(tasks)
+	for result := range resultCh {
+		prefix := fmt.Sprintf("[%d/%d]", result.Task.Index, total)
+		fmt.Fprintf(out, "%s 下载: %s -> %s", prefix, result.Task.Entry.HdfsPath, result.Task.Entry.LocalPath)
+
+		switch {
+		case errors.Is(result.Err, errSkipExisting):
+			fmt.Fprintln(out, " ... Skipped (already exists & size match)")
+		case result.Err != nil:
+			fmt.Fprintf(out, " ... FAILED: %v\n", result.Err)
+			hadFailures = true
+		default:
+			fmt.Fprintf(out, " ... Done (%s)\n", formatSize(result.Task.Entry.Size))
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return hadFailures, err
+	}
+	return hadFailures, nil
 }
 
 func parseInputPaths(input string) []string {
@@ -521,6 +590,74 @@ func formatSize(size int64) string {
 
 func joinPath(base, name string) string {
 	return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(name, "/")
+}
+
+func buildUniqueLocalRoots(paths []string) map[string]string {
+	result := make(map[string]string, len(paths))
+	if len(paths) == 0 {
+		return result
+	}
+
+	segmentsByPath := make(map[string][]string, len(paths))
+	maxDepth := 0
+	for _, hdfsPath := range paths {
+		segments := splitHDFSPath(hdfsPath)
+		segmentsByPath[hdfsPath] = segments
+		if len(segments) > maxDepth {
+			maxDepth = len(segments)
+		}
+	}
+
+	candidateCounts := make([]map[string]int, maxDepth+1)
+	for depth := 1; depth <= maxDepth; depth++ {
+		counts := make(map[string]int, len(paths))
+		for _, hdfsPath := range paths {
+			segments := segmentsByPath[hdfsPath]
+			if len(segments) < depth {
+				continue
+			}
+			counts[buildSuffixPath(segments, depth)]++
+		}
+		candidateCounts[depth] = counts
+	}
+
+	for _, hdfsPath := range paths {
+		segments := segmentsByPath[hdfsPath]
+		if len(segments) == 0 {
+			result[hdfsPath] = "root"
+			continue
+		}
+		for depth := 1; depth <= len(segments); depth++ {
+			candidate := buildSuffixPath(segments, depth)
+			if candidateCounts[depth][candidate] == 1 {
+				result[hdfsPath] = candidate
+				break
+			}
+		}
+		if result[hdfsPath] == "" {
+			result[hdfsPath] = buildSuffixPath(segments, len(segments))
+		}
+	}
+
+	return result
+}
+
+func splitHDFSPath(hdfsPath string) []string {
+	trimmed := strings.Trim(strings.TrimSpace(hdfsPath), "/")
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "/")
+}
+
+func buildSuffixPath(segments []string, depth int) string {
+	if len(segments) == 0 {
+		return "root"
+	}
+	if depth >= len(segments) {
+		return filepath.Join(segments...)
+	}
+	return filepath.Join(segments[len(segments)-depth:]...)
 }
 
 func init() {

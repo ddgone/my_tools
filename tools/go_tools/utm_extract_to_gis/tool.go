@@ -486,6 +486,19 @@ func defaultOutputDir(inputPath string, isDir bool) string {
 	return filepath.Join(filepath.Dir(inputPath), "output")
 }
 
+func splitInputPaths(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+	paths := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			paths = append(paths, trimmed)
+		}
+	}
+	return paths
+}
+
 func deriveTrackIDFromUTMPath(utmPath string) string {
 	name := filepath.Base(utmPath)
 	lowerName := strings.ToLower(name)
@@ -520,6 +533,36 @@ func loadTrackFeatures(ctx context.Context, utmPath, trackID string, zone int) (
 		return nil, fmt.Errorf("无有效点")
 	}
 	return features, nil
+}
+
+type convertAccumulator struct {
+	converted     int
+	allFeatures   []GeoJSONFeature
+	trackFeatures map[string][]GeoJSONFeature
+	usedTrackIDs  map[string]int
+}
+
+func newConvertAccumulator() *convertAccumulator {
+	return &convertAccumulator{
+		trackFeatures: map[string][]GeoJSONFeature{},
+		usedTrackIDs:  map[string]int{},
+	}
+}
+
+func (a *convertAccumulator) addTrack(ctx context.Context, sourceLabel, baseTrackID, utmPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
+	trackID := allocateTrackID(baseTrackID, a.usedTrackIDs)
+	fmt.Fprintf(out, "转换: %s (track_id: %s)\n", sourceLabel, trackID)
+	features, err := loadTrackFeatures(ctx, utmPath, trackID, zone)
+	if err != nil {
+		return err
+	}
+	if err := writeTrackArtifacts(ctx, outputDir, trackID, features, artifactSet, out); err != nil {
+		return err
+	}
+	a.allFeatures = append(a.allFeatures, features...)
+	a.trackFeatures[trackID] = features
+	a.converted++
+	return nil
 }
 
 func writeTrackArtifacts(ctx context.Context, outputDir, trackID string, features []GeoJSONFeature, artifactSet string, out io.Writer) error {
@@ -620,26 +663,15 @@ func writeMergedArtifacts(ctx context.Context, outputDir, baseName string, allFe
 }
 
 func convertSingleFile(ctx context.Context, utmPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
-	trackID := deriveTrackIDFromUTMPath(utmPath)
-	features, err := loadTrackFeatures(ctx, utmPath, trackID, zone)
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(out, "转换: %s (track_id: %s)\n", utmPath, trackID)
-	if err := writeTrackArtifacts(ctx, outputDir, trackID, features, artifactSet, out); err != nil {
+	acc := newConvertAccumulator()
+	if err := acc.addTrack(ctx, utmPath, deriveTrackIDFromUTMPath(utmPath), utmPath, outputDir, zone, artifactSet, out); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "\n完成！输出目录: %s\n", outputDir)
 	return nil
 }
 
-func convertDirectory(ctx context.Context, dirPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
-	var converted int
-	var allFeatures []GeoJSONFeature
-	trackFeatures := map[string][]GeoJSONFeature{}
-	usedTrackIDs := map[string]int{}
-
+func convertDirectoryInto(ctx context.Context, dirPath, outputDir string, zone int, artifactSet string, out io.Writer, acc *convertAccumulator) error {
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -662,38 +694,118 @@ func convertDirectory(ctx context.Context, dirPath, outputDir string, zone int, 
 			return nil
 		}
 
-		trackID := allocateTrackID(deriveTrackIDFromUTMPath(path), usedTrackIDs)
-		fmt.Fprintf(out, "转换: %s (track_id: %s)\n", path, trackID)
-		features, err := loadTrackFeatures(ctx, path, trackID, zone)
-		if err != nil {
+		if err := acc.addTrack(ctx, path, deriveTrackIDFromUTMPath(path), path, outputDir, zone, artifactSet, out); err != nil {
 			if err.Error() == "任务已被取消" {
 				return err
 			}
 			fmt.Fprintf(out, "  [错误] %v\n", err)
 			return nil
 		}
-		if err := writeTrackArtifacts(ctx, outputDir, trackID, features, artifactSet, out); err != nil {
-			if err.Error() == "任务已被取消" {
-				return err
-			}
-			fmt.Fprintf(out, "  [错误] 输出失败: %v\n", err)
-			return nil
-		}
-		allFeatures = append(allFeatures, features...)
-		trackFeatures[trackID] = features
-		converted++
 		return nil
 	})
+	return err
+}
+
+func resolveUTMPathFromInputDir(dirPath string) (utmPath, extractedFile string, err error) {
+	utmPath = findUTMFile(dirPath)
+	if utmPath != "" {
+		return utmPath, "", nil
+	}
+
+	tarPath := filepath.Join(dirPath, "process_result_0.tar.gz")
+	if _, statErr := os.Stat(tarPath); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return "", "", nil
+		}
+		return "", "", statErr
+	}
+
+	extractedFile, err = extractUTMFromTarGz(tarPath, dirPath)
 	if err != nil {
+		return "", "", err
+	}
+	utmPath = findUTMFile(dirPath)
+	if utmPath == "" {
+		cleanExtractedFile(extractedFile, dirPath, io.Discard)
+		return "", "", fmt.Errorf("解压/提取后仍未找到 utm.txt: %s", dirPath)
+	}
+	return utmPath, extractedFile, nil
+}
+
+func convertDirectory(ctx context.Context, dirPath, outputDir string, zone int, artifactSet string, out io.Writer) error {
+	acc := newConvertAccumulator()
+	if err := convertDirectoryInto(ctx, dirPath, outputDir, zone, artifactSet, out, acc); err != nil {
 		return err
 	}
-	if converted == 0 {
+	if acc.converted == 0 {
 		return fmt.Errorf("未找到任何 utm.txt 文件")
 	}
 
-	fmt.Fprintf(out, "\n完成！共转换 %d 个文件\n", converted)
-	if converted > 1 {
-		if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", allFeatures, trackFeatures, artifactSet, out); err != nil {
+	fmt.Fprintf(out, "\n完成！共转换 %d 个文件\n", acc.converted)
+	if acc.converted > 1 {
+		if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", acc.allFeatures, acc.trackFeatures, artifactSet, out); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(out, "输出目录: %s\n", outputDir)
+	return nil
+}
+
+func convertInputs(ctx context.Context, inputRaw, outputDir string, zone int, artifactSet string, out io.Writer) error {
+	paths := splitInputPaths(inputRaw)
+	if len(paths) == 0 {
+		return fmt.Errorf("错误：-convert 至少需要一个文件或目录路径")
+	}
+	if len(paths) > 1 && outputDir == "" {
+		return fmt.Errorf("错误：多个 -convert 路径同时输入时，必须显式指定 -output 输出目录")
+	}
+
+	acc := newConvertAccumulator()
+	for _, inputPath := range paths {
+		info, err := os.Stat(inputPath)
+		if err != nil {
+			return fmt.Errorf("路径不存在: %s", inputPath)
+		}
+
+		if !info.IsDir() {
+			if !strings.HasSuffix(strings.ToLower(inputPath), ".txt") {
+				return fmt.Errorf("不支持的文件类型: %s", inputPath)
+			}
+			if err := acc.addTrack(ctx, inputPath, deriveTrackIDFromUTMPath(inputPath), inputPath, outputDir, zone, artifactSet, out); err != nil {
+				return err
+			}
+			continue
+		}
+
+		utmPath, extractedFile, err := resolveUTMPathFromInputDir(inputPath)
+		if err != nil {
+			return err
+		}
+		if utmPath != "" {
+			baseTrackID := getIDFromFolder(filepath.Base(inputPath))
+			err = acc.addTrack(ctx, inputPath, baseTrackID, utmPath, outputDir, zone, artifactSet, out)
+			cleanExtractedFile(extractedFile, inputPath, out)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := convertDirectoryInto(ctx, inputPath, outputDir, zone, artifactSet, out, acc); err != nil {
+			if err.Error() == "任务已被取消" {
+				return err
+			}
+			return err
+		}
+	}
+
+	if acc.converted == 0 {
+		return fmt.Errorf("未找到任何 utm.txt 文件")
+	}
+
+	fmt.Fprintf(out, "\n完成！共转换 %d 个输入轨迹\n", acc.converted)
+	if acc.converted > 1 {
+		if err := writeMergedArtifacts(ctx, outputDir, "merged_tracks", acc.allFeatures, acc.trackFeatures, artifactSet, out); err != nil {
 			return err
 		}
 	}
@@ -986,7 +1098,7 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 
 [cyan]参数说明:[-]
   -input <目录路径>             [批量模式] 批量处理 out_source 目录
-  -convert <文件/目录路径>      [转换模式] 转换一个 utm.txt，或扫描目录内所有 utm.txt
+  -convert <路径列表>           [转换模式] 支持单个 utm.txt、单个目录，或多个路径批量转换
   -merge <目录路径>             [合并模式] 合并目录内所有 .geojson 文件
   -output <目录路径>            可选，指定输出目录
   -artifact-set <geojson|shp|all>
@@ -1013,7 +1125,10 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 3. 转换单个 utm.txt 到指定目录:
    -convert "<utm.txt文件路径>" -output "<输出目录>" -zone 50
 
-4. 合并目录内已有 GeoJSON:
+4. 转换多个目录并合并输出:
+   -convert "D:\a,D:\b,D:\c" -output "D:\merged_output" -artifact-set shp -zone 50
+
+5. 合并目录内已有 GeoJSON:
    -merge "<geojson目录>" -output "<输出目录>" -artifact-set shp
 `
 
@@ -1090,17 +1205,17 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 			return runBatchMode(runCtx, inputDir, outputDir, zone, extractMode, workers, cleanupPolicy, artifactSet, out)
 		}
 		if convertPath != "" {
-			info, err := os.Stat(convertPath)
-			if err != nil {
-				return fmt.Errorf("路径不存在: %s", convertPath)
-			}
 			if outputDir == "" {
-				outputDir = defaultOutputDir(convertPath, info.IsDir())
+				convertPaths := splitInputPaths(convertPath)
+				if len(convertPaths) == 1 {
+					info, err := os.Stat(convertPaths[0])
+					if err != nil {
+						return fmt.Errorf("路径不存在: %s", convertPaths[0])
+					}
+					outputDir = defaultOutputDir(convertPaths[0], info.IsDir())
+				}
 			}
-			if !info.IsDir() && strings.HasSuffix(strings.ToLower(convertPath), ".txt") {
-				return convertSingleFile(runCtx, convertPath, outputDir, zone, artifactSet, out)
-			}
-			return convertDirectory(runCtx, convertPath, outputDir, zone, artifactSet, out)
+			return convertInputs(runCtx, convertPath, outputDir, zone, artifactSet, out)
 		}
 		if mergeDir != "" {
 			if outputDir == "" {
