@@ -679,8 +679,8 @@ function openContainingDirectory(path?: string) {
               {{ filteredGoTools.length }} 个 Go 工具
             </NTag>
           </div>
-          <div class="overflow-x-auto rounded-lg bg-cyan-500/[0.04]">
-            <table class="min-w-full border-collapse bg-cyan-500/[0.04] text-sm">
+          <div class="overflow-x-auto rounded-lg">
+            <table class="min-w-full border-collapse text-sm">
               <thead>
                 <tr class="border-b border-white/10 text-slate-300">
                   <th class="sticky left-0 z-10 min-w-[260px] bg-cyan-500/[0.04] px-3 py-3 text-left">
@@ -706,7 +706,7 @@ function openContainingDirectory(path?: string) {
                 <tr
                   v-for="tool in filteredGoTools"
                   :key="tool.id"
-                  class="border-b border-white/5 bg-cyan-500/[0.04]"
+                  class="border-b border-white/5"
                 >
                   <td class="sticky left-0 z-10 bg-cyan-500/[0.04] px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
@@ -728,7 +728,7 @@ function openContainingDirectory(path?: string) {
                   <td
                     v-for="platform in artifactPlatforms"
                     :key="`${tool.id}-${platform.key}`"
-                    class="bg-cyan-500/[0.04] px-2 py-3 text-center"
+                    class="px-2 py-3 text-center"
                   >
                     <NCheckbox
                       :checked="artifactCenter.isSelected(tool.id, platform.key)"
@@ -762,8 +762,8 @@ function openContainingDirectory(path?: string) {
               {{ filteredRustTools.length }} 个 Rust 工具
             </NTag>
           </div>
-          <div class="overflow-x-auto rounded-lg bg-[rgba(245,126,62,0.06)]">
-            <table class="min-w-full border-collapse bg-[rgba(245,126,62,0.06)] text-sm">
+          <div class="overflow-x-auto rounded-lg">
+            <table class="min-w-full border-collapse text-sm">
               <thead>
                 <tr class="border-b border-white/10 text-slate-300">
                   <th class="sticky left-0 z-10 min-w-[260px] bg-[rgba(245,126,62,0.06)] px-3 py-3 text-left">
@@ -789,7 +789,7 @@ function openContainingDirectory(path?: string) {
                 <tr
                   v-for="tool in filteredRustTools"
                   :key="tool.id"
-                  class="border-b border-white/5 bg-[rgba(245,126,62,0.06)]"
+                  class="border-b border-white/5"
                 >
                   <td class="sticky left-0 z-10 bg-[rgba(245,126,62,0.06)] px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
@@ -811,7 +811,7 @@ function openContainingDirectory(path?: string) {
                   <td
                     v-for="platform in artifactPlatforms"
                     :key="`${tool.id}-${platform.key}`"
-                    class="bg-[rgba(245,126,62,0.06)] px-2 py-3 text-center"
+                    class="px-2 py-3 text-center"
                   >
                     <NCheckbox
                       :checked="artifactCenter.isSelected(tool.id, platform.key)"
