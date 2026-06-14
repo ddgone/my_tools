@@ -527,6 +527,22 @@ export namespace main {
 	        this.directory = source["directory"];
 	    }
 	}
+	export class InstallRustToolchainRequest {
+	    rustVersion: string;
+	    zigVersion: string;
+	    directory: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallRustToolchainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rustVersion = source["rustVersion"];
+	        this.zigVersion = source["zigVersion"];
+	        this.directory = source["directory"];
+	    }
+	}
 	export class PythonDependencyStatus {
 	    packageName: string;
 	    moduleName: string;
@@ -715,6 +731,22 @@ export namespace main {
 	        this.pythonEnv = source["pythonEnv"];
 	    }
 	}
+	export class RustOfficialRelease {
+	    version: string;
+	    stable: boolean;
+	    channel: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustOfficialRelease(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.stable = source["stable"];
+	        this.channel = source["channel"];
+	    }
+	}
 	export class RustToolchainCandidate {
 	    path: string;
 	    version: string;
@@ -744,14 +776,13 @@ export namespace main {
 	    }
 	}
 	export class RustToolchainConfig {
-	    selectedCargoBinary: string;
-	    knownCargoBinaries: string[];
-	    selectedRustupBinary: string;
-	    knownRustupBinaries: string[];
+	    mode: string;
+	    selectedRustRoot: string;
+	    knownRustRoots: string[];
 	    selectedZigBinary: string;
 	    knownZigBinaries: string[];
-	    selectedCargoZigbuildBinary: string;
-	    knownCargoZigbuildBinaries: string[];
+	    lastInstallDirectory: string;
+	    disabled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RustToolchainConfig(source);
@@ -759,14 +790,57 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.selectedCargoBinary = source["selectedCargoBinary"];
-	        this.knownCargoBinaries = source["knownCargoBinaries"];
-	        this.selectedRustupBinary = source["selectedRustupBinary"];
-	        this.knownRustupBinaries = source["knownRustupBinaries"];
+	        this.mode = source["mode"];
+	        this.selectedRustRoot = source["selectedRustRoot"];
+	        this.knownRustRoots = source["knownRustRoots"];
 	        this.selectedZigBinary = source["selectedZigBinary"];
 	        this.knownZigBinaries = source["knownZigBinaries"];
-	        this.selectedCargoZigbuildBinary = source["selectedCargoZigbuildBinary"];
-	        this.knownCargoZigbuildBinaries = source["knownCargoZigbuildBinaries"];
+	        this.lastInstallDirectory = source["lastInstallDirectory"];
+	        this.disabled = source["disabled"];
+	    }
+	}
+	export class RustToolchainEnvironment {
+	    rootDir: string;
+	    version: string;
+	    source: string;
+	    label: string;
+	    detail: string;
+	    error?: string;
+	    valid: boolean;
+	    selected: boolean;
+	    active: boolean;
+	    cargoBinary?: string;
+	    rustupBinary?: string;
+	    rustcBinary?: string;
+	    cargoZigbuildBinary?: string;
+	    hasRustup: boolean;
+	    hasCargoZigbuild: boolean;
+	    canManageTargets: boolean;
+	    managed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainEnvironment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rootDir = source["rootDir"];
+	        this.version = source["version"];
+	        this.source = source["source"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.error = source["error"];
+	        this.valid = source["valid"];
+	        this.selected = source["selected"];
+	        this.active = source["active"];
+	        this.cargoBinary = source["cargoBinary"];
+	        this.rustupBinary = source["rustupBinary"];
+	        this.rustcBinary = source["rustcBinary"];
+	        this.cargoZigbuildBinary = source["cargoZigbuildBinary"];
+	        this.hasRustup = source["hasRustup"];
+	        this.hasCargoZigbuild = source["hasCargoZigbuild"];
+	        this.canManageTargets = source["canManageTargets"];
+	        this.managed = source["managed"];
 	    }
 	}
 	export class RustToolchainTargetStatus {
@@ -793,26 +867,33 @@ export namespace main {
 	}
 	export class RustToolchainState {
 	    config: RustToolchainConfig;
-	    cargoCandidates: RustToolchainCandidate[];
-	    rustupCandidates: RustToolchainCandidate[];
+	    rustCandidates: RustToolchainEnvironment[];
 	    zigCandidates: RustToolchainCandidate[];
-	    cargoZigbuildCandidates: RustToolchainCandidate[];
 	    installedTargets: string[];
 	    targetStatuses: RustToolchainTargetStatus[];
 	    hasInstalledTargetInfo: boolean;
 	    hasFullTargetCoverage: boolean;
 	    targetStatusMessage: string;
+	    cargoZigbuildStatusMessage: string;
 	    hasUsableEnvironment: boolean;
+	    hasUsableRust: boolean;
 	    hasUsableCargo: boolean;
 	    hasUsableRustup: boolean;
 	    hasUsableZig: boolean;
 	    hasUsableCargoZigbuild: boolean;
+	    canManageTargets: boolean;
+	    canManageCargoZigbuild: boolean;
+	    activeRustRoot: string;
+	    activeRustVersion: string;
+	    activeRustSource: string;
+	    activeRustManaged: boolean;
 	    activeCargoBinary: string;
 	    activeCargoVersion: string;
 	    activeCargoSource: string;
 	    activeRustupBinary: string;
 	    activeRustupVersion: string;
 	    activeRustupSource: string;
+	    activeRustcBinary: string;
 	    activeZigBinary: string;
 	    activeZigVersion: string;
 	    activeZigSource: string;
@@ -820,6 +901,7 @@ export namespace main {
 	    activeCargoZigbuildVersion: string;
 	    activeCargoZigbuildSource: string;
 	    statusMessage: string;
+	    suggestedInstallDirectory: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RustToolchainState(source);
@@ -828,26 +910,33 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.config = this.convertValues(source["config"], RustToolchainConfig);
-	        this.cargoCandidates = this.convertValues(source["cargoCandidates"], RustToolchainCandidate);
-	        this.rustupCandidates = this.convertValues(source["rustupCandidates"], RustToolchainCandidate);
+	        this.rustCandidates = this.convertValues(source["rustCandidates"], RustToolchainEnvironment);
 	        this.zigCandidates = this.convertValues(source["zigCandidates"], RustToolchainCandidate);
-	        this.cargoZigbuildCandidates = this.convertValues(source["cargoZigbuildCandidates"], RustToolchainCandidate);
 	        this.installedTargets = source["installedTargets"];
 	        this.targetStatuses = this.convertValues(source["targetStatuses"], RustToolchainTargetStatus);
 	        this.hasInstalledTargetInfo = source["hasInstalledTargetInfo"];
 	        this.hasFullTargetCoverage = source["hasFullTargetCoverage"];
 	        this.targetStatusMessage = source["targetStatusMessage"];
+	        this.cargoZigbuildStatusMessage = source["cargoZigbuildStatusMessage"];
 	        this.hasUsableEnvironment = source["hasUsableEnvironment"];
+	        this.hasUsableRust = source["hasUsableRust"];
 	        this.hasUsableCargo = source["hasUsableCargo"];
 	        this.hasUsableRustup = source["hasUsableRustup"];
 	        this.hasUsableZig = source["hasUsableZig"];
 	        this.hasUsableCargoZigbuild = source["hasUsableCargoZigbuild"];
+	        this.canManageTargets = source["canManageTargets"];
+	        this.canManageCargoZigbuild = source["canManageCargoZigbuild"];
+	        this.activeRustRoot = source["activeRustRoot"];
+	        this.activeRustVersion = source["activeRustVersion"];
+	        this.activeRustSource = source["activeRustSource"];
+	        this.activeRustManaged = source["activeRustManaged"];
 	        this.activeCargoBinary = source["activeCargoBinary"];
 	        this.activeCargoVersion = source["activeCargoVersion"];
 	        this.activeCargoSource = source["activeCargoSource"];
 	        this.activeRustupBinary = source["activeRustupBinary"];
 	        this.activeRustupVersion = source["activeRustupVersion"];
 	        this.activeRustupSource = source["activeRustupSource"];
+	        this.activeRustcBinary = source["activeRustcBinary"];
 	        this.activeZigBinary = source["activeZigBinary"];
 	        this.activeZigVersion = source["activeZigVersion"];
 	        this.activeZigSource = source["activeZigSource"];
@@ -855,6 +944,7 @@ export namespace main {
 	        this.activeCargoZigbuildVersion = source["activeCargoZigbuildVersion"];
 	        this.activeCargoZigbuildSource = source["activeCargoZigbuildSource"];
 	        this.statusMessage = source["statusMessage"];
+	        this.suggestedInstallDirectory = source["suggestedInstallDirectory"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -876,6 +966,50 @@ export namespace main {
 		}
 	}
 	
+	export class RustToolchainTaskState {
+	    kind: string;
+	    status: string;
+	    message: string;
+	    detail?: string;
+	    currentItem?: string;
+	    currentSource?: string;
+	    progressPercent: number;
+	    step: number;
+	    totalSteps: number;
+	    rustVersion?: string;
+	    zigVersion?: string;
+	    directory?: string;
+	    transferredBytes?: number;
+	    totalBytes?: number;
+	    transferSpeed?: string;
+	    error?: string;
+	    updatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainTaskState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.detail = source["detail"];
+	        this.currentItem = source["currentItem"];
+	        this.currentSource = source["currentSource"];
+	        this.progressPercent = source["progressPercent"];
+	        this.step = source["step"];
+	        this.totalSteps = source["totalSteps"];
+	        this.rustVersion = source["rustVersion"];
+	        this.zigVersion = source["zigVersion"];
+	        this.directory = source["directory"];
+	        this.transferredBytes = source["transferredBytes"];
+	        this.totalBytes = source["totalBytes"];
+	        this.transferSpeed = source["transferSpeed"];
+	        this.error = source["error"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class WindowState {
 	    width: number;
 	    height: number;
@@ -939,6 +1073,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ZigOfficialRelease {
+	    version: string;
+	    stable: boolean;
+	    date?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ZigOfficialRelease(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.stable = source["stable"];
+	        this.date = source["date"];
+	    }
 	}
 
 }

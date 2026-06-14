@@ -92,7 +92,7 @@ func (a *App) ExportTool(req ExportToolRequest) (*ExportToolResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defaultDir := lastDir
+	defaultDir := sanitizeDialogDefaultDirectory(lastDir)
 	if defaultDir == "" {
 		defaultDir = layout.ExportsDir()
 	}
@@ -220,7 +220,7 @@ func (a *App) loadLastExportDirectory() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(cfg.LastDirectory), nil
+	return sanitizeDialogDefaultDirectory(cfg.LastDirectory), nil
 }
 
 func (a *App) saveLastExportDirectory(dir string) error {

@@ -61,11 +61,21 @@ const rustVersionLabel = computed(() => {
   if (rustEnv.loading && !rustEnv.state) {
     return 'Rust 检测中 · 正在读取环境'
   }
-  const state = rustEnv.state
-  if (!state?.hasUsableEnvironment) {
-    return 'Rust 未就绪 · 仅导出/远程受影响'
+  const task = rustEnv.task
+  if (task?.status === 'running') {
+    return 'Rust 正在处理环境 · 点击查看'
   }
-  const cargo = state.activeCargoVersion?.trim() || 'cargo'
+  const state = rustEnv.state
+  if (state?.config.disabled) {
+    return 'Rust 已关闭 · 远程/导出停用'
+  }
+  if (!state?.hasUsableRust) {
+    return 'Rust 未配置 · 仅导出/远程受影响'
+  }
+  if (!state.hasUsableEnvironment) {
+    return 'Rust 待补齐 · 点击查看'
+  }
+  const cargo = state.activeRustVersion?.trim() || 'Rust'
   const zig = state.activeZigVersion?.trim() || 'zig'
   return `Rust 已就绪 · ${cargo} · ${zig}`
 })
@@ -179,19 +189,38 @@ const pythonTooltip = computed(() => {
 })
 const rustTooltip = computed(() => {
   const state = rustEnv.state
+  const task = rustEnv.task
   if (rustEnv.loading && !state) {
-    return '正在检测 Rust 交叉编译环境。\n会检查 cargo、rustup、zig 与 cargo-zigbuild。\n请稍候。'
+    return '正在检测 Rust 交叉编译环境。\n会检查 Rust SDK、zig、cargo-zigbuild 与 targets。\n请稍候。'
+  }
+  if (task?.status === 'running') {
+    const stepLabel = task.totalSteps > 0 ? `\n步骤 ${task.step}/${task.totalSteps}` : ''
+    const currentItem = task.currentItem ? `\n当前项：${task.currentItem}` : ''
+    return `${task.message || '正在处理 Rust 安装任务'}${stepLabel}${currentItem}\n点击前往设置。`
+  }
+  if (state?.config.disabled) {
+    return 'Rust SDK 已关闭。\n自动探测和交叉编译工具链都已停用。\n点击前往设置。'
+  }
+  if (!state?.hasUsableRust) {
+    return '尚未检测到可用的 Rust SDK。\n请自动探测、手动选择 Rust 环境目录，或下载托管 Rust。\n点击前往设置。'
   }
   if (!state?.hasUsableEnvironment) {
-    return 'Rust 交叉编译环境未就绪。\n本地 Rust 工具运行不受影响；远程执行、导出和批量构建缓存需要这些工具。\n点击前往设置。'
+    return [
+      'Rust 交叉编译能力待补齐。',
+      state.activeRustVersion ? `Rust：${state.activeRustVersion}` : '',
+      state.activeZigVersion ? `zig：${state.activeZigVersion}` : 'zig：未就绪',
+      state.cargoZigbuildStatusMessage || '',
+      state.targetStatusMessage || '',
+      state.activeRustRoot || '',
+    ].filter(Boolean).join('\n')
   }
   return [
     'Rust 交叉编译环境已就绪。',
-    state.activeCargoVersion ? `cargo：${state.activeCargoVersion}` : '',
+    state.activeRustVersion ? `Rust：${state.activeRustVersion}` : '',
     state.activeRustupVersion ? `rustup：${state.activeRustupVersion}` : '',
     state.activeZigVersion ? `zig：${state.activeZigVersion}` : '',
     state.activeCargoZigbuildVersion ? `cargo-zigbuild：${state.activeCargoZigbuildVersion}` : '',
-    state.activeCargoBinary || '',
+    state.activeRustRoot || '',
   ].filter(Boolean).join('\n')
 })
 const tooltipShow = ref(false)

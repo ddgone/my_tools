@@ -297,14 +297,13 @@ export interface GoToolchainTaskState {
 }
 
 export interface RustToolchainConfig {
-  selectedCargoBinary: string
-  knownCargoBinaries: string[]
-  selectedRustupBinary: string
-  knownRustupBinaries: string[]
+  mode: string
+  selectedRustRoot: string
+  knownRustRoots: string[]
   selectedZigBinary: string
   knownZigBinaries: string[]
-  selectedCargoZigbuildBinary: string
-  knownCargoZigbuildBinaries: string[]
+  lastInstallDirectory: string
+  disabled: boolean
 }
 
 export interface RustToolchainCandidate {
@@ -328,28 +327,55 @@ export interface RustToolchainTargetStatus {
   note?: string
 }
 
+export interface RustToolchainEnvironment {
+  rootDir: string
+  version: string
+  source: string
+  label: string
+  detail: string
+  error?: string
+  valid: boolean
+  selected: boolean
+  active: boolean
+  cargoBinary?: string
+  rustupBinary?: string
+  rustcBinary?: string
+  cargoZigbuildBinary?: string
+  hasRustup: boolean
+  hasCargoZigbuild: boolean
+  canManageTargets: boolean
+  managed: boolean
+}
+
 export interface RustToolchainState {
   config: RustToolchainConfig
-  cargoCandidates: RustToolchainCandidate[]
-  rustupCandidates: RustToolchainCandidate[]
+  rustCandidates: RustToolchainEnvironment[]
   zigCandidates: RustToolchainCandidate[]
-  cargoZigbuildCandidates: RustToolchainCandidate[]
   installedTargets: string[]
   targetStatuses: RustToolchainTargetStatus[]
   hasInstalledTargetInfo: boolean
   hasFullTargetCoverage: boolean
   targetStatusMessage: string
+  cargoZigbuildStatusMessage: string
   hasUsableEnvironment: boolean
+  hasUsableRust: boolean
   hasUsableCargo: boolean
   hasUsableRustup: boolean
   hasUsableZig: boolean
   hasUsableCargoZigbuild: boolean
+  canManageTargets: boolean
+  canManageCargoZigbuild: boolean
+  activeRustRoot: string
+  activeRustVersion: string
+  activeRustSource: string
+  activeRustManaged: boolean
   activeCargoBinary: string
   activeCargoVersion: string
   activeCargoSource: string
   activeRustupBinary: string
   activeRustupVersion: string
   activeRustupSource: string
+  activeRustcBinary: string
   activeZigBinary: string
   activeZigVersion: string
   activeZigSource: string
@@ -357,6 +383,45 @@ export interface RustToolchainState {
   activeCargoZigbuildVersion: string
   activeCargoZigbuildSource: string
   statusMessage: string
+  suggestedInstallDirectory: string
+}
+
+export interface RustOfficialRelease {
+  version: string
+  stable: boolean
+  channel: boolean
+}
+
+export interface ZigOfficialRelease {
+  version: string
+  stable: boolean
+  date?: string
+}
+
+export interface RustToolchainTaskState {
+  kind: string
+  status: string
+  message: string
+  detail?: string
+  currentItem?: string
+  currentSource?: string
+  progressPercent: number
+  step: number
+  totalSteps: number
+  rustVersion?: string
+  zigVersion?: string
+  directory?: string
+  transferredBytes?: number
+  totalBytes?: number
+  transferSpeed?: string
+  error?: string
+  updatedAt: number
+}
+
+export interface InstallRustToolchainRequest {
+  rustVersion: string
+  zigVersion: string
+  directory: string
 }
 
 export interface PythonToolchainConfig {

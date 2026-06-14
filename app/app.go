@@ -30,6 +30,8 @@ type App struct {
 	pythonCancel  context.CancelFunc
 	goTask        *GoToolchainTask
 	goCancel      context.CancelFunc
+	rustTask      *RustToolchainTask
+	rustCancel    context.CancelFunc
 	sshStore      *ssh.Store
 }
 

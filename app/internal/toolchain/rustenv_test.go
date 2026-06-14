@@ -16,7 +16,7 @@ func TestReadInstalledRustTargetsParsesUniqueValues(t *testing.T) {
 		t.Fatalf("写入测试脚本失败: %v", err)
 	}
 
-	targets, err := readInstalledRustTargets(script)
+	targets, err := readInstalledRustTargets(rustEnvironmentLayout{RustupBinary: script})
 	if err != nil {
 		t.Fatalf("readInstalledRustTargets 返回错误: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestInspectRustTargetsMarksInstalledAndNative(t *testing.T) {
 		t.Fatalf("写入测试脚本失败: %v", err)
 	}
 
-	statuses, installedTargets, err := inspectRustTargets(script)
+	statuses, installedTargets, err := inspectRustTargets(rustEnvironmentLayout{RustupBinary: script})
 	if err != nil {
 		t.Fatalf("inspectRustTargets 返回错误: %v", err)
 	}
@@ -66,6 +66,31 @@ func TestInspectRustTargetsMarksInstalledAndNative(t *testing.T) {
 	}
 	if nativeCount != 1 {
 		t.Fatalf("期望恰好存在一个原生平台状态，得到 %d", nativeCount)
+	}
+}
+
+func TestReadInstalledRustTargetsUsesRustEnvironmentVars(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "rustup")
+	content := "#!/bin/sh\nprintf '%s\\n' \"$RUSTUP_HOME\"\n"
+	if err := os.WriteFile(script, []byte(content), 0755); err != nil {
+		t.Fatalf("写入测试脚本失败: %v", err)
+	}
+
+	layout := rustEnvironmentLayout{
+		RootDir:      dir,
+		CargoHome:    filepath.Join(dir, "cargo"),
+		RustupHome:   filepath.Join(dir, "rustup"),
+		RustupBinary: script,
+	}
+	targets, err := readInstalledRustTargets(layout)
+	if err != nil {
+		t.Fatalf("readInstalledRustTargets 返回错误: %v", err)
+	}
+	if len(targets) != 1 || targets[0] != layout.RustupHome {
+		t.Fatalf("期望读取到 layout.RustupHome，得到 %#v", targets)
 	}
 }
 

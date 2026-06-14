@@ -10,6 +10,10 @@ export function CancelActivePythonToolchainTask() {
   return window['go']['main']['App']['CancelActivePythonToolchainTask']();
 }
 
+export function CancelActiveRustToolchainTask() {
+  return window['go']['main']['App']['CancelActiveRustToolchainTask']();
+}
+
 export function CancelExecution(arg1) {
   return window['go']['main']['App']['CancelExecution'](arg1);
 }
@@ -32,6 +36,10 @@ export function ClearArtifactBatchTasks() {
 
 export function DeleteGoToolchainEnvironment() {
   return window['go']['main']['App']['DeleteGoToolchainEnvironment']();
+}
+
+export function DeleteManagedRustToolchainEnvironment() {
+  return window['go']['main']['App']['DeleteManagedRustToolchainEnvironment']();
 }
 
 export function DeletePythonToolchainEnvironment() {
@@ -78,6 +86,10 @@ export function GetRustToolchainState() {
   return window['go']['main']['App']['GetRustToolchainState']();
 }
 
+export function GetRustToolchainTaskState() {
+  return window['go']['main']['App']['GetRustToolchainTaskState']();
+}
+
 export function GetSSHConnection(arg1) {
   return window['go']['main']['App']['GetSSHConnection'](arg1);
 }
@@ -112,6 +124,14 @@ export function ListDownloadTasks() {
 
 export function ListOfficialGoReleases() {
   return window['go']['main']['App']['ListOfficialGoReleases']();
+}
+
+export function ListOfficialRustReleases() {
+  return window['go']['main']['App']['ListOfficialRustReleases']();
+}
+
+export function ListOfficialZigReleases() {
+  return window['go']['main']['App']['ListOfficialZigReleases']();
 }
 
 export function ListSSHConnections() {
@@ -176,6 +196,18 @@ export function StartInstallGoToolchain(arg1) {
 
 export function StartInstallPythonDependencies() {
   return window['go']['main']['App']['StartInstallPythonDependencies']();
+}
+
+export function StartInstallRustCargoZigbuild() {
+  return window['go']['main']['App']['StartInstallRustCargoZigbuild']();
+}
+
+export function StartInstallRustTargets() {
+  return window['go']['main']['App']['StartInstallRustTargets']();
+}
+
+export function StartInstallRustToolchain(arg1) {
+  return window['go']['main']['App']['StartInstallRustToolchain'](arg1);
 }
 
 export function StartLocalExecution(arg1) {

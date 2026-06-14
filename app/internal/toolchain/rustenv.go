@@ -7,23 +7,35 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"fire-salamander-desktop/internal/appconfig"
 	"my_tools/libs/core/procutil"
 )
 
-const configKeyRust = "rust"
+const (
+	configKeyRust  = "rust"
+	rustModeAuto   = "auto"
+	rustModeNone   = "none"
+	rustModeManual = "manual"
+)
 
 type RustConfig struct {
-	SelectedCargoBinary         string   `json:"selectedCargoBinary"`
-	KnownCargoBinaries          []string `json:"knownCargoBinaries"`
-	SelectedRustupBinary        string   `json:"selectedRustupBinary"`
-	KnownRustupBinaries         []string `json:"knownRustupBinaries"`
-	SelectedZigBinary           string   `json:"selectedZigBinary"`
-	KnownZigBinaries            []string `json:"knownZigBinaries"`
-	SelectedCargoZigbuildBinary string   `json:"selectedCargoZigbuildBinary"`
-	KnownCargoZigbuildBinaries  []string `json:"knownCargoZigbuildBinaries"`
+	Mode                 string   `json:"mode"`
+	SelectedRustRoot     string   `json:"selectedRustRoot"`
+	KnownRustRoots       []string `json:"knownRustRoots"`
+	SelectedZigBinary    string   `json:"selectedZigBinary"`
+	KnownZigBinaries     []string `json:"knownZigBinaries"`
+	LastInstallDirectory string   `json:"lastInstallDirectory"`
+	Disabled             bool     `json:"disabled"`
+
+	SelectedCargoBinary         string   `json:"selectedCargoBinary,omitempty"`
+	KnownCargoBinaries          []string `json:"knownCargoBinaries,omitempty"`
+	SelectedRustupBinary        string   `json:"selectedRustupBinary,omitempty"`
+	KnownRustupBinaries         []string `json:"knownRustupBinaries,omitempty"`
+	SelectedCargoZigbuildBinary string   `json:"selectedCargoZigbuildBinary,omitempty"`
+	KnownCargoZigbuildBinaries  []string `json:"knownCargoZigbuildBinaries,omitempty"`
 }
 
 type RustCandidate struct {
@@ -38,6 +50,26 @@ type RustCandidate struct {
 	Active   bool   `json:"active"`
 }
 
+type RustEnvironmentCandidate struct {
+	RootDir             string `json:"rootDir"`
+	Version             string `json:"version"`
+	Source              string `json:"source"`
+	Label               string `json:"label"`
+	Detail              string `json:"detail"`
+	Error               string `json:"error,omitempty"`
+	Valid               bool   `json:"valid"`
+	Selected            bool   `json:"selected"`
+	Active              bool   `json:"active"`
+	CargoBinary         string `json:"cargoBinary,omitempty"`
+	RustupBinary        string `json:"rustupBinary,omitempty"`
+	RustcBinary         string `json:"rustcBinary,omitempty"`
+	CargoZigbuildBinary string `json:"cargoZigbuildBinary,omitempty"`
+	HasRustup           bool   `json:"hasRustup"`
+	HasCargoZigbuild    bool   `json:"hasCargoZigbuild"`
+	CanManageTargets    bool   `json:"canManageTargets"`
+	Managed             bool   `json:"managed"`
+}
+
 type RustTargetStatus struct {
 	PlatformKey   string `json:"platformKey"`
 	PlatformLabel string `json:"platformLabel"`
@@ -48,34 +80,42 @@ type RustTargetStatus struct {
 }
 
 type RustToolchainState struct {
-	Config                     RustConfig         `json:"config"`
-	CargoCandidates            []RustCandidate    `json:"cargoCandidates"`
-	RustupCandidates           []RustCandidate    `json:"rustupCandidates"`
-	ZigCandidates              []RustCandidate    `json:"zigCandidates"`
-	CargoZigbuildCandidates    []RustCandidate    `json:"cargoZigbuildCandidates"`
-	InstalledTargets           []string           `json:"installedTargets"`
-	TargetStatuses             []RustTargetStatus `json:"targetStatuses"`
-	HasInstalledTargetInfo     bool               `json:"hasInstalledTargetInfo"`
-	HasFullTargetCoverage      bool               `json:"hasFullTargetCoverage"`
-	TargetStatusMessage        string             `json:"targetStatusMessage"`
-	HasUsableEnvironment       bool               `json:"hasUsableEnvironment"`
-	HasUsableCargo             bool               `json:"hasUsableCargo"`
-	HasUsableRustup            bool               `json:"hasUsableRustup"`
-	HasUsableZig               bool               `json:"hasUsableZig"`
-	HasUsableCargoZigbuild     bool               `json:"hasUsableCargoZigbuild"`
-	ActiveCargoBinary          string             `json:"activeCargoBinary"`
-	ActiveCargoVersion         string             `json:"activeCargoVersion"`
-	ActiveCargoSource          string             `json:"activeCargoSource"`
-	ActiveRustupBinary         string             `json:"activeRustupBinary"`
-	ActiveRustupVersion        string             `json:"activeRustupVersion"`
-	ActiveRustupSource         string             `json:"activeRustupSource"`
-	ActiveZigBinary            string             `json:"activeZigBinary"`
-	ActiveZigVersion           string             `json:"activeZigVersion"`
-	ActiveZigSource            string             `json:"activeZigSource"`
-	ActiveCargoZigbuildBinary  string             `json:"activeCargoZigbuildBinary"`
-	ActiveCargoZigbuildVersion string             `json:"activeCargoZigbuildVersion"`
-	ActiveCargoZigbuildSource  string             `json:"activeCargoZigbuildSource"`
-	StatusMessage              string             `json:"statusMessage"`
+	Config                     RustConfig                 `json:"config"`
+	RustCandidates             []RustEnvironmentCandidate `json:"rustCandidates"`
+	ZigCandidates              []RustCandidate            `json:"zigCandidates"`
+	InstalledTargets           []string                   `json:"installedTargets"`
+	TargetStatuses             []RustTargetStatus         `json:"targetStatuses"`
+	HasInstalledTargetInfo     bool                       `json:"hasInstalledTargetInfo"`
+	HasFullTargetCoverage      bool                       `json:"hasFullTargetCoverage"`
+	TargetStatusMessage        string                     `json:"targetStatusMessage"`
+	CargoZigbuildStatusMessage string                     `json:"cargoZigbuildStatusMessage"`
+	HasUsableEnvironment       bool                       `json:"hasUsableEnvironment"`
+	HasUsableRust              bool                       `json:"hasUsableRust"`
+	HasUsableCargo             bool                       `json:"hasUsableCargo"`
+	HasUsableRustup            bool                       `json:"hasUsableRustup"`
+	HasUsableZig               bool                       `json:"hasUsableZig"`
+	HasUsableCargoZigbuild     bool                       `json:"hasUsableCargoZigbuild"`
+	CanManageTargets           bool                       `json:"canManageTargets"`
+	CanManageCargoZigbuild     bool                       `json:"canManageCargoZigbuild"`
+	ActiveRustRoot             string                     `json:"activeRustRoot"`
+	ActiveRustVersion          string                     `json:"activeRustVersion"`
+	ActiveRustSource           string                     `json:"activeRustSource"`
+	ActiveRustManaged          bool                       `json:"activeRustManaged"`
+	ActiveCargoBinary          string                     `json:"activeCargoBinary"`
+	ActiveCargoVersion         string                     `json:"activeCargoVersion"`
+	ActiveCargoSource          string                     `json:"activeCargoSource"`
+	ActiveRustupBinary         string                     `json:"activeRustupBinary"`
+	ActiveRustupVersion        string                     `json:"activeRustupVersion"`
+	ActiveRustupSource         string                     `json:"activeRustupSource"`
+	ActiveRustcBinary          string                     `json:"activeRustcBinary"`
+	ActiveZigBinary            string                     `json:"activeZigBinary"`
+	ActiveZigVersion           string                     `json:"activeZigVersion"`
+	ActiveZigSource            string                     `json:"activeZigSource"`
+	ActiveCargoZigbuildBinary  string                     `json:"activeCargoZigbuildBinary"`
+	ActiveCargoZigbuildVersion string                     `json:"activeCargoZigbuildVersion"`
+	ActiveCargoZigbuildSource  string                     `json:"activeCargoZigbuildSource"`
+	StatusMessage              string                     `json:"statusMessage"`
+	SuggestedInstallDirectory  string                     `json:"suggestedInstallDirectory"`
 }
 
 type rustCandidatePath struct {
@@ -84,6 +124,17 @@ type rustCandidatePath struct {
 }
 
 type rustToolVersionReader func(string) (string, error)
+
+type rustEnvironmentLayout struct {
+	RootDir             string
+	CargoHome           string
+	RustupHome          string
+	CargoBinary         string
+	RustupBinary        string
+	RustcBinary         string
+	CargoZigbuildBinary string
+	Managed             bool
+}
 
 func LoadRustConfig() (RustConfig, error) {
 	configPath, err := appconfig.ResolveConfigPath()
@@ -131,34 +182,122 @@ func GetRustState() (RustToolchainState, error) {
 
 func InspectRustConfig(cfg RustConfig) (RustToolchainState, error) {
 	cfg = normalizeRustConfig(cfg)
+	suggestedInstallDirectory := NormalizeRustInstallBaseDirectory(cfg.LastInstallDirectory)
+	if suggestedInstallDirectory == "" {
+		if defaultDir, err := defaultToolchainInstallDirectory(); err == nil {
+			suggestedInstallDirectory = NormalizeRustInstallBaseDirectory(defaultDir)
+		}
+	}
 
-	cargoCandidates, activeCargoBinary, activeCargoVersion, activeCargoSource, cargoSelectedError := inspectRustToolCandidates(
-		collectRustToolCandidatePaths(cfg.SelectedCargoBinary, cfg.KnownCargoBinaries, []string{rustToolExecutableName("cargo")}, cargoToolFallbackCandidates("cargo")),
-		cfg.SelectedCargoBinary,
-		readCargoVersion,
-	)
-	rustupCandidates, activeRustupBinary, activeRustupVersion, activeRustupSource, rustupSelectedError := inspectRustToolCandidates(
-		collectRustToolCandidatePaths(cfg.SelectedRustupBinary, cfg.KnownRustupBinaries, []string{rustToolExecutableName("rustup")}, cargoToolFallbackCandidates("rustup")),
-		cfg.SelectedRustupBinary,
-		readRustupVersion,
+	selectedRustRoot := ""
+	selectedZigBinary := ""
+	if cfg.Mode == rustModeManual {
+		selectedRustRoot = cfg.SelectedRustRoot
+		selectedZigBinary = cfg.SelectedZigBinary
+	}
+
+	rustCandidates, activeRustCandidate, rustSelectedError := inspectRustEnvironmentCandidates(
+		collectRustEnvironmentCandidateRoots(cfg, selectedRustRoot),
+		selectedRustRoot,
+		cfg.Mode == rustModeAuto,
 	)
 	zigCandidates, activeZigBinary, activeZigVersion, activeZigSource, zigSelectedError := inspectRustToolCandidates(
-		collectRustToolCandidatePaths(cfg.SelectedZigBinary, cfg.KnownZigBinaries, []string{rustToolExecutableName("zig")}, zigToolFallbackCandidates()),
-		cfg.SelectedZigBinary,
+		collectRustToolCandidatePaths(
+			selectedZigBinary,
+			cfg.KnownZigBinaries,
+			[]string{rustToolExecutableName("zig")},
+			zigToolFallbackCandidates(),
+			discoverManagedZigBinaries(),
+		),
+		selectedZigBinary,
 		readZigVersion,
 	)
-	cargoZigbuildCandidates, activeCargoZigbuildBinary, activeCargoZigbuildVersion, activeCargoZigbuildSource, cargoZigbuildSelectedError := inspectRustToolCandidates(
-		collectRustToolCandidatePaths(cfg.SelectedCargoZigbuildBinary, cfg.KnownCargoZigbuildBinaries, []string{rustToolExecutableName("cargo-zigbuild")}, cargoToolFallbackCandidates("cargo-zigbuild")),
-		cfg.SelectedCargoZigbuildBinary,
-		readCargoZigbuildVersion,
-	)
+
+	activeRustRoot := ""
+	activeRustVersion := ""
+	activeRustSource := ""
+	activeRustManaged := false
+	activeCargoBinary := ""
+	activeCargoVersion := ""
+	activeCargoSource := ""
+	activeRustupBinary := ""
+	activeRustupVersion := ""
+	activeRustupSource := ""
+	activeRustcBinary := ""
+	activeRustLayout := rustEnvironmentLayout{}
+	activeCargoZigbuildBinary := ""
+	activeCargoZigbuildVersion := ""
+	activeCargoZigbuildSource := ""
+	cargoZigbuildStatusMessage := ""
+	canManageCargoZigbuild := false
+	canManageTargets := false
+
+	if activeRustCandidate != nil {
+		activeRustRoot = activeRustCandidate.RootDir
+		activeRustVersion = activeRustCandidate.Version
+		activeRustSource = activeRustCandidate.Source
+		activeRustManaged = activeRustCandidate.Managed
+		if layout, err := resolveRustEnvironmentLayout(activeRustCandidate.RootDir); err == nil {
+			activeRustLayout = layout
+		}
+		activeCargoBinary = activeRustCandidate.CargoBinary
+		activeCargoVersion = activeRustCandidate.Version
+		activeCargoSource = activeRustCandidate.Source
+		activeRustupBinary = activeRustCandidate.RustupBinary
+		activeRustupVersion, _ = readRustupVersion(activeRustupBinary)
+		activeRustupSource = activeRustCandidate.Source
+		activeRustcBinary = activeRustCandidate.RustcBinary
+		activeCargoZigbuildBinary = activeRustCandidate.CargoZigbuildBinary
+		activeCargoZigbuildVersion, _ = readCargoZigbuildVersion(activeCargoZigbuildBinary)
+		activeCargoZigbuildSource = activeRustCandidate.Source
+		canManageCargoZigbuild = activeRustManaged && activeCargoBinary != ""
+		canManageTargets = activeRustManaged && activeRustupBinary != ""
+		if activeCargoBinary == "" {
+			cargoZigbuildStatusMessage = "当前 Rust SDK 缺少 cargo，可执行 cargo 插件安装"
+		} else if !activeRustManaged {
+			if activeCargoZigbuildBinary == "" {
+				cargoZigbuildStatusMessage = "当前激活的是系统 Rust；为避免修改 ~/.cargo，已禁用自动补齐 cargo-zigbuild"
+			} else {
+				cargoZigbuildStatusMessage = "cargo-zigbuild 已就绪（系统 Rust）"
+			}
+		} else if activeCargoZigbuildBinary == "" {
+			cargoZigbuildStatusMessage = "当前 Rust 环境缺少 cargo-zigbuild，可单独补齐"
+		} else {
+			cargoZigbuildStatusMessage = "cargo-zigbuild 已就绪"
+		}
+	}
+
+	if cfg.Disabled {
+		activeRustRoot = ""
+		activeRustVersion = ""
+		activeRustSource = ""
+		activeRustManaged = false
+		activeCargoBinary = ""
+		activeCargoVersion = ""
+		activeCargoSource = ""
+		activeRustupBinary = ""
+		activeRustupVersion = ""
+		activeRustupSource = ""
+		activeRustcBinary = ""
+		activeRustLayout = rustEnvironmentLayout{}
+		activeZigBinary = ""
+		activeZigVersion = ""
+		activeZigSource = ""
+		activeCargoZigbuildBinary = ""
+		activeCargoZigbuildVersion = ""
+		activeCargoZigbuildSource = ""
+		cargoZigbuildStatusMessage = ""
+		canManageCargoZigbuild = false
+		canManageTargets = false
+	}
+
 	targetStatuses := make([]RustTargetStatus, 0, len(rustSupportedTargets()))
 	installedTargets := make([]string, 0, len(rustSupportedTargets()))
 	hasInstalledTargetInfo := false
 	hasFullTargetCoverage := false
 	targetStatusMessage := ""
 	if activeRustupBinary != "" {
-		statuses, installed, err := inspectRustTargets(activeRustupBinary)
+		statuses, installed, err := inspectRustTargets(activeRustLayout)
 		if err != nil {
 			targetStatusMessage = fmt.Sprintf("无法读取已安装 Rust targets：%v", err)
 		} else {
@@ -167,35 +306,40 @@ func InspectRustConfig(cfg RustConfig) (RustToolchainState, error) {
 			hasInstalledTargetInfo = true
 			hasFullTargetCoverage, targetStatusMessage = summarizeRustTargets(statuses)
 		}
+	} else if activeCargoBinary != "" {
+		targetStatusMessage = "当前 Rust 环境缺少 rustup，无法自动补齐常用 targets"
+	}
+	if activeCargoBinary != "" && !activeRustManaged && !hasFullTargetCoverage {
+		if targetStatusMessage == "" {
+			targetStatusMessage = "当前激活的是系统 Rust；为避免修改 ~/.rustup，已禁用自动补齐常用 targets"
+		} else {
+			targetStatusMessage += "；当前激活的是系统 Rust，已禁用自动补齐常用 targets"
+		}
 	}
 
-	statusParts := make([]string, 0, 4)
-	if activeCargoBinary == "" {
-		if cargoSelectedError != "" {
-			statusParts = append(statusParts, cargoSelectedError)
+	statusParts := make([]string, 0, 5)
+	switch {
+	case cfg.Disabled:
+		statusParts = append(statusParts, "已关闭 Rust SDK，远程执行、导出和交叉编译缓存将不可用")
+	case activeCargoBinary == "":
+		if rustSelectedError != "" {
+			statusParts = append(statusParts, rustSelectedError)
 		} else {
-			statusParts = append(statusParts, "未检测到可用的 cargo")
+			statusParts = append(statusParts, "未检测到可用的 Rust SDK")
 		}
-	}
-	if activeRustupBinary == "" {
-		if rustupSelectedError != "" {
-			statusParts = append(statusParts, rustupSelectedError)
-		} else {
-			statusParts = append(statusParts, "未检测到可用的 rustup")
+	default:
+		if activeZigBinary == "" {
+			if zigSelectedError != "" {
+				statusParts = append(statusParts, zigSelectedError)
+			} else {
+				statusParts = append(statusParts, "未检测到可用的 Zig SDK")
+			}
 		}
-	}
-	if activeZigBinary == "" {
-		if zigSelectedError != "" {
-			statusParts = append(statusParts, zigSelectedError)
-		} else {
-			statusParts = append(statusParts, "未检测到可用的 zig")
+		if activeCargoZigbuildBinary == "" {
+			statusParts = append(statusParts, cargoZigbuildStatusMessage)
 		}
-	}
-	if activeCargoZigbuildBinary == "" {
-		if cargoZigbuildSelectedError != "" {
-			statusParts = append(statusParts, cargoZigbuildSelectedError)
-		} else {
-			statusParts = append(statusParts, "未检测到可用的 cargo-zigbuild")
+		if targetStatusMessage != "" && !hasFullTargetCoverage {
+			statusParts = append(statusParts, targetStatusMessage)
 		}
 	}
 
@@ -208,26 +352,33 @@ func InspectRustConfig(cfg RustConfig) (RustToolchainState, error) {
 
 	return RustToolchainState{
 		Config:                     cfg,
-		CargoCandidates:            cargoCandidates,
-		RustupCandidates:           rustupCandidates,
+		RustCandidates:             rustCandidates,
 		ZigCandidates:              zigCandidates,
-		CargoZigbuildCandidates:    cargoZigbuildCandidates,
 		InstalledTargets:           installedTargets,
 		TargetStatuses:             targetStatuses,
 		HasInstalledTargetInfo:     hasInstalledTargetInfo,
 		HasFullTargetCoverage:      hasFullTargetCoverage,
 		TargetStatusMessage:        targetStatusMessage,
-		HasUsableEnvironment:       activeCargoBinary != "" && activeRustupBinary != "" && activeZigBinary != "" && activeCargoZigbuildBinary != "",
+		CargoZigbuildStatusMessage: cargoZigbuildStatusMessage,
+		HasUsableEnvironment:       activeCargoBinary != "" && activeZigBinary != "" && activeCargoZigbuildBinary != "" && hasFullTargetCoverage,
+		HasUsableRust:              activeCargoBinary != "",
 		HasUsableCargo:             activeCargoBinary != "",
 		HasUsableRustup:            activeRustupBinary != "",
 		HasUsableZig:               activeZigBinary != "",
 		HasUsableCargoZigbuild:     activeCargoZigbuildBinary != "",
+		CanManageTargets:           canManageTargets,
+		CanManageCargoZigbuild:     canManageCargoZigbuild,
+		ActiveRustRoot:             activeRustRoot,
+		ActiveRustVersion:          activeRustVersion,
+		ActiveRustSource:           activeRustSource,
+		ActiveRustManaged:          activeRustManaged,
 		ActiveCargoBinary:          activeCargoBinary,
 		ActiveCargoVersion:         activeCargoVersion,
 		ActiveCargoSource:          activeCargoSource,
 		ActiveRustupBinary:         activeRustupBinary,
 		ActiveRustupVersion:        activeRustupVersion,
 		ActiveRustupSource:         activeRustupSource,
+		ActiveRustcBinary:          activeRustcBinary,
 		ActiveZigBinary:            activeZigBinary,
 		ActiveZigVersion:           activeZigVersion,
 		ActiveZigSource:            activeZigSource,
@@ -235,6 +386,7 @@ func InspectRustConfig(cfg RustConfig) (RustToolchainState, error) {
 		ActiveCargoZigbuildVersion: activeCargoZigbuildVersion,
 		ActiveCargoZigbuildSource:  activeCargoZigbuildSource,
 		StatusMessage:              statusMessage,
+		SuggestedInstallDirectory:  suggestedInstallDirectory,
 	}, nil
 }
 
@@ -271,8 +423,8 @@ func rustSupportedTargets() []rustSupportedTarget {
 	return result
 }
 
-func inspectRustTargets(rustupBinary string) ([]RustTargetStatus, []string, error) {
-	installedTargets, err := readInstalledRustTargets(rustupBinary)
+func inspectRustTargets(layout rustEnvironmentLayout) ([]RustTargetStatus, []string, error) {
+	installedTargets, err := readInstalledRustTargets(layout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -328,11 +480,14 @@ func summarizeRustTargets(statuses []RustTargetStatus) (bool, string) {
 	)
 }
 
-func readInstalledRustTargets(rustupBinary string) ([]string, error) {
+func readInstalledRustTargets(layout rustEnvironmentLayout) ([]string, error) {
+	rustupBinary := layout.RustupBinary
 	if _, err := os.Stat(rustupBinary); err != nil {
 		return nil, fmt.Errorf("rustup 路径不存在")
 	}
-	output, err := procutil.Command(rustupBinary, "target", "list", "--installed").CombinedOutput()
+	cmd := procutil.Command(rustupBinary, "target", "list", "--installed")
+	cmd.Env = append(os.Environ(), rustEnvironmentVars(layout, false)...)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("执行 rustup target list --installed 失败")
 	}
@@ -410,6 +565,46 @@ func ResolveCargoZigbuildBinary() (string, error) {
 }
 
 func normalizeRustConfig(cfg RustConfig) RustConfig {
+	cfg.Mode = strings.ToLower(strings.TrimSpace(cfg.Mode))
+	if cfg.Mode == "" {
+		switch {
+		case cfg.Disabled:
+			cfg.Mode = rustModeNone
+		case strings.TrimSpace(cfg.SelectedRustRoot) != "" || strings.TrimSpace(cfg.SelectedZigBinary) != "" || strings.TrimSpace(cfg.SelectedCargoBinary) != "" || strings.TrimSpace(cfg.SelectedRustupBinary) != "":
+			cfg.Mode = rustModeManual
+		default:
+			cfg.Mode = rustModeAuto
+		}
+	}
+	switch cfg.Mode {
+	case rustModeAuto, rustModeManual:
+		cfg.Disabled = false
+	case rustModeNone:
+		cfg.Disabled = true
+	default:
+		cfg.Mode = rustModeAuto
+		cfg.Disabled = false
+	}
+	cfg.SelectedRustRoot = normalizeRustEnvironmentRoot(cfg.SelectedRustRoot)
+	if cfg.SelectedRustRoot == "" {
+		cfg.SelectedRustRoot = normalizeRustEnvironmentRoot(firstNonEmpty(
+			inferRustEnvironmentRootFromBinary(cfg.SelectedCargoBinary),
+			inferRustEnvironmentRootFromBinary(cfg.SelectedRustupBinary),
+			inferRustEnvironmentRootFromBinary(cfg.SelectedCargoZigbuildBinary),
+		))
+	}
+	knownRustRoots := make([]string, 0, len(cfg.KnownRustRoots)+len(cfg.KnownCargoBinaries)+len(cfg.KnownRustupBinaries)+len(cfg.KnownCargoZigbuildBinaries))
+	knownRustRoots = append(knownRustRoots, cfg.KnownRustRoots...)
+	for _, path := range cfg.KnownCargoBinaries {
+		knownRustRoots = append(knownRustRoots, inferRustEnvironmentRootFromBinary(path))
+	}
+	for _, path := range cfg.KnownRustupBinaries {
+		knownRustRoots = append(knownRustRoots, inferRustEnvironmentRootFromBinary(path))
+	}
+	for _, path := range cfg.KnownCargoZigbuildBinaries {
+		knownRustRoots = append(knownRustRoots, inferRustEnvironmentRootFromBinary(path))
+	}
+	cfg.KnownRustRoots = dedupeStrings(normalizeRustRoots(knownRustRoots))
 	cfg.SelectedCargoBinary = strings.TrimSpace(cfg.SelectedCargoBinary)
 	cfg.KnownCargoBinaries = dedupeStrings(cfg.KnownCargoBinaries)
 	cfg.SelectedRustupBinary = strings.TrimSpace(cfg.SelectedRustupBinary)
@@ -418,11 +613,266 @@ func normalizeRustConfig(cfg RustConfig) RustConfig {
 	cfg.KnownZigBinaries = dedupeStrings(cfg.KnownZigBinaries)
 	cfg.SelectedCargoZigbuildBinary = strings.TrimSpace(cfg.SelectedCargoZigbuildBinary)
 	cfg.KnownCargoZigbuildBinaries = dedupeStrings(cfg.KnownCargoZigbuildBinaries)
+	cfg.LastInstallDirectory = NormalizeRustInstallBaseDirectory(cfg.LastInstallDirectory)
 	return cfg
 }
 
-func collectRustToolCandidatePaths(selected string, known []string, executableNames []string, fallbackPaths []string) []rustCandidatePath {
-	seen := map[string]struct{}{}
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeRustRoots(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if root := normalizeRustEnvironmentRoot(value); root != "" {
+			result = append(result, root)
+		}
+	}
+	return result
+}
+
+func collectRustEnvironmentCandidateRoots(cfg RustConfig, selectedRoot string) []rustCandidatePath {
+	seen := map[string]int{}
+	result := make([]rustCandidatePath, 0, 16)
+	add := func(root string, source string) {
+		root = normalizeRustEnvironmentRoot(root)
+		if root == "" {
+			return
+		}
+		identity := fileIdentity(root)
+		if index, ok := seen[identity]; ok {
+			result[index].source = preferCandidateSource(result[index].source, source)
+			return
+		}
+		seen[identity] = len(result)
+		result = append(result, rustCandidatePath{path: root, source: source})
+	}
+	if selectedRoot != "" {
+		add(selectedRoot, sourceConfigured)
+	}
+	for _, root := range cfg.KnownRustRoots {
+		add(root, sourceRemembered)
+	}
+	for _, path := range []string{cfg.SelectedCargoBinary, cfg.SelectedRustupBinary, cfg.SelectedCargoZigbuildBinary} {
+		add(inferRustEnvironmentRootFromBinary(path), sourceConfigured)
+	}
+	for _, path := range append(append([]string{}, cfg.KnownCargoBinaries...), append(cfg.KnownRustupBinaries, cfg.KnownCargoZigbuildBinaries...)...) {
+		add(inferRustEnvironmentRootFromBinary(path), sourceRemembered)
+	}
+	for _, name := range []string{rustToolExecutableName("cargo"), rustToolExecutableName("rustup")} {
+		if path, err := exec.LookPath(name); err == nil && path != "" {
+			add(inferRustEnvironmentRootFromBinary(path), sourcePath)
+		}
+	}
+	for _, path := range cargoToolFallbackCandidates("cargo") {
+		add(inferRustEnvironmentRootFromBinary(path), sourceDetected)
+	}
+	for _, root := range discoverManagedRustRoots() {
+		add(root, sourceManaged)
+	}
+	return result
+}
+
+func inspectRustEnvironmentCandidates(paths []rustCandidatePath, selectedRoot string, preferManaged bool) ([]RustEnvironmentCandidate, *RustEnvironmentCandidate, string) {
+	candidates := make([]RustEnvironmentCandidate, 0, len(paths))
+	var activeCandidate *RustEnvironmentCandidate
+	selectedError := ""
+	for _, entry := range paths {
+		candidate := inspectRustEnvironmentCandidate(entry.path, entry.source, selectedRoot)
+		if candidate.Selected && !candidate.Valid && candidate.Error != "" {
+			selectedError = candidate.Error
+		}
+		if candidate.Valid {
+			switch {
+			case activeCandidate == nil:
+				candidateCopy := candidate
+				activeCandidate = &candidateCopy
+			case preferManaged && candidate.Managed && !activeCandidate.Managed:
+				candidateCopy := candidate
+				activeCandidate = &candidateCopy
+			}
+		}
+		candidates = append(candidates, candidate)
+	}
+	if activeCandidate != nil {
+		for i := range candidates {
+			candidates[i].Active = candidates[i].Valid && candidates[i].RootDir == activeCandidate.RootDir
+		}
+	}
+	return candidates, activeCandidate, selectedError
+}
+
+func inspectRustEnvironmentCandidate(root string, source string, selectedRoot string) RustEnvironmentCandidate {
+	candidate := RustEnvironmentCandidate{
+		RootDir:  root,
+		Source:   source,
+		Selected: sameNormalizedPath(root, selectedRoot),
+		Detail:   root,
+		Label:    filepath.Base(root),
+	}
+	layout, err := resolveRustEnvironmentLayout(root)
+	if err != nil {
+		candidate.Error = err.Error()
+		return candidate
+	}
+	version, err := readCargoVersion(layout.CargoBinary)
+	if err != nil {
+		candidate.Error = err.Error()
+		return candidate
+	}
+	candidate.Valid = true
+	candidate.Version = version
+	candidate.Label = version
+	candidate.CargoBinary = layout.CargoBinary
+	candidate.RustupBinary = existingPathOrEmpty(layout.RustupBinary)
+	candidate.RustcBinary = existingPathOrEmpty(layout.RustcBinary)
+	candidate.CargoZigbuildBinary = existingPathOrEmpty(layout.CargoZigbuildBinary)
+	candidate.HasRustup = candidate.RustupBinary != ""
+	candidate.HasCargoZigbuild = candidate.CargoZigbuildBinary != ""
+	candidate.CanManageTargets = candidate.HasRustup
+	candidate.Managed = layout.Managed
+	return candidate
+}
+
+func existingPathOrEmpty(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
+}
+
+func sameNormalizedPath(left string, right string) bool {
+	left = normalizeRustEnvironmentRoot(left)
+	right = normalizeRustEnvironmentRoot(right)
+	if left == "" || right == "" {
+		return false
+	}
+	return sameFilePath(left, right)
+}
+
+func normalizeRustEnvironmentRoot(root string) string {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" || root == "." {
+		return ""
+	}
+	if existingPathOrEmpty(filepath.Join(root, "cargo", "bin", rustToolExecutableName("cargo"))) != "" {
+		return root
+	}
+	if existingPathOrEmpty(filepath.Join(root, "bin", rustToolExecutableName("cargo"))) != "" {
+		base := strings.ToLower(filepath.Base(root))
+		if base == "cargo" && existingPathOrEmpty(filepath.Join(filepath.Dir(root), "cargo", "bin", rustToolExecutableName("cargo"))) != "" {
+			return filepath.Dir(root)
+		}
+		return root
+	}
+	if strings.EqualFold(filepath.Base(root), "bin") && existingPathOrEmpty(filepath.Join(root, rustToolExecutableName("cargo"))) != "" {
+		return normalizeRustEnvironmentRoot(filepath.Dir(root))
+	}
+	if strings.HasSuffix(strings.ToLower(filepath.Base(root)), strings.ToLower(rustToolExecutableName("cargo"))) {
+		return inferRustEnvironmentRootFromBinary(root)
+	}
+	return root
+}
+
+func inferRustEnvironmentRootFromBinary(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return ""
+	}
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return normalizeRustEnvironmentRoot(path)
+	}
+	dir := filepath.Dir(path)
+	if strings.EqualFold(filepath.Base(dir), "bin") {
+		parent := filepath.Dir(dir)
+		if strings.EqualFold(filepath.Base(parent), "cargo") && existingPathOrEmpty(filepath.Join(filepath.Dir(parent), "cargo", "bin", rustToolExecutableName("cargo"))) != "" {
+			return filepath.Dir(parent)
+		}
+		return parent
+	}
+	return normalizeRustEnvironmentRoot(dir)
+}
+
+func resolveRustEnvironmentLayout(root string) (rustEnvironmentLayout, error) {
+	root = normalizeRustEnvironmentRoot(root)
+	if root == "" {
+		return rustEnvironmentLayout{}, fmt.Errorf("Rust SDK 目录为空")
+	}
+	managedCargoBinary := filepath.Join(root, "cargo", "bin", rustToolExecutableName("cargo"))
+	if existingPathOrEmpty(managedCargoBinary) != "" {
+		return rustEnvironmentLayout{
+			RootDir:             root,
+			CargoHome:           filepath.Join(root, "cargo"),
+			RustupHome:          filepath.Join(root, "rustup"),
+			CargoBinary:         managedCargoBinary,
+			RustupBinary:        filepath.Join(root, "cargo", "bin", rustToolExecutableName("rustup")),
+			RustcBinary:         filepath.Join(root, "cargo", "bin", rustToolExecutableName("rustc")),
+			CargoZigbuildBinary: filepath.Join(root, "cargo", "bin", rustToolExecutableName("cargo-zigbuild")),
+			Managed:             true,
+		}, nil
+	}
+	cargoHome := root
+	cargoBinary := filepath.Join(cargoHome, "bin", rustToolExecutableName("cargo"))
+	if existingPathOrEmpty(cargoBinary) == "" {
+		return rustEnvironmentLayout{}, fmt.Errorf("目录中未发现 cargo：%s", root)
+	}
+	return rustEnvironmentLayout{
+		RootDir:             root,
+		CargoHome:           cargoHome,
+		RustupHome:          defaultUserRustupHome(),
+		CargoBinary:         cargoBinary,
+		RustupBinary:        filepath.Join(cargoHome, "bin", rustToolExecutableName("rustup")),
+		RustcBinary:         filepath.Join(cargoHome, "bin", rustToolExecutableName("rustc")),
+		CargoZigbuildBinary: filepath.Join(cargoHome, "bin", rustToolExecutableName("cargo-zigbuild")),
+		Managed:             false,
+	}, nil
+}
+
+func defaultUserRustupHome() string {
+	if value := strings.TrimSpace(os.Getenv("RUSTUP_HOME")); value != "" {
+		return value
+	}
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".rustup")
+}
+
+func discoverManagedRustRoots() []string {
+	root, err := defaultToolchainInstallDirectory()
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(root, rustManagedDirName))
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, rustManagedDirName, entry.Name())
+		if existingPathOrEmpty(filepath.Join(dir, "cargo", "bin", rustToolExecutableName("cargo"))) != "" {
+			result = append(result, dir)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func collectRustToolCandidatePaths(selected string, known []string, executableNames []string, fallbackPaths []string, managedPaths []string) []rustCandidatePath {
+	seen := map[string]int{}
 	result := make([]rustCandidatePath, 0, 16)
 	add := func(path string, source string) {
 		path = filepath.Clean(strings.TrimSpace(path))
@@ -430,10 +880,11 @@ func collectRustToolCandidatePaths(selected string, known []string, executableNa
 			return
 		}
 		identity := fileIdentity(path)
-		if _, ok := seen[identity]; ok {
+		if index, ok := seen[identity]; ok {
+			result[index].source = preferCandidateSource(result[index].source, source)
 			return
 		}
-		seen[identity] = struct{}{}
+		seen[identity] = len(result)
 		result = append(result, rustCandidatePath{path: path, source: source})
 	}
 
@@ -450,6 +901,9 @@ func collectRustToolCandidatePaths(selected string, known []string, executableNa
 	}
 	for _, path := range fallbackPaths {
 		add(path, sourceDetected)
+	}
+	for _, path := range managedPaths {
+		add(path, sourceManaged)
 	}
 	return result
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -55,7 +56,7 @@ func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
 
 	file, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
 		Title:            req.Title,
-		DefaultDirectory: strings.TrimSpace(req.DefaultDirectory),
+		DefaultDirectory: sanitizeDialogDefaultDirectory(req.DefaultDirectory),
 		DefaultFilename:  strings.TrimSpace(req.DefaultFilename),
 		Filters: []wailsruntime.FileFilter{
 			{
@@ -69,6 +70,19 @@ func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
 	}
 
 	return strings.TrimSpace(file), nil
+}
+
+func sanitizeDialogDefaultDirectory(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	dir = filepath.Clean(dir)
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return dir
 }
 
 func (a *App) SaveTextFile(path string, content string) error {

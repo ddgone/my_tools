@@ -7,6 +7,8 @@ export function CancelActiveGoToolchainTask():Promise<void>;
 
 export function CancelActivePythonToolchainTask():Promise<void>;
 
+export function CancelActiveRustToolchainTask():Promise<void>;
+
 export function CancelExecution(arg1:string):Promise<void>;
 
 export function CheckGoToolchainEnvironment():Promise<main.GoToolchainState>;
@@ -18,6 +20,8 @@ export function CheckRustToolchainEnvironment():Promise<main.RustToolchainState>
 export function ClearArtifactBatchTasks():Promise<void>;
 
 export function DeleteGoToolchainEnvironment():Promise<main.GoToolchainState>;
+
+export function DeleteManagedRustToolchainEnvironment():Promise<main.RustToolchainState>;
 
 export function DeletePythonToolchainEnvironment():Promise<main.PythonToolchainState>;
 
@@ -41,6 +45,8 @@ export function GetPythonToolchainTaskState():Promise<main.PythonToolchainTaskSt
 
 export function GetRustToolchainState():Promise<main.RustToolchainState>;
 
+export function GetRustToolchainTaskState():Promise<main.RustToolchainTaskState>;
+
 export function GetSSHConnection(arg1:string):Promise<ssh.Connection>;
 
 export function GetWindowConfig():Promise<main.WindowState>;
@@ -58,6 +64,10 @@ export function ListArtifactBatchTasks():Promise<Array<main.ArtifactBatchTask>>;
 export function ListDownloadTasks():Promise<Array<main.DownloadTask>>;
 
 export function ListOfficialGoReleases():Promise<Array<main.GoOfficialRelease>>;
+
+export function ListOfficialRustReleases():Promise<Array<main.RustOfficialRelease>>;
+
+export function ListOfficialZigReleases():Promise<Array<main.ZigOfficialRelease>>;
 
 export function ListSSHConnections():Promise<Array<ssh.Connection>>;
 
@@ -90,6 +100,12 @@ export function StartArtifactBatch(arg1:main.ArtifactBatchRequest):Promise<main.
 export function StartInstallGoToolchain(arg1:main.InstallGoToolchainRequest):Promise<main.GoToolchainTaskState>;
 
 export function StartInstallPythonDependencies():Promise<main.PythonToolchainTaskState>;
+
+export function StartInstallRustCargoZigbuild():Promise<main.RustToolchainTaskState>;
+
+export function StartInstallRustTargets():Promise<main.RustToolchainTaskState>;
+
+export function StartInstallRustToolchain(arg1:main.InstallRustToolchainRequest):Promise<main.RustToolchainTaskState>;
 
 export function StartLocalExecution(arg1:main.ExecutionRequest):Promise<main.ExecutionTask>;
 
