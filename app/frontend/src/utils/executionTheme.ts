@@ -1,4 +1,4 @@
-export type ExecutionAccentName = 'cyan' | 'green' | 'pink'
+export type ExecutionAccentName = 'cyan' | 'green' | 'pink' | 'orange'
 
 export interface ExecutionTheme {
   accentName: ExecutionAccentName
@@ -58,13 +58,33 @@ const THEMES: Record<ExecutionAccentName, ExecutionTheme> = {
     dividerGradient: 'linear-gradient(to right, transparent, rgba(255, 121, 198, 0.22), transparent)',
     railActive: 'rgba(255, 121, 198, 0.50)',
   },
+  orange: {
+    accentName: 'orange',
+    accent: '#dea584',
+    accentRgb: '222, 165, 132',
+    accentHover: '#e8b495',
+    accentText: '#2a170d',
+    accentSoftBg: 'rgba(222, 165, 132, 0.10)',
+    accentSoftBorder: 'rgba(222, 165, 132, 0.22)',
+    accentSoftStrongBg: 'rgba(222, 165, 132, 0.16)',
+    accentSoftStrongBorder: 'rgba(222, 165, 132, 0.30)',
+    activeTabBackground: 'rgba(222, 165, 132, 0.12)',
+    dividerGradient: 'linear-gradient(to right, transparent, rgba(222, 165, 132, 0.22), transparent)',
+    railActive: 'rgba(222, 165, 132, 0.52)',
+  },
 }
 
 export function resolveExecutionAccent(kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionAccentName {
   if (executionTarget === 'remote') {
     return 'pink'
   }
-  return kind === 'python' ? 'green' : 'cyan'
+  if (kind === 'python') {
+    return 'green'
+  }
+  if (kind === 'rust') {
+    return 'orange'
+  }
+  return 'cyan'
 }
 
 export function getExecutionTheme(kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionTheme {

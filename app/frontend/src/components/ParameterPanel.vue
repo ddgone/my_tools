@@ -42,6 +42,14 @@ const message = useMessage()
 const activeTab = computed(() => workspace.activeTab())
 const activeConfig = computed(() => workspace.activeExecutionConfig)
 const executionTheme = computed(() => getExecutionTheme(props.tool?.kind, props.executionTarget))
+
+function cliFlagLabel(param: ParameterSpec): string {
+  if (param.emit === false) {
+    return '(表单)'
+  }
+  const prefix = props.tool?.kind === 'rust' ? '--' : '-'
+  return `${prefix}${param.argKey || param.key}`
+}
 const panelAccent = computed(() => executionTheme.value.accent)
 const panelAccentSoftBg = computed(() => executionTheme.value.accentSoftBg)
 const panelAccentSoftBorder = computed(() => executionTheme.value.accentSoftBorder)
@@ -441,7 +449,7 @@ async function copyCli() {
                   <code
                     class="parameter-panel-accent shrink-0 font-mono"
                   >
-                    {{ param.emit === false ? '(表单)' : `-${param.argKey || param.key}` }}
+                    {{ cliFlagLabel(param) }}
                   </code>
                   <NText depth="2">
                     {{ param.label }}

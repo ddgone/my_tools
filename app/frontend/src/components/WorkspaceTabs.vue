@@ -2,11 +2,12 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick, type CSSProperties } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline } from '@vicons/ionicons5'
+import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline, BuildOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useDownloadStore } from '@/stores/downloads'
 import { useGoEnvStore } from '@/stores/goenv'
+import { useRustEnvStore } from '@/stores/rustenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { getBuiltinToolById, getBuiltinToolIcon } from '@/builtin/registry'
@@ -36,6 +37,7 @@ const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
 const downloads = useDownloadStore()
 const goEnv = useGoEnvStore()
+const rustEnv = useRustEnvStore()
 const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 const message = useMessage()
@@ -296,6 +298,14 @@ function isMissingPythonEnvError(detail: string) {
     || detail.includes('当前 Python 工具依赖未安装')
 }
 
+function isMissingRustEnvError(detail: string) {
+  return detail.includes('未检测到可用的 Rust 交叉编译环境')
+    || detail.includes('请先在系统设置 > Rust 中配置')
+    || detail.includes('cargo-zigbuild')
+    || detail.includes('rustup')
+    || detail.includes('zig')
+}
+
 async function openGoSettings(messageText?: string) {
   workspace.openSettings('go')
   if (messageText) {
@@ -313,6 +323,16 @@ async function openPythonSettings(messageText?: string) {
   }
   if (!pythonEnv.state && !pythonEnv.loading) {
     await pythonEnv.loadState()
+  }
+}
+
+async function openRustSettings(messageText?: string) {
+  workspace.openSettings('rust')
+  if (messageText) {
+    message.warning(messageText)
+  }
+  if (!rustEnv.state && !rustEnv.loading) {
+    await rustEnv.loadState()
   }
 }
 
@@ -342,12 +362,13 @@ const activeExportButtonLabel = computed(() => {
   const tool = toolById(activeToolId.value)
   if (!tool) return '导出'
   if (tool.kind === 'python') return '导出脚本'
+  if (tool.kind === 'rust') return '导出二进制'
   return activeGoExportMode.value === 'source' ? '导出源码' : '导出二进制'
 })
 
 const showExportTargetSelector = computed(() => {
   const tool = toolById(activeToolId.value)
-  return tool?.kind === 'go' && activeGoExportMode.value === 'binary'
+  return (tool?.kind === 'go' || tool?.kind === 'rust') && activeGoExportMode.value === 'binary'
 })
 
 const searchResults = computed(() => {
@@ -438,6 +459,10 @@ async function handleExecute() {
       await openPythonSettings('当前操作需要 Python 环境，已为你打开设置')
       return
     }
+    if (tool.kind === 'rust' && isMissingRustEnvError(detail)) {
+      await openRustSettings('当前操作需要 Rust 交叉编译环境，已为你打开设置')
+      return
+    }
     message.error(detail || '执行失败')
   } finally {
     launching.value = false
@@ -470,8 +495,10 @@ async function handleExport() {
   exporting.value = true
   exportProgressText.value = '准备导出'
   try {
-    const mode = tool.kind === 'go' ? activeGoExportMode.value : 'source'
-    const target = tool.kind === 'go' && mode === 'binary' ? parseExportTarget(activeExportTarget.value) : {}
+    const mode = tool.kind === 'python' ? 'source' : tool.kind === 'go' ? activeGoExportMode.value : 'binary'
+    const target = (tool.kind === 'go' || tool.kind === 'rust') && mode === 'binary'
+      ? parseExportTarget(activeExportTarget.value)
+      : {}
     const result = await ExportTool({
       toolId: tool.id,
       mode,
@@ -494,6 +521,10 @@ async function handleExport() {
     const detail = error instanceof Error ? error.message : String(error)
     if (isMissingGoEnvError(detail)) {
       await openGoSettings('导出 Go 工具前需要先配置 Go 环境')
+      return
+    }
+    if (tool.kind === 'rust' && isMissingRustEnvError(detail)) {
+      await openRustSettings('导出 Rust 工具前需要先配置 Rust 交叉编译环境')
       return
     }
     message.error(detail || '工具导出失败')
@@ -927,7 +958,15 @@ function handleSSHClose() {
 }
 
 function kindIcon(kind: string) {
-  return kind === 'python' ? LogoPython : CodeSlash
+  if (kind === 'python') return LogoPython
+  if (kind === 'rust') return BuildOutline
+  return CodeSlash
+}
+
+function toolKindTag(kind: string) {
+  if (kind === 'python') return 'py'
+  if (kind === 'rust') return 'rs'
+  return 'go'
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -1088,12 +1127,12 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           >
             <template #icon>
               <NIcon
-                :component="toolById(item.label)?.kind === 'python' ? LogoPython : CodeSlash"
+                :component="kindIcon(toolById(item.label)?.kind ?? '')"
                 size="10"
                 :color="toolKindIconColorForTool(item.label)"
               />
             </template>
-            {{ toolById(item.label)?.kind === 'python' ? 'py' : 'go' }}
+            {{ toolKindTag(toolById(item.label)?.kind ?? '') }}
           </NTag>
           <NTag
             v-if="item.type === 'builtin'"
@@ -1348,7 +1387,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
                     <NIcon
                       :component="kindIcon(tool.kind)"
                       size="18"
-                      :color="tool.kind === 'python' ? '#f1fa8c' : '#8be9fd'"
+                      :color="tool.kind === 'python' ? '#f1fa8c' : tool.kind === 'rust' ? '#ffb86c' : '#8be9fd'"
                     />
                   </template>
                   <div class="min-w-0 flex-1">

@@ -22,6 +22,10 @@ export function CheckPythonToolchainEnvironment() {
   return window['go']['main']['App']['CheckPythonToolchainEnvironment']();
 }
 
+export function CheckRustToolchainEnvironment() {
+  return window['go']['main']['App']['CheckRustToolchainEnvironment']();
+}
+
 export function ClearArtifactBatchTasks() {
   return window['go']['main']['App']['ClearArtifactBatchTasks']();
 }
@@ -68,6 +72,10 @@ export function GetPythonToolchainState() {
 
 export function GetPythonToolchainTaskState() {
   return window['go']['main']['App']['GetPythonToolchainTaskState']();
+}
+
+export function GetRustToolchainState() {
+  return window['go']['main']['App']['GetRustToolchainState']();
 }
 
 export function GetSSHConnection(arg1) {
@@ -140,6 +148,10 @@ export function SaveGoToolchainConfig(arg1) {
 
 export function SavePythonToolchainConfig(arg1) {
   return window['go']['main']['App']['SavePythonToolchainConfig'](arg1);
+}
+
+export function SaveRustToolchainConfig(arg1) {
+  return window['go']['main']['App']['SaveRustToolchainConfig'](arg1);
 }
 
 export function SaveSSHConnection(arg1) {

@@ -100,11 +100,14 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 	manifest, manifestOK := a.manifests[req.ToolID]
 	a.mu.RUnlock()
 
-	if !ok {
+	if !ok && !manifestOK {
 		return nil, fmt.Errorf("未找到工具: %s", req.ToolID)
 	}
 
-	usage := legacyTool.usage
+	usage := ""
+	if ok && legacyTool != nil {
+		usage = legacyTool.usage
+	}
 	if manifestOK && manifest.Docs.Usage != "" {
 		usage = manifest.Docs.Usage
 	}
@@ -122,7 +125,12 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 	}
 
 	if task.ToolName == "" {
-		task.ToolName = legacyTool.tool.Name()
+		switch {
+		case ok && legacyTool != nil && legacyTool.tool != nil:
+			task.ToolName = legacyTool.tool.Name()
+		case manifestOK:
+			task.ToolName = manifest.Name
+		}
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -137,7 +145,10 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 	go func() {
 		writer := &taskEventWriter{taskID: task.ID, app: a}
 		var execErr error
-		if legacyTool.runPython != nil {
+		switch {
+		case manifestOK && manifest.Kind == toolspec.ToolKindRust:
+			execErr = executeLocalRustTool(runCtx, writer, manifest)(req.Args)
+		case legacyTool != nil && legacyTool.runPython != nil:
 			pythonEnv := strings.TrimSpace(req.PythonEnv)
 			if pythonEnv == "" {
 				pythonEnv, execErr = toolchain.ResolvePythonBinaryForTool(req.ToolID)
@@ -150,9 +161,9 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 			if execErr == nil {
 				execErr = legacyTool.runPython(runCtx, pythonEnv, req.Args, writer)
 			}
-		} else if legacyTool.run != nil {
+		case legacyTool != nil && legacyTool.run != nil:
 			execErr = legacyTool.run(runCtx, req.Args, writer)
-		} else {
+		default:
 			execErr = fmt.Errorf("工具 %s 缺少可执行入口", task.ToolName)
 		}
 		writer.Flush()
@@ -239,7 +250,7 @@ func (a *App) StartRemoteExecution(req RemoteExecRequest) (*ExecutionTask, error
 	manifest, manifestOK := a.manifests[req.ToolID]
 	a.mu.RUnlock()
 
-	if !ok {
+	if !ok && !manifestOK {
 		return nil, fmt.Errorf("未找到工具: %s", req.ToolID)
 	}
 
@@ -490,6 +501,9 @@ func builderKind(kind string) builder.ToolKind {
 	if kind == "python" {
 		return builder.KindPython
 	}
+	if kind == "rust" {
+		return builder.KindRust
+	}
 	return builder.KindGo
 }
 
@@ -501,6 +515,9 @@ func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string,
 	parsedArgs, err := framework.ParseArgs(params.args)
 	if err != nil {
 		return "", "", err
+	}
+	if params.kind == "rust" {
+		parsedArgs = normalizeRustCLIArgs(parsedArgs)
 	}
 	quotedArgs := joinRemoteShellArgs(parsedArgs)
 	if params.kind == "python" {

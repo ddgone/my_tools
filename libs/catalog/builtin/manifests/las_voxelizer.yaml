@@ -1,0 +1,92 @@
+id: las_voxelizer
+name: LAS/LAZ 体素抽稀与强度预览
+kind: rust
+category: Rust工具 > 点云处理工具
+icon: rust
+description: 对 LAS/LAZ 点云执行体素化抽稀，并可输出带地理定位的强度 PNG 预览。
+docs:
+  summary: 适合测试 LAS/LAZ 体素抽稀、代表点选择，以及快速生成强度预览图。
+  usage: |
+    输入 LAS 或 LAZ 文件后，可以选择输出抽稀后的点云文件，也可以只输出强度预览图。
+    默认使用体素中心点作为代表点；若启用仅栅格模式，则不会写出点云结果。
+params:
+  - key: input
+    argKey: input
+    type: path
+    pathMode: file
+    label: 输入 LAS/LAZ 文件
+    placeholder: 选择 .las 或 .laz 文件
+    required: true
+  - key: output
+    argKey: output
+    type: path
+    pathMode: file
+    label: 输出点云文件
+    placeholder: 选择输出 .las 或 .laz 文件
+    required: true
+    visibleWhen:
+      all:
+        - key: raster_only
+          equals: false
+  - key: voxel_size
+    argKey: voxel-size
+    type: number
+    label: 体素大小（米）
+    default: 0.1
+    help: 控制抽稀粒度，同时也是默认的强度图分辨率。
+  - key: representative
+    argKey: representative
+    type: select
+    label: 代表点模式
+    default: center
+    options:
+      - label: 体素中心
+        value: center
+      - label: 首个点
+        value: first
+  - key: reserve
+    argKey: reserve
+    type: number
+    label: 预留体素数
+    help: 提前为体素索引分配容量，适合已知大致保留量时使用。
+  - key: threads
+    argKey: threads
+    type: number
+    label: 线程数
+    help: 指定 rayon 线程池大小；留空则使用默认线程数。
+  - key: intensity_preview
+    argKey: intensity-preview
+    type: path
+    pathMode: file
+    label: 强度 PNG 预览
+    placeholder: 选择输出 .png 文件
+    help: 可选；会同时生成同名 .pgw 和 .prj 文件。
+  - key: intensity_resolution
+    argKey: intensity-resolution
+    type: number
+    label: 强度图分辨率（米）
+    help: 留空则沿用体素大小。
+  - key: raster_only
+    argKey: raster-only
+    type: boolean
+    label: 仅输出栅格预览
+    default: false
+  - key: force
+    argKey: force
+    type: boolean
+    label: 覆盖已有输出
+    default: false
+  - key: quiet
+    argKey: quiet
+    type: boolean
+    label: 静默模式
+    default: false
+execution:
+  local:
+    adapter: rust-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/rust_tools/las_voxelizer/src/main.rs

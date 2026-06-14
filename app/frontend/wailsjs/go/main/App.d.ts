@@ -13,6 +13,8 @@ export function CheckGoToolchainEnvironment():Promise<main.GoToolchainState>;
 
 export function CheckPythonToolchainEnvironment():Promise<main.PythonToolchainState>;
 
+export function CheckRustToolchainEnvironment():Promise<main.RustToolchainState>;
+
 export function ClearArtifactBatchTasks():Promise<void>;
 
 export function DeleteGoToolchainEnvironment():Promise<main.GoToolchainState>;
@@ -36,6 +38,8 @@ export function GetGoToolchainTaskState():Promise<main.GoToolchainTaskState>;
 export function GetPythonToolchainState():Promise<main.PythonToolchainState>;
 
 export function GetPythonToolchainTaskState():Promise<main.PythonToolchainTaskState>;
+
+export function GetRustToolchainState():Promise<main.RustToolchainState>;
 
 export function GetSSHConnection(arg1:string):Promise<ssh.Connection>;
 
@@ -72,6 +76,8 @@ export function PreparePythonToolchainEnvironment():Promise<main.PythonToolchain
 export function SaveGoToolchainConfig(arg1:main.GoToolchainConfig):Promise<main.GoToolchainState>;
 
 export function SavePythonToolchainConfig(arg1:main.PythonToolchainConfig):Promise<main.PythonToolchainState>;
+
+export function SaveRustToolchainConfig(arg1:main.RustToolchainConfig):Promise<main.RustToolchainState>;
 
 export function SaveSSHConnection(arg1:ssh.Connection):Promise<ssh.Connection>;
 

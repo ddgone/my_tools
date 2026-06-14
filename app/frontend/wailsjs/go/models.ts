@@ -715,6 +715,167 @@ export namespace main {
 	        this.pythonEnv = source["pythonEnv"];
 	    }
 	}
+	export class RustToolchainCandidate {
+	    path: string;
+	    version: string;
+	    source: string;
+	    label: string;
+	    detail: string;
+	    error?: string;
+	    valid: boolean;
+	    selected: boolean;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.source = source["source"];
+	        this.label = source["label"];
+	        this.detail = source["detail"];
+	        this.error = source["error"];
+	        this.valid = source["valid"];
+	        this.selected = source["selected"];
+	        this.active = source["active"];
+	    }
+	}
+	export class RustToolchainConfig {
+	    selectedCargoBinary: string;
+	    knownCargoBinaries: string[];
+	    selectedRustupBinary: string;
+	    knownRustupBinaries: string[];
+	    selectedZigBinary: string;
+	    knownZigBinaries: string[];
+	    selectedCargoZigbuildBinary: string;
+	    knownCargoZigbuildBinaries: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selectedCargoBinary = source["selectedCargoBinary"];
+	        this.knownCargoBinaries = source["knownCargoBinaries"];
+	        this.selectedRustupBinary = source["selectedRustupBinary"];
+	        this.knownRustupBinaries = source["knownRustupBinaries"];
+	        this.selectedZigBinary = source["selectedZigBinary"];
+	        this.knownZigBinaries = source["knownZigBinaries"];
+	        this.selectedCargoZigbuildBinary = source["selectedCargoZigbuildBinary"];
+	        this.knownCargoZigbuildBinaries = source["knownCargoZigbuildBinaries"];
+	    }
+	}
+	export class RustToolchainTargetStatus {
+	    platformKey: string;
+	    platformLabel: string;
+	    targetTriple: string;
+	    installed: boolean;
+	    native: boolean;
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainTargetStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.platformKey = source["platformKey"];
+	        this.platformLabel = source["platformLabel"];
+	        this.targetTriple = source["targetTriple"];
+	        this.installed = source["installed"];
+	        this.native = source["native"];
+	        this.note = source["note"];
+	    }
+	}
+	export class RustToolchainState {
+	    config: RustToolchainConfig;
+	    cargoCandidates: RustToolchainCandidate[];
+	    rustupCandidates: RustToolchainCandidate[];
+	    zigCandidates: RustToolchainCandidate[];
+	    cargoZigbuildCandidates: RustToolchainCandidate[];
+	    installedTargets: string[];
+	    targetStatuses: RustToolchainTargetStatus[];
+	    hasInstalledTargetInfo: boolean;
+	    hasFullTargetCoverage: boolean;
+	    targetStatusMessage: string;
+	    hasUsableEnvironment: boolean;
+	    hasUsableCargo: boolean;
+	    hasUsableRustup: boolean;
+	    hasUsableZig: boolean;
+	    hasUsableCargoZigbuild: boolean;
+	    activeCargoBinary: string;
+	    activeCargoVersion: string;
+	    activeCargoSource: string;
+	    activeRustupBinary: string;
+	    activeRustupVersion: string;
+	    activeRustupSource: string;
+	    activeZigBinary: string;
+	    activeZigVersion: string;
+	    activeZigSource: string;
+	    activeCargoZigbuildBinary: string;
+	    activeCargoZigbuildVersion: string;
+	    activeCargoZigbuildSource: string;
+	    statusMessage: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RustToolchainState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.config = this.convertValues(source["config"], RustToolchainConfig);
+	        this.cargoCandidates = this.convertValues(source["cargoCandidates"], RustToolchainCandidate);
+	        this.rustupCandidates = this.convertValues(source["rustupCandidates"], RustToolchainCandidate);
+	        this.zigCandidates = this.convertValues(source["zigCandidates"], RustToolchainCandidate);
+	        this.cargoZigbuildCandidates = this.convertValues(source["cargoZigbuildCandidates"], RustToolchainCandidate);
+	        this.installedTargets = source["installedTargets"];
+	        this.targetStatuses = this.convertValues(source["targetStatuses"], RustToolchainTargetStatus);
+	        this.hasInstalledTargetInfo = source["hasInstalledTargetInfo"];
+	        this.hasFullTargetCoverage = source["hasFullTargetCoverage"];
+	        this.targetStatusMessage = source["targetStatusMessage"];
+	        this.hasUsableEnvironment = source["hasUsableEnvironment"];
+	        this.hasUsableCargo = source["hasUsableCargo"];
+	        this.hasUsableRustup = source["hasUsableRustup"];
+	        this.hasUsableZig = source["hasUsableZig"];
+	        this.hasUsableCargoZigbuild = source["hasUsableCargoZigbuild"];
+	        this.activeCargoBinary = source["activeCargoBinary"];
+	        this.activeCargoVersion = source["activeCargoVersion"];
+	        this.activeCargoSource = source["activeCargoSource"];
+	        this.activeRustupBinary = source["activeRustupBinary"];
+	        this.activeRustupVersion = source["activeRustupVersion"];
+	        this.activeRustupSource = source["activeRustupSource"];
+	        this.activeZigBinary = source["activeZigBinary"];
+	        this.activeZigVersion = source["activeZigVersion"];
+	        this.activeZigSource = source["activeZigSource"];
+	        this.activeCargoZigbuildBinary = source["activeCargoZigbuildBinary"];
+	        this.activeCargoZigbuildVersion = source["activeCargoZigbuildVersion"];
+	        this.activeCargoZigbuildSource = source["activeCargoZigbuildSource"];
+	        this.statusMessage = source["statusMessage"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class WindowState {
 	    width: number;
 	    height: number;

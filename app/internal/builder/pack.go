@@ -23,6 +23,7 @@ type ToolKind string
 const (
 	KindGo      ToolKind = "go"
 	KindPython  ToolKind = "python"
+	KindRust    ToolKind = "rust"
 	envGoBinary          = "FIRE_SALAMANDER_GO_BIN"
 )
 
@@ -63,6 +64,8 @@ func ProbeBuildCache(req BuildRequest) (BuildResult, error) {
 		return probePythonCache(req)
 	case KindGo:
 		return probeGoCache(req)
+	case KindRust:
+		return probeRustCache(req)
 	default:
 		return BuildResult{}, fmt.Errorf("不支持的工具类型: %s", req.Kind)
 	}
@@ -89,6 +92,8 @@ func BuildPackage(req BuildRequest) (BuildResult, error) {
 		return buildPythonPackage(req)
 	case KindGo:
 		return buildGoPackage(req)
+	case KindRust:
+		return buildRustPackage(req)
 	default:
 		return BuildResult{}, fmt.Errorf("不支持的工具类型: %s", req.Kind)
 	}

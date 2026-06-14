@@ -296,6 +296,69 @@ export interface GoToolchainTaskState {
   updatedAt: number
 }
 
+export interface RustToolchainConfig {
+  selectedCargoBinary: string
+  knownCargoBinaries: string[]
+  selectedRustupBinary: string
+  knownRustupBinaries: string[]
+  selectedZigBinary: string
+  knownZigBinaries: string[]
+  selectedCargoZigbuildBinary: string
+  knownCargoZigbuildBinaries: string[]
+}
+
+export interface RustToolchainCandidate {
+  path: string
+  version: string
+  source: string
+  label: string
+  detail: string
+  error?: string
+  valid: boolean
+  selected: boolean
+  active: boolean
+}
+
+export interface RustToolchainTargetStatus {
+  platformKey: string
+  platformLabel: string
+  targetTriple: string
+  installed: boolean
+  native: boolean
+  note?: string
+}
+
+export interface RustToolchainState {
+  config: RustToolchainConfig
+  cargoCandidates: RustToolchainCandidate[]
+  rustupCandidates: RustToolchainCandidate[]
+  zigCandidates: RustToolchainCandidate[]
+  cargoZigbuildCandidates: RustToolchainCandidate[]
+  installedTargets: string[]
+  targetStatuses: RustToolchainTargetStatus[]
+  hasInstalledTargetInfo: boolean
+  hasFullTargetCoverage: boolean
+  targetStatusMessage: string
+  hasUsableEnvironment: boolean
+  hasUsableCargo: boolean
+  hasUsableRustup: boolean
+  hasUsableZig: boolean
+  hasUsableCargoZigbuild: boolean
+  activeCargoBinary: string
+  activeCargoVersion: string
+  activeCargoSource: string
+  activeRustupBinary: string
+  activeRustupVersion: string
+  activeRustupSource: string
+  activeZigBinary: string
+  activeZigVersion: string
+  activeZigSource: string
+  activeCargoZigbuildBinary: string
+  activeCargoZigbuildVersion: string
+  activeCargoZigbuildSource: string
+  statusMessage: string
+}
+
 export interface PythonToolchainConfig {
   selectedBinary: string
   knownBinaries: string[]

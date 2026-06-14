@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -127,6 +129,10 @@ func main() {
 	writeDefaultConfig(runtimeDir)
 
 	copyAssets(filepath.Join(rootDir, "app", "assets"), filepath.Join(hostDir, "assets"))
+	if err := buildBundledRustTools(rootDir, hostDir, buildAll); err != nil {
+		fmt.Printf("\n❌ Rust 工具构建失败: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Println("\n====================================")
 	fmt.Printf("✅ 产物: %s\n", hostDir)
@@ -252,4 +258,275 @@ func copyAssets(srcDir, dstDir string) {
 		}
 		os.WriteFile(dst, data, 0644)
 	}
+}
+
+type rustTool struct {
+	ID       string
+	CrateDir string
+}
+
+var bundledRustTools = []rustTool{
+	{
+		ID:       "las_voxelizer",
+		CrateDir: filepath.Join("tools", "rust_tools", "las_voxelizer"),
+	},
+}
+
+func buildBundledRustTools(rootDir, hostDir string, buildAll bool) error {
+	if len(bundledRustTools) == 0 {
+		return nil
+	}
+
+	targets := []Target{{OS: runtime.GOOS, Arch: runtime.GOARCH}}
+	if buildAll {
+		targets = allTargets
+	}
+
+	assetsRoot := filepath.Join(hostDir, "assets", "rust")
+	if err := os.MkdirAll(assetsRoot, 0755); err != nil {
+		return err
+	}
+
+	fmt.Println("\n构建 Rust 工具...")
+	for _, tool := range bundledRustTools {
+		crateDir := filepath.Join(rootDir, tool.CrateDir)
+		for _, target := range targets {
+			if !rustTargetSupported(target.OS, target.Arch, target.OS == runtime.GOOS && target.Arch == runtime.GOARCH) {
+				fmt.Printf("⚠ 跳过 Rust 目标 %s/%s（当前未支持）\n", target.OS, target.Arch)
+				continue
+			}
+			outputDir := filepath.Join(assetsRoot, target.OS+"_"+target.Arch)
+			if err := os.MkdirAll(outputDir, 0755); err != nil {
+				return err
+			}
+			outputPath := filepath.Join(outputDir, rustBinaryFileName(tool.ID, target.OS))
+			fmt.Printf("  Rust: %s -> %s/%s\n", tool.ID, target.OS, target.Arch)
+			if err := buildBundledRustTool(crateDir, tool.ID, target.OS, target.Arch, outputPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func buildBundledRustTool(crateDir, toolID, targetOS, targetArch, outputPath string) error {
+	cargoBinary, err := lookPathRequired("cargo", "未找到 Cargo，请先安装 Rust 工具链")
+	if err != nil {
+		return err
+	}
+
+	targetDir, err := os.MkdirTemp("", toolID+"_bundled_rust_")
+	if err != nil {
+		return fmt.Errorf("创建 Rust 临时构建目录失败: %w", err)
+	}
+	defer os.RemoveAll(targetDir)
+
+	nativeBuild := targetOS == runtime.GOOS && targetArch == runtime.GOARCH
+	var targetTriple string
+	zigBinary := ""
+	cargoZigbuildBinary := ""
+	if !nativeBuild {
+		targetTriple, err = rustTargetTriple(targetOS, targetArch)
+		if err != nil {
+			return err
+		}
+		zigBinary, err = lookPathRequiredWithFallback("zig", "未找到 zig，无法执行 Rust 交叉编译")
+		if err != nil {
+			return err
+		}
+		cargoZigbuildBinary, err = lookPathRequiredWithFallback("cargo-zigbuild", "未找到 cargo-zigbuild，无法执行 Rust 交叉编译")
+		if err != nil {
+			return err
+		}
+		rustupBinary, rustupErr := lookPathRequired("rustup", "未找到 rustup，无法准备交叉编译目标")
+		if rustupErr != nil {
+			return rustupErr
+		}
+		targetCmd := exec.Command(rustupBinary, "target", "add", targetTriple)
+		targetCmd.Dir = crateDir
+		targetCmd.Stdout = os.Stdout
+		targetCmd.Stderr = os.Stderr
+		if err := targetCmd.Run(); err != nil {
+			return fmt.Errorf("安装 Rust 目标失败: %w", err)
+		}
+	}
+
+	args := []string{"build", "--release"}
+	if !nativeBuild {
+		args = []string{"zigbuild", "--release", "--target", targetTriple}
+	}
+	cmd := exec.Command(cargoBinary, args...)
+	cmd.Dir = crateDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = rustBuildEnv(cargoBinary, zigBinary, cargoZigbuildBinary, targetDir)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("构建 Rust 工具失败: %w", err)
+	}
+
+	builtBinary := filepath.Join(targetDir, "release", rustBinaryFileName(toolID, targetOS))
+	if !nativeBuild {
+		builtBinary = filepath.Join(targetDir, targetTriple, "release", rustBinaryFileName(toolID, targetOS))
+	}
+	return copyBundledRustBinary(builtBinary, outputPath)
+}
+
+func rustTargetSupported(targetOS, targetArch string, nativeBuild bool) bool {
+	if nativeBuild {
+		return true
+	}
+	_, err := rustTargetTriple(targetOS, targetArch)
+	return err == nil
+}
+
+func rustTargetTriple(targetOS, targetArch string) (string, error) {
+	switch targetOS + "/" + targetArch {
+	case "linux/amd64":
+		return "x86_64-unknown-linux-musl", nil
+	case "linux/arm64":
+		return "aarch64-unknown-linux-musl", nil
+	case "darwin/amd64":
+		return "x86_64-apple-darwin", nil
+	case "darwin/arm64":
+		return "aarch64-apple-darwin", nil
+	case "windows/amd64":
+		return "x86_64-pc-windows-gnu", nil
+	case "windows/arm64":
+		return "aarch64-pc-windows-gnullvm", nil
+	default:
+		return "", fmt.Errorf("暂不支持构建 Rust 目标 %s/%s", targetOS, targetArch)
+	}
+}
+
+func rustBinaryFileName(toolID, targetOS string) string {
+	if targetOS == "windows" {
+		return toolID + ".exe"
+	}
+	return toolID
+}
+
+func copyBundledRustBinary(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+		return err
+	}
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+	return os.Chmod(dstPath, 0755)
+}
+
+func lookPathRequired(bin string, message string) (string, error) {
+	return lookPathRequiredWithFallback(bin, message)
+}
+
+func lookPathRequiredWithFallback(bin string, message string) (string, error) {
+	path, err := exec.LookPath(bin)
+	if err != nil {
+		if fallback, ok := fallbackToolPath(bin); ok {
+			return fallback, nil
+		}
+		return "", errors.New(message)
+	}
+	return path, nil
+}
+
+func rustBuildEnv(cargoBinary string, zigBinary string, cargoZigbuildBinary string, targetDir string) []string {
+	env := append([]string{}, os.Environ()...)
+	env = appendOrReplaceEnvVar(env, "CARGO_TARGET_DIR", targetDir)
+	currentPath := os.Getenv("PATH")
+	for _, binPath := range []string{cargoBinary, zigBinary, cargoZigbuildBinary} {
+		binDir := strings.TrimSpace(filepath.Dir(binPath))
+		if binDir == "" {
+			continue
+		}
+		if currentPath == "" {
+			currentPath = binDir
+			continue
+		}
+		if !pathVarContains(currentPath, binDir) {
+			currentPath = binDir + string(os.PathListSeparator) + currentPath
+		}
+	}
+	if currentPath != "" {
+		return appendOrReplaceEnvVar(env, "PATH", currentPath)
+	}
+	return env
+}
+
+func fallbackToolPath(bin string) (string, bool) {
+	if fallback, ok := fallbackCargoToolPath(bin); ok {
+		return fallback, true
+	}
+	for _, candidate := range commonToolFallbacks(bin) {
+		info, statErr := os.Stat(candidate)
+		if statErr == nil && !info.IsDir() {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func fallbackCargoToolPath(bin string) (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	candidate := filepath.Join(home, ".cargo", "bin", rustToolExecutableName(bin))
+	info, statErr := os.Stat(candidate)
+	return candidate, statErr == nil && !info.IsDir()
+}
+
+func commonToolFallbacks(bin string) []string {
+	executable := rustToolExecutableName(bin)
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join("/opt/homebrew/bin", executable),
+		filepath.Join("/usr/local/bin", executable),
+	}
+	if home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".local", "bin", executable),
+			filepath.Join(home, "bin", executable),
+		)
+	}
+	return candidates
+}
+
+func rustToolExecutableName(bin string) string {
+	if runtime.GOOS == "windows" {
+		return bin + ".exe"
+	}
+	return bin
+}
+
+func appendOrReplaceEnvVar(env []string, key string, value string) []string {
+	prefix := key + "="
+	for i, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
+
+func pathVarContains(currentPath string, candidate string) bool {
+	for _, item := range filepath.SplitList(currentPath) {
+		if filepath.Clean(item) == filepath.Clean(candidate) {
+			return true
+		}
+	}
+	return false
 }

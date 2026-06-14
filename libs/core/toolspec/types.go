@@ -42,6 +42,7 @@ type ToolKind string
 const (
 	ToolKindGo     ToolKind = "go"
 	ToolKindPython ToolKind = "python"
+	ToolKindRust   ToolKind = "rust"
 )
 
 type ParameterFieldType string
@@ -60,6 +61,7 @@ type ExecutionAdapter string
 const (
 	ExecutionAdapterGoBinary     ExecutionAdapter = "go-binary"
 	ExecutionAdapterPythonScript ExecutionAdapter = "python-script"
+	ExecutionAdapterRustBinary   ExecutionAdapter = "rust-binary"
 )
 
 type RemoteStrategy string

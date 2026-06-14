@@ -3,6 +3,7 @@ package builder
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +46,57 @@ func TestResolveGoBinaryRejectsMissingOverride(t *testing.T) {
 	_, err := resolveGoBinary()
 	if err == nil {
 		t.Fatal("expected error for missing go override")
+	}
+}
+
+func TestResolveZigBinaryUsesExplicitOverride(t *testing.T) {
+	fakeDir := t.TempDir()
+	fakeZig := filepath.Join(fakeDir, executableName("zig"))
+	if err := os.WriteFile(fakeZig, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatalf("write fake zig: %v", err)
+	}
+	t.Setenv(envZigBinary, fakeZig)
+
+	got, err := resolveZigBinary()
+	if err != nil {
+		t.Fatalf("resolveZigBinary returned error: %v", err)
+	}
+	if got != fakeZig {
+		t.Fatalf("expected %s, got %s", fakeZig, got)
+	}
+}
+
+func TestRustCommandEnvPrependsCargoAndZigDirs(t *testing.T) {
+	env := rustCommandEnv("/tmp/cargo-home/bin/cargo", "/tmp/zig-home/bin/zig", "/tmp/cargo-home/bin/cargo-zigbuild", "/tmp/target-dir")
+	var pathValue string
+	var targetValue string
+	for _, entry := range env {
+		switch {
+		case strings.HasPrefix(entry, "PATH="):
+			pathValue = strings.TrimPrefix(entry, "PATH=")
+		case strings.HasPrefix(entry, "CARGO_TARGET_DIR="):
+			targetValue = strings.TrimPrefix(entry, "CARGO_TARGET_DIR=")
+		}
+	}
+	if targetValue != "/tmp/target-dir" {
+		t.Fatalf("unexpected target dir env: %s", targetValue)
+	}
+	if !strings.HasPrefix(pathValue, "/tmp/zig-home/bin"+string(os.PathListSeparator)+"/tmp/cargo-home/bin") &&
+		!strings.HasPrefix(pathValue, "/tmp/cargo-home/bin"+string(os.PathListSeparator)+"/tmp/zig-home/bin") {
+		t.Fatalf("expected PATH to include cargo and zig dirs first, got %s", pathValue)
+	}
+}
+
+func TestResolveRustBuildTargetSupportsWindowsArm64(t *testing.T) {
+	got, native, err := resolveRustBuildTarget("windows", "arm64")
+	if err != nil {
+		t.Fatalf("resolveRustBuildTarget returned error: %v", err)
+	}
+	if native {
+		t.Fatal("windows/arm64 should be treated as cross build on this host")
+	}
+	if got != "aarch64-pc-windows-gnullvm" {
+		t.Fatalf("unexpected target triple: %s", got)
 	}
 }
 

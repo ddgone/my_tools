@@ -298,7 +298,7 @@ func (a *App) prepareArtifactBatch(req ArtifactBatchRequest) (artifactBatchResol
 		if !ok {
 			return artifactBatchResolvedRequest{}, nil, fmt.Errorf("未找到工具: %s", toolID)
 		}
-		if string(manifest.Kind) != "go" {
+		if string(manifest.Kind) != "go" && string(manifest.Kind) != "rust" {
 			return artifactBatchResolvedRequest{}, nil, fmt.Errorf("工具 %s 当前仅支持脚本导出，暂不支持批量二进制产物", manifest.Name)
 		}
 		key := artifactItemKey(toolID, targetOS, targetArch)

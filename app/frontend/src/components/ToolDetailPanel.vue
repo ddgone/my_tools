@@ -9,6 +9,7 @@ import {
   ServerOutline,
   CodeSlash,
   LogoPython,
+  BuildOutline,
   GlobeOutline,
   LaptopOutline,
 } from '@vicons/ionicons5'
@@ -227,7 +228,7 @@ onBeforeUnmount(() => {
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <NIcon
-            :component="tool.kind === 'python' ? LogoPython : CodeSlash"
+            :component="tool.kind === 'python' ? LogoPython : tool.kind === 'rust' ? BuildOutline : CodeSlash"
             size="13"
             class="tool-detail-accent tool-detail-transition"
           />
@@ -245,12 +246,12 @@ onBeforeUnmount(() => {
           >
             <template #icon>
               <NIcon
-                :component="tool.kind === 'python' ? LogoPython : CodeSlash"
+                :component="tool.kind === 'python' ? LogoPython : tool.kind === 'rust' ? BuildOutline : CodeSlash"
                 size="10"
                 class="tool-detail-accent tool-detail-transition"
               />
             </template>
-            {{ tool.kind === 'python' ? 'py' : 'go' }}
+            {{ tool.kind === 'python' ? 'py' : tool.kind === 'rust' ? 'rs' : 'go' }}
           </NTag>
           <NTag
             v-if="isRemote"

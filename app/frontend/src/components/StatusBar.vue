@@ -4,12 +4,14 @@ import { NButton, NIcon, NText } from 'naive-ui'
 import { CheckmarkCircle, TerminalOutline } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useGoEnvStore } from '@/stores/goenv'
+import { useRustEnvStore } from '@/stores/rustenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { getExecutionTheme } from '@/utils/executionTheme'
 
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
+const rustEnv = useRustEnvStore()
 const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 
@@ -55,13 +57,27 @@ const pythonVersionLabel = computed(() => {
   const activeVersion = state.activeVersion?.trim()
   return `Python 已就绪 · ${activeVersion || 'Python'}`
 })
+const rustVersionLabel = computed(() => {
+  if (rustEnv.loading && !rustEnv.state) {
+    return 'Rust 检测中 · 正在读取环境'
+  }
+  const state = rustEnv.state
+  if (!state?.hasUsableEnvironment) {
+    return 'Rust 未就绪 · 仅导出/远程受影响'
+  }
+  const cargo = state.activeCargoVersion?.trim() || 'cargo'
+  const zig = state.activeZigVersion?.trim() || 'zig'
+  return `Rust 已就绪 · ${cargo} · ${zig}`
+})
 const goReady = computed(() => goEnv.state?.hasUsableBinary === true)
+const rustReady = computed(() => rustEnv.state?.hasUsableEnvironment === true)
 const pythonReady = computed(() =>
   pythonEnv.state?.hasUsableBinary === true
   && pythonEnv.state?.pipAvailable === true
   && pythonEnv.state?.dependenciesReady === true,
 )
 const goReadyTheme = getExecutionTheme('go', 'local')
+const rustReadyTheme = getExecutionTheme('rust', 'local')
 const pythonReadyTheme = getExecutionTheme('python', 'local')
 const goTagClass = computed(() =>
   goReady.value
@@ -70,6 +86,11 @@ const goTagClass = computed(() =>
 )
 const pythonTagClass = computed(() =>
   pythonReady.value
+    ? 'statusbar-env-tag--ready'
+    : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
+)
+const rustTagClass = computed(() =>
+  rustReady.value
     ? 'statusbar-env-tag--ready'
     : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15',
 )
@@ -90,6 +111,16 @@ const pythonTagStyle = computed<CSSProperties>(() =>
       '--statusbar-env-bg-hover': pythonReadyTheme.accentSoftStrongBg,
       '--statusbar-env-border': pythonReadyTheme.accentSoftBorder,
       '--statusbar-env-text': pythonReadyTheme.accent,
+    } as CSSProperties
+    : {},
+)
+const rustTagStyle = computed<CSSProperties>(() =>
+  rustReady.value
+    ? {
+      '--statusbar-env-bg': rustReadyTheme.accentSoftBg,
+      '--statusbar-env-bg-hover': rustReadyTheme.accentSoftStrongBg,
+      '--statusbar-env-border': rustReadyTheme.accentSoftBorder,
+      '--statusbar-env-text': rustReadyTheme.accent,
     } as CSSProperties
     : {},
 )
@@ -146,6 +177,23 @@ const pythonTooltip = computed(() => {
     ? `当前基础解释器：${state.activeBaseVersion || 'Python'}。\n当前工具环境使用 ${version}。\npip 与动态扫描依赖已就绪。\n${binary}`
     : `当前工具环境使用 ${version}。`
 })
+const rustTooltip = computed(() => {
+  const state = rustEnv.state
+  if (rustEnv.loading && !state) {
+    return '正在检测 Rust 交叉编译环境。\n会检查 cargo、rustup、zig 与 cargo-zigbuild。\n请稍候。'
+  }
+  if (!state?.hasUsableEnvironment) {
+    return 'Rust 交叉编译环境未就绪。\n本地 Rust 工具运行不受影响；远程执行、导出和批量构建缓存需要这些工具。\n点击前往设置。'
+  }
+  return [
+    'Rust 交叉编译环境已就绪。',
+    state.activeCargoVersion ? `cargo：${state.activeCargoVersion}` : '',
+    state.activeRustupVersion ? `rustup：${state.activeRustupVersion}` : '',
+    state.activeZigVersion ? `zig：${state.activeZigVersion}` : '',
+    state.activeCargoZigbuildVersion ? `cargo-zigbuild：${state.activeCargoZigbuildVersion}` : '',
+    state.activeCargoBinary || '',
+  ].filter(Boolean).join('\n')
+})
 const tooltipShow = ref(false)
 const tooltipText = ref('')
 const tooltipRef = ref<HTMLElement | null>(null)
@@ -194,6 +242,10 @@ function toggleTerminal() {
 
 function openGoSettings() {
   workspace.openSettings('go')
+}
+
+function openRustSettings() {
+  workspace.openSettings('rust')
 }
 
 function openPythonSettings() {
@@ -286,6 +338,17 @@ function hideTooltip() {
         @click="openGoSettings"
       >
         {{ goVersionLabel }}
+      </button>
+      <button
+        type="button"
+        class="rounded-md border px-2.5 py-1 text-[10px] leading-none transition-colors min-w-[17rem] text-left"
+        :class="rustTagClass"
+        :style="rustTagStyle"
+        @mouseenter="showTooltip($event, rustTooltip)"
+        @mouseleave="hideTooltip"
+        @click="openRustSettings"
+      >
+        {{ rustVersionLabel }}
       </button>
       <button
         type="button"

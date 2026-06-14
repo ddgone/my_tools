@@ -18,14 +18,17 @@ import {
 import { Add, Checkmark, FolderOpenOutline, Trash } from '@vicons/ionicons5'
 import { OpenFileDialog } from '../../wailsjs/go/main/App'
 import { useGoEnvStore } from '@/stores/goenv'
+import { useRustEnvStore } from '@/stores/rustenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const workspace = useWorkspaceStore()
 const goEnv = useGoEnvStore()
+const rustEnv = useRustEnvStore()
 const pythonEnv = usePythonEnvStore()
 const message = useMessage()
 const noSdkValue = '__no_sdk__'
+const noRustToolValue = '__auto_detect__'
 const noPythonValue = '__no_python__'
 const goSourceLabelMap: Record<string, string> = {
   configured: '自定义路径',
@@ -33,6 +36,12 @@ const goSourceLabelMap: Record<string, string> = {
   path: 'PATH 中的 Go',
   detected: '系统安装目录',
   managed: '托管 SDK',
+}
+const rustSourceLabelMap: Record<string, string> = {
+  configured: '自定义路径',
+  remembered: '历史路径',
+  path: 'PATH 中发现',
+  detected: '常见安装目录',
 }
 
 const showDownloadPanel = ref(false)
@@ -63,6 +72,30 @@ const currentGoBinary = computed(() => {
   }
   return goEnv.state?.config.selectedBinary || goEnv.state?.activeBinary || null
 })
+function buildRustCandidateOptions(candidates?: Array<{ valid: boolean, label: string, detail: string, source: string, path: string }>) {
+  return [
+    { label: '<自动检测>', value: noRustToolValue },
+    ...(candidates ?? [])
+      .filter(candidate => candidate.valid)
+      .map(candidate => ({
+        label: candidate.detail
+          ? `${candidate.label} · ${describeRustSource(candidate.source)}  ${candidate.detail}`
+          : `${candidate.label} · ${describeRustSource(candidate.source)}`,
+        value: candidate.path,
+      })),
+  ]
+}
+const cargoCandidateOptions = computed(() => buildRustCandidateOptions(rustEnv.state?.cargoCandidates))
+const rustupCandidateOptions = computed(() => buildRustCandidateOptions(rustEnv.state?.rustupCandidates))
+const zigCandidateOptions = computed(() => buildRustCandidateOptions(rustEnv.state?.zigCandidates))
+const cargoZigbuildCandidateOptions = computed(() => buildRustCandidateOptions(rustEnv.state?.cargoZigbuildCandidates))
+const currentCargoBinary = computed(() => rustEnv.state?.config.selectedCargoBinary || rustEnv.state?.activeCargoBinary || noRustToolValue)
+const currentRustupBinary = computed(() => rustEnv.state?.config.selectedRustupBinary || rustEnv.state?.activeRustupBinary || noRustToolValue)
+const currentZigBinary = computed(() => rustEnv.state?.config.selectedZigBinary || rustEnv.state?.activeZigBinary || noRustToolValue)
+const currentCargoZigbuildBinary = computed(() => rustEnv.state?.config.selectedCargoZigbuildBinary || rustEnv.state?.activeCargoZigbuildBinary || noRustToolValue)
+const rustTargetStatuses = computed(() => rustEnv.state?.targetStatuses ?? [])
+const rustInstalledCrossTargetCount = computed(() => rustTargetStatuses.value.filter(target => !target.native && target.installed).length)
+const rustCrossTargetCount = computed(() => rustTargetStatuses.value.filter(target => !target.native).length)
 const pythonCandidateOptions = computed(() =>
   [
     { label: '<无 Python>', value: noPythonValue },
@@ -131,6 +164,12 @@ async function ensurePythonState() {
   }
 }
 
+async function ensureRustState() {
+  if (!rustEnv.state && !rustEnv.loading) {
+    await rustEnv.loadState()
+  }
+}
+
 async function ensureGoReleases() {
   await goEnv.ensureReleases()
   if (!downloadVersion.value && goEnv.releases.length > 0) {
@@ -173,6 +212,10 @@ function ensureDownloadDirectory(version?: string) {
 
 function describeGoSource(source?: string) {
   return goSourceLabelMap[source || ''] || '自动检测'
+}
+
+function describeRustSource(source?: string) {
+  return rustSourceLabelMap[source || ''] || '自动检测'
 }
 
 function normalizeGoInstallBaseDirectory(directory?: string) {
@@ -256,6 +299,69 @@ async function handleCheckGoEnvironment() {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     message.error(detail || '检查 Go 环境失败')
+  }
+}
+
+async function handleOpenLocalRustTool(kind: 'cargo' | 'rustup' | 'zig' | 'cargo-zigbuild') {
+  const titleMap: Record<typeof kind, string> = {
+    cargo: '选择 cargo 可执行文件',
+    rustup: '选择 rustup 可执行文件',
+    zig: '选择 zig 可执行文件',
+    'cargo-zigbuild': '选择 cargo-zigbuild 可执行文件',
+  }
+  try {
+    const filePath = await OpenFileDialog({
+      title: titleMap[kind],
+      filterName: 'Executable',
+      filterGlob: '*',
+      directory: false,
+      defaultDirectory: '',
+      defaultFilename: '',
+    })
+    if (!filePath) {
+      return
+    }
+    await rustEnv.chooseBinary(kind, filePath)
+    message.success('Rust 工具链已更新')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '选择 Rust 工具链失败')
+  }
+}
+
+async function handleSelectRustTool(kind: 'cargo' | 'rustup' | 'zig' | 'cargo-zigbuild', value: string | null) {
+  if (!value) {
+    return
+  }
+  try {
+    if (value === noRustToolValue) {
+      await rustEnv.clearSelection(kind)
+      message.success('已恢复为自动检测')
+      return
+    }
+    await rustEnv.chooseBinary(kind, value)
+    message.success('Rust 工具链已切换')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '切换 Rust 工具链失败')
+  }
+}
+
+async function handleCheckRustEnvironment() {
+  try {
+    const state = await rustEnv.checkEnvironment()
+    if (state.hasUsableEnvironment && state.hasInstalledTargetInfo && !state.hasFullTargetCoverage) {
+      message.warning(state.targetStatusMessage || 'Rust 工具链已就绪，但常用交叉编译 targets 尚未补齐')
+      return
+    }
+    if (state.hasUsableEnvironment) {
+      message.success('Rust 交叉编译环境检查通过')
+      return
+    }
+    message.warning(state.statusMessage || 'Rust 交叉编译环境未就绪')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    message.error(detail || '检查 Rust 环境失败')
   }
 }
 
@@ -457,6 +563,9 @@ watch(() => workspace.showSettings, async (visible) => {
   if (visible && workspace.settings.lastSettingsTab === 'go') {
     await ensureGoState()
   }
+  if (visible && workspace.settings.lastSettingsTab === 'rust') {
+    await ensureRustState()
+  }
   if (visible && workspace.settings.lastSettingsTab === 'python') {
     await ensurePythonState()
   }
@@ -465,6 +574,9 @@ watch(() => workspace.showSettings, async (visible) => {
 watch(() => workspace.settings.lastSettingsTab, async (tab) => {
   if (tab === 'go' && workspace.showSettings) {
     await ensureGoState()
+  }
+  if (tab === 'rust' && workspace.showSettings) {
+    await ensureRustState()
   }
   if (tab === 'python' && workspace.showSettings) {
     await ensurePythonState()
@@ -479,7 +591,7 @@ watch(downloadVersion, (value) => {
 })
 
 onMounted(async () => {
-  await Promise.all([ensureGoState(), ensurePythonState()])
+  await Promise.all([ensureGoState(), ensureRustState(), ensurePythonState()])
 })
 </script>
 
@@ -522,7 +634,7 @@ onMounted(async () => {
               type="line"
               animated
               :value="workspace.settings.lastSettingsTab"
-              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'export' || v === 'go' || v === 'python' ? v : 'general'"
+              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'export' || v === 'go' || v === 'rust' || v === 'python' ? v : 'general'"
             >
               <NTabPane
                 name="general"
@@ -1023,6 +1135,282 @@ onMounted(async () => {
                         @click="handleStartDownload"
                       >
                         {{ goInstallActionLabel }}
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </NTabPane>
+
+              <NTabPane
+                name="rust"
+                tab="Rust"
+              >
+                <div class="pt-2 space-y-4">
+                  <div
+                    class="rounded-xl border px-4 py-4"
+                    :class="rustEnv.hasUsableEnvironment ? 'border-[rgb(222,165,132)]/25 bg-[rgba(222,165,132,0.08)]' : 'border-amber-400/20 bg-amber-500/5'"
+                  >
+                    <div class="text-base font-semibold text-dracula-text">
+                      {{
+                        !rustEnv.hasUsableEnvironment
+                          ? 'Rust 交叉编译环境未就绪'
+                          : rustEnv.state?.hasInstalledTargetInfo && !rustEnv.state?.hasFullTargetCoverage
+                            ? 'Rust 工具链已就绪，常用 targets 待补齐'
+                            : 'Rust 交叉编译环境已就绪'
+                      }}
+                    </div>
+                    <div class="mt-2 text-sm text-white/70 leading-6">
+                      {{
+                        rustEnv.hasUsableEnvironment
+                          ? rustEnv.state?.hasInstalledTargetInfo && !rustEnv.state?.hasFullTargetCoverage
+                            ? '基础工具链已经可用；缺失的常用 targets 可以在这里提前发现，首次实际构建时程序也会尝试自动执行 rustup target add。'
+                            : '本地 Rust 工具运行继续使用随宿主打包的二进制；远程执行、导出和批量构建缓存会使用这里配置的 cargo / rustup / zig / cargo-zigbuild。'
+                          : 'Rust 工具本地运行不受影响；远程执行、导出和批量构建缓存需要补齐 cargo、rustup、zig 与 cargo-zigbuild。'
+                      }}
+                    </div>
+                    <div
+                      v-if="rustEnv.state?.statusMessage"
+                      class="mt-3 text-xs text-white/55"
+                    >
+                      {{ rustEnv.state.statusMessage }}
+                    </div>
+                  </div>
+
+                  <NAlert
+                    v-if="rustEnv.error"
+                    type="error"
+                    :show-icon="false"
+                  >
+                    {{ rustEnv.error }}
+                  </NAlert>
+
+                  <div class="settings-form">
+                    <div class="settings-row">
+                      <div class="settings-label">
+                        cargo
+                      </div>
+                      <div class="settings-value gap-2">
+                        <NSelect
+                          class="settings-control"
+                          :value="currentCargoBinary"
+                          :options="cargoCandidateOptions"
+                          :placeholder="rustEnv.loading ? '正在检测 cargo...' : '选择 cargo 或保持自动检测'"
+                          :loading="rustEnv.loading"
+                          @update:value="(v: string | null) => handleSelectRustTool('cargo', v)"
+                        />
+                        <NButton
+                          secondary
+                          size="medium"
+                          @click="handleOpenLocalRustTool('cargo')"
+                        >
+                          <template #icon>
+                            <NIcon :component="Add" />
+                          </template>
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <div class="settings-row">
+                      <div class="settings-label">
+                        rustup
+                      </div>
+                      <div class="settings-value gap-2">
+                        <NSelect
+                          class="settings-control"
+                          :value="currentRustupBinary"
+                          :options="rustupCandidateOptions"
+                          :placeholder="rustEnv.loading ? '正在检测 rustup...' : '选择 rustup 或保持自动检测'"
+                          :loading="rustEnv.loading"
+                          @update:value="(v: string | null) => handleSelectRustTool('rustup', v)"
+                        />
+                        <NButton
+                          secondary
+                          size="medium"
+                          @click="handleOpenLocalRustTool('rustup')"
+                        >
+                          <template #icon>
+                            <NIcon :component="Add" />
+                          </template>
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <div class="settings-row">
+                      <div class="settings-label">
+                        zig
+                      </div>
+                      <div class="settings-value gap-2">
+                        <NSelect
+                          class="settings-control"
+                          :value="currentZigBinary"
+                          :options="zigCandidateOptions"
+                          :placeholder="rustEnv.loading ? '正在检测 zig...' : '选择 zig 或保持自动检测'"
+                          :loading="rustEnv.loading"
+                          @update:value="(v: string | null) => handleSelectRustTool('zig', v)"
+                        />
+                        <NButton
+                          secondary
+                          size="medium"
+                          @click="handleOpenLocalRustTool('zig')"
+                        >
+                          <template #icon>
+                            <NIcon :component="Add" />
+                          </template>
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <div class="settings-row">
+                      <div class="settings-label">
+                        cargo-zigbuild
+                      </div>
+                      <div class="settings-value gap-2">
+                        <NSelect
+                          class="settings-control"
+                          :value="currentCargoZigbuildBinary"
+                          :options="cargoZigbuildCandidateOptions"
+                          :placeholder="rustEnv.loading ? '正在检测 cargo-zigbuild...' : '选择 cargo-zigbuild 或保持自动检测'"
+                          :loading="rustEnv.loading"
+                          @update:value="(v: string | null) => handleSelectRustTool('cargo-zigbuild', v)"
+                        />
+                        <NButton
+                          secondary
+                          size="medium"
+                          @click="handleOpenLocalRustTool('cargo-zigbuild')"
+                        >
+                          <template #icon>
+                            <NIcon :component="Add" />
+                          </template>
+                        </NButton>
+                      </div>
+                    </div>
+
+                    <div class="settings-row align-start">
+                      <div class="settings-label">
+                        当前状态
+                      </div>
+                      <div class="settings-value">
+                        <div class="grid w-full gap-2 md:grid-cols-2">
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              cargo
+                            </div>
+                            <div class="break-all">
+                              {{ rustEnv.state?.activeCargoVersion || '未就绪' }}
+                            </div>
+                            <div class="mt-1 break-all text-[11px] text-white/45">
+                              {{ rustEnv.state?.activeCargoBinary || '未检测到可用路径' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              rustup
+                            </div>
+                            <div class="break-all">
+                              {{ rustEnv.state?.activeRustupVersion || '未就绪' }}
+                            </div>
+                            <div class="mt-1 break-all text-[11px] text-white/45">
+                              {{ rustEnv.state?.activeRustupBinary || '未检测到可用路径' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              zig
+                            </div>
+                            <div class="break-all">
+                              {{ rustEnv.state?.activeZigVersion || '未就绪' }}
+                            </div>
+                            <div class="mt-1 break-all text-[11px] text-white/45">
+                              {{ rustEnv.state?.activeZigBinary || '未检测到可用路径' }}
+                            </div>
+                          </div>
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+                            <div class="text-[11px] uppercase tracking-wide text-white/45">
+                              cargo-zigbuild
+                            </div>
+                            <div class="break-all">
+                              {{ rustEnv.state?.activeCargoZigbuildVersion || '未就绪' }}
+                            </div>
+                            <div class="mt-1 break-all text-[11px] text-white/45">
+                              {{ rustEnv.state?.activeCargoZigbuildBinary || '未检测到可用路径' }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="rustEnv.state?.hasInstalledTargetInfo"
+                      class="settings-row align-start"
+                    >
+                      <div class="settings-label">
+                        常用 targets
+                      </div>
+                      <div class="settings-value">
+                        <div class="w-full space-y-3">
+                          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-3 text-xs leading-6 text-white/70">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                已安装 {{ rustInstalledCrossTargetCount }} / {{ rustCrossTargetCount }} 个常用交叉编译 target
+                              </div>
+                              <div
+                                class="text-[11px]"
+                                :class="rustEnv.state?.hasFullTargetCoverage ? 'text-emerald-300/85' : 'text-amber-300/85'"
+                              >
+                                {{ rustEnv.state?.targetStatusMessage || '尚未读取 target 状态' }}
+                              </div>
+                            </div>
+                          </div>
+                          <div class="grid gap-2 md:grid-cols-2">
+                            <div
+                              v-for="target in rustTargetStatuses"
+                              :key="target.platformKey"
+                              class="rounded-lg border px-3 py-2 text-xs leading-6"
+                              :class="target.installed
+                                ? 'border-emerald-400/15 bg-emerald-500/[0.05] text-white/75'
+                                : 'border-amber-400/15 bg-amber-500/[0.05] text-white/75'"
+                            >
+                              <div class="flex items-center justify-between gap-3">
+                                <div class="font-medium text-white/85">
+                                  {{ target.platformLabel }}
+                                </div>
+                                <div
+                                  class="text-[11px]"
+                                  :class="target.installed ? 'text-emerald-300/85' : 'text-amber-300/85'"
+                                >
+                                  {{ target.native ? '原生构建' : (target.installed ? '已安装' : '未安装') }}
+                                </div>
+                              </div>
+                              <div class="mt-1 break-all text-[11px] text-white/50">
+                                {{ target.targetTriple }}
+                              </div>
+                              <div
+                                v-if="target.note"
+                                class="mt-1 text-[11px] text-white/45"
+                              >
+                                {{ target.note }}
+                              </div>
+                            </div>
+                          </div>
+                          <div
+                            v-if="(rustEnv.state?.installedTargets?.length || 0) > 0"
+                            class="rounded-lg border border-white/10 bg-black/10 px-3 py-3 text-[11px] leading-6 text-white/55"
+                          >
+                            已安装 target 列表：{{ rustEnv.state?.installedTargets.join('、') }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap justify-end gap-2">
+                      <NButton
+                        secondary
+                        size="small"
+                        :loading="rustEnv.checking"
+                        :disabled="rustEnv.loading || rustEnv.saving"
+                        @click="handleCheckRustEnvironment"
+                      >
+                        检查环境
                       </NButton>
                     </div>
                   </div>

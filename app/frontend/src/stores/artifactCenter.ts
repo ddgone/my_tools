@@ -239,10 +239,10 @@ export const useArtifactCenterStore = defineStore('artifact-center', () => {
     selectedKeys.value = []
   }
 
-  function selectAllGoTargets(tools: ToolManifest[]) {
+  function selectAllTargets(tools: ToolManifest[]) {
     const next = new Set(selectedKeys.value)
     tools
-      .filter((tool) => tool.kind === 'go')
+      .filter((tool) => tool.kind === 'go' || tool.kind === 'rust')
       .forEach((tool) => {
         artifactPlatforms.forEach((platform) => {
           next.add(selectionKey(tool.id, platform.key))
@@ -257,7 +257,7 @@ export const useArtifactCenterStore = defineStore('artifact-center', () => {
 
   function setPlatformSelections(platformKey: string, value: boolean, tools: ToolManifest[]) {
     tools
-      .filter((tool) => tool.kind === 'go')
+      .filter((tool) => tool.kind === 'go' || tool.kind === 'rust')
       .forEach((tool) => setSelected(tool.id, platformKey, value))
   }
 
@@ -347,7 +347,7 @@ export const useArtifactCenterStore = defineStore('artifact-center', () => {
     setSelected,
     toggleSelected,
     clearSelections,
-    selectAllGoTargets,
+    selectAllTargets,
     setToolSelections,
     setPlatformSelections,
     startBatch,

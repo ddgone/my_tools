@@ -18,7 +18,7 @@ export interface ToolTabState {
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
-export type SettingsTab = 'general' | 'export' | 'go' | 'python'
+export type SettingsTab = 'general' | 'export' | 'go' | 'rust' | 'python'
 export type GoExportMode = 'binary' | 'source'
 
 export interface ToolExecutionConfig {
@@ -104,7 +104,7 @@ interface PersistedToolState {
 }
 
 function normalizeSettingsTab(value: unknown): SettingsTab {
-  if (value === 'export' || value === 'go' || value === 'python') {
+  if (value === 'export' || value === 'go' || value === 'rust' || value === 'python') {
     return value
   }
   return 'general'
@@ -303,6 +303,7 @@ function snapshotToolState(tab: ToolTabState): PersistedToolState {
 
 function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | number | boolean | null>): string {
   const parts: string[] = []
+  const flagPrefix = tool.kind === 'rust' ? '--' : '-'
   for (const param of getVisibleParams(tool, formModel)) {
     if (!shouldEmitParam(param)) {
       continue
@@ -313,7 +314,7 @@ function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | num
 
     if (param.type === 'boolean') {
       if (value === true) {
-        parts.push(`-${argKey}`)
+        parts.push(`${flagPrefix}${argKey}`)
       }
       continue
     }
@@ -324,7 +325,7 @@ function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | num
 
     const escapedValue =
       typeof value === 'string' ? formatCliValue(value) : String(value)
-    parts.push(`-${argKey}`, escapedValue)
+    parts.push(`${flagPrefix}${argKey}`, escapedValue)
   }
   return parts.join(' ')
 }

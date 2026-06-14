@@ -380,6 +380,9 @@ func normalizeExportMode(kind string, mode string) string {
 	if kind == "python" {
 		return exportModeSource
 	}
+	if kind == "rust" {
+		return exportModeBinary
+	}
 	if normalized == exportModeSource {
 		return exportModeSource
 	}
@@ -387,7 +390,7 @@ func normalizeExportMode(kind string, mode string) string {
 }
 
 func normalizeExportTarget(kind string, mode string, targetOS string, targetArch string) (string, string) {
-	if kind != "go" || mode != exportModeBinary {
+	if (kind != "go" && kind != "rust") || mode != exportModeBinary {
 		return "", ""
 	}
 	normalizedOS := strings.TrimSpace(targetOS)
@@ -406,10 +409,16 @@ func exportFilterName(kind string, mode string) string {
 		if kind == "python" {
 			return "Python 脚本"
 		}
+		if kind == "rust" {
+			return "Rust 源码"
+		}
 		return "Go 源码"
 	}
 	if kind == "go" {
 		return "可执行文件"
+	}
+	if kind == "rust" {
+		return "Rust 可执行文件"
 	}
 	if kind == "python" {
 		return "Python 脚本"
@@ -422,6 +431,9 @@ func exportFilterGlob(kind string, mode string, targetOS string) string {
 		return "*.py"
 	}
 	if mode == exportModeSource {
+		if kind == "rust" {
+			return "*.rs"
+		}
 		return "*.go"
 	}
 	if targetOS == "windows" {
@@ -442,12 +454,15 @@ func exportDefaultFileName(toolName string, toolID string, kind string, mode str
 		return base + ".py"
 	}
 	if mode == exportModeSource {
+		if kind == "rust" {
+			return base + ".rs"
+		}
 		return base + ".go"
 	}
 	if targetOS != "" {
 		base += "_" + sanitizeExportBaseName(targetOS)
 	}
-	if kind == "go" && mode == exportModeBinary {
+	if (kind == "go" || kind == "rust") && mode == exportModeBinary {
 		if targetArch != "" {
 			base += "_" + sanitizeExportBaseName(targetArch)
 		}
@@ -467,9 +482,11 @@ func finalizeExportPath(path string, kind string, mode string, targetOS string) 
 	switch {
 	case kind == "python" && ext != ".py":
 		return trimmed + ".py"
+	case kind == "rust" && mode == exportModeSource && ext != ".rs":
+		return trimmed + ".rs"
 	case mode == exportModeSource && ext != ".go":
 		return trimmed + ".go"
-	case kind == "go" && targetOS == "windows" && ext != ".exe":
+	case (kind == "go" || kind == "rust") && targetOS == "windows" && ext != ".exe":
 		return trimmed + ".exe"
 	default:
 		return trimmed

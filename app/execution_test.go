@@ -101,6 +101,26 @@ func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
 	}
 }
 
+func TestBuildRemoteRunCommandForRustTool(t *testing.T) {
+	cmd, chmodCmd, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/las_voxelizer_linux_amd64", remoteExecParams{
+		kind: "rust",
+		args: `-input "/data/source.laz" -output "/data/output.laz" -raster-only`,
+	})
+	if err != nil {
+		t.Fatalf("buildRemoteRunCommand failed: %v", err)
+	}
+
+	expectedCmd := "cd '/tmp/fire-salamander-abcd' && './las_voxelizer_linux_amd64' '--input' '/data/source.laz' '--output' '/data/output.laz' '--raster-only'"
+	if cmd != expectedCmd {
+		t.Fatalf("unexpected rust command:\nwant: %s\ngot:  %s", expectedCmd, cmd)
+	}
+
+	expectedChmod := "chmod +x '/tmp/fire-salamander-abcd/las_voxelizer_linux_amd64'"
+	if chmodCmd != expectedChmod {
+		t.Fatalf("unexpected chmod command:\nwant: %s\ngot:  %s", expectedChmod, chmodCmd)
+	}
+}
+
 func TestBuildRemoteRunCommandRejectsMalformedArgs(t *testing.T) {
 	_, _, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/demo", remoteExecParams{
 		kind: "go",

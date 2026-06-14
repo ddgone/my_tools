@@ -44,7 +44,8 @@ type ToolFilterMode = 'all' | 'favorites' | 'recent'
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
 const goTools = computed(() => allTools.value.filter((tool) => tool.kind === 'go'))
-const pythonTools = computed(() => allTools.value.filter((tool) => tool.kind !== 'go'))
+const rustTools = computed(() => allTools.value.filter((tool) => tool.kind === 'rust'))
+const pythonTools = computed(() => allTools.value.filter((tool) => tool.kind === 'python'))
 const toolFilter = ref<ToolFilterMode>('all')
 const toolSearch = ref('')
 const selectedCount = computed(() => artifactCenter.selectedKeys.length)
@@ -60,7 +61,9 @@ const showJumpBottom = computed(() => hasLongScrollableContent.value && scrollHe
 const favoriteToolIdSet = computed(() => new Set(workspace.favorites))
 const recentToolIdSet = computed(() => new Set(workspace.recentTools.map((entry) => entry.toolId)))
 const filteredGoTools = computed(() => goTools.value.filter((tool) => matchesToolFilter(tool)))
+const filteredRustTools = computed(() => rustTools.value.filter((tool) => matchesToolFilter(tool)))
 const filteredPythonTools = computed(() => pythonTools.value.filter((tool) => matchesToolFilter(tool)))
+const hasBinaryTools = computed(() => filteredGoTools.value.length > 0 || filteredRustTools.value.length > 0)
 const estimatedCachedCount = computed(() => artifactCenter.estimate?.cachedCount ?? 0)
 const estimatedBuildCount = computed(() => artifactCenter.estimate?.buildCount ?? 0)
 let estimateTimer: number | null = null
@@ -151,17 +154,17 @@ function isToolPartiallySelected(toolId: string) {
   return count > 0 && count < artifactPlatforms.length
 }
 
-function selectedForPlatform(platformKey: string) {
-  return filteredGoTools.value.filter((tool) => artifactCenter.isSelected(tool.id, platformKey)).length
+function selectedForPlatform(platformKey: string, tools: ToolManifest[]) {
+  return tools.filter((tool) => artifactCenter.isSelected(tool.id, platformKey)).length
 }
 
-function isPlatformFullySelected(platformKey: string) {
-  return filteredGoTools.value.length > 0 && selectedForPlatform(platformKey) === filteredGoTools.value.length
+function isPlatformFullySelected(platformKey: string, tools: ToolManifest[]) {
+  return tools.length > 0 && selectedForPlatform(platformKey, tools) === tools.length
 }
 
-function isPlatformPartiallySelected(platformKey: string) {
-  const count = selectedForPlatform(platformKey)
-  return count > 0 && count < filteredGoTools.value.length
+function isPlatformPartiallySelected(platformKey: string, tools: ToolManifest[]) {
+  const count = selectedForPlatform(platformKey, tools)
+  return count > 0 && count < tools.length
 }
 
 async function pickExportRootDir() {
@@ -365,13 +368,21 @@ function openContainingDirectory(path?: string) {
         :bordered="false"
         class="bg-[#151923]/90"
       >
-        <div class="grid gap-3 sm:grid-cols-5">
+        <div class="grid gap-3 sm:grid-cols-6">
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <div class="text-xs text-slate-400">
               Go 工具
             </div>
             <div class="mt-1 text-lg font-semibold text-slate-100">
               {{ filteredGoTools.length }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+            <div class="text-xs text-slate-400">
+              Rust 工具
+            </div>
+            <div class="mt-1 text-lg font-semibold text-slate-100">
+              {{ filteredRustTools.length }}
             </div>
           </div>
           <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
@@ -554,9 +565,18 @@ function openContainingDirectory(path?: string) {
             <NButton
               size="small"
               secondary
-              @click="artifactCenter.selectAllGoTargets(filteredGoTools)"
+              :disabled="filteredGoTools.length === 0"
+              @click="artifactCenter.selectAllTargets(filteredGoTools)"
             >
-              全选 Go 平台矩阵
+              全选 Go 原生矩阵
+            </NButton>
+            <NButton
+              size="small"
+              secondary
+              :disabled="filteredRustTools.length === 0"
+              @click="artifactCenter.selectAllTargets(filteredRustTools)"
+            >
+              全选 Rust 矩阵
             </NButton>
             <NButton
               size="small"
@@ -637,96 +657,219 @@ function openContainingDirectory(path?: string) {
           </div>
         </div>
       </template>
-      <div class="overflow-x-auto">
-        <table class="min-w-full border-collapse text-sm">
-          <thead>
-            <tr class="border-b border-white/10 text-slate-300">
-              <th class="sticky left-0 z-10 min-w-[260px] bg-[#151923] px-3 py-3 text-left">
-                工具
-              </th>
-              <th
-                v-for="platform in artifactPlatforms"
-                :key="platform.key"
-                class="min-w-[96px] px-2 py-3 text-center"
-              >
-                <div class="flex flex-col items-center gap-1">
-                  <span>{{ platform.label }}</span>
-                  <NCheckbox
-                    :checked="isPlatformFullySelected(platform.key)"
-                    :indeterminate="isPlatformPartiallySelected(platform.key)"
-                    @update:checked="artifactCenter.setPlatformSelections(platform.key, $event, filteredGoTools)"
-                  />
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="tool in filteredGoTools"
-              :key="tool.id"
-              class="border-b border-white/5"
+      <div class="space-y-4">
+        <div
+          v-if="filteredGoTools.length > 0"
+          class="rounded-xl border border-cyan-400/15 bg-cyan-500/[0.04] p-3"
+        >
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold text-cyan-100">
+                Go 原生矩阵
+              </div>
+              <div class="text-xs text-cyan-100/70">
+                Go 工具可视为原生能力，适合优先准备宿主平台和常用远程平台产物。
+              </div>
+            </div>
+            <NTag
+              size="small"
+              :bordered="false"
+              type="info"
             >
-              <td class="sticky left-0 z-10 bg-[#151923] px-3 py-3">
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <div class="font-medium text-slate-100">
-                      {{ tool.name }}
-                    </div>
-                    <div class="text-xs text-slate-400">
-                      {{ tool.id }}
-                    </div>
-                  </div>
-                  <NCheckbox
-                    :checked="isToolFullySelected(tool.id)"
-                    :indeterminate="isToolPartiallySelected(tool.id)"
-                    @update:checked="artifactCenter.setToolSelections(tool.id, $event)"
-                  />
-                </div>
-              </td>
-              <td
-                v-for="platform in artifactPlatforms"
-                :key="`${tool.id}-${platform.key}`"
-                class="px-2 py-3 text-center"
-              >
-                <NCheckbox
-                  :checked="artifactCenter.isSelected(tool.id, platform.key)"
-                  @update:checked="artifactCenter.setSelected(tool.id, platform.key, $event)"
-                />
-              </td>
-            </tr>
-            <tr
-              v-for="tool in filteredPythonTools"
-              :key="tool.id"
-              class="border-b border-white/5"
-            >
-              <td class="sticky left-0 z-10 bg-[#151923] px-3 py-3">
-                <div class="flex items-center gap-2">
-                  <div>
-                    <div class="font-medium text-slate-100">
-                      {{ tool.name }}
-                    </div>
-                    <div class="text-xs text-slate-400">
-                      {{ tool.id }}
-                    </div>
-                  </div>
-                  <NTag
-                    size="small"
-                    :bordered="false"
-                    type="warning"
+              {{ filteredGoTools.length }} 个 Go 工具
+            </NTag>
+          </div>
+          <div class="overflow-x-auto rounded-lg bg-cyan-500/[0.04]">
+            <table class="min-w-full border-collapse bg-cyan-500/[0.04] text-sm">
+              <thead>
+                <tr class="border-b border-white/10 text-slate-300">
+                  <th class="sticky left-0 z-10 min-w-[260px] bg-cyan-500/[0.04] px-3 py-3 text-left">
+                    工具
+                  </th>
+                  <th
+                    v-for="platform in artifactPlatforms"
+                    :key="`go-${platform.key}`"
+                    class="min-w-[96px] px-2 py-3 text-center"
                   >
-                    仅脚本导出
-                  </NTag>
-                </div>
-              </td>
-              <td
-                :colspan="artifactPlatforms.length"
-                class="px-3 py-3 text-left text-xs text-slate-500"
+                    <div class="flex flex-col items-center gap-1">
+                      <span>{{ platform.label }}</span>
+                      <NCheckbox
+                        :checked="isPlatformFullySelected(platform.key, filteredGoTools)"
+                        :indeterminate="isPlatformPartiallySelected(platform.key, filteredGoTools)"
+                        @update:checked="artifactCenter.setPlatformSelections(platform.key, $event, filteredGoTools)"
+                      />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="tool in filteredGoTools"
+                  :key="tool.id"
+                  class="border-b border-white/5 bg-cyan-500/[0.04]"
+                >
+                  <td class="sticky left-0 z-10 bg-cyan-500/[0.04] px-3 py-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <div class="font-medium text-slate-100">
+                          {{ tool.name }}
+                        </div>
+                        <div class="text-xs text-slate-400">
+                          {{ tool.id }}
+                        </div>
+                      </div>
+                      <NCheckbox
+                        :checked="isToolFullySelected(tool.id)"
+                        :indeterminate="isToolPartiallySelected(tool.id)"
+                        @update:checked="artifactCenter.setToolSelections(tool.id, $event)"
+                      />
+                    </div>
+                  </td>
+                  <td
+                    v-for="platform in artifactPlatforms"
+                    :key="`${tool.id}-${platform.key}`"
+                    class="bg-cyan-500/[0.04] px-2 py-3 text-center"
+                  >
+                    <NCheckbox
+                      :checked="artifactCenter.isSelected(tool.id, platform.key)"
+                      @update:checked="artifactCenter.setSelected(tool.id, platform.key, $event)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          v-if="filteredRustTools.length > 0"
+          class="rounded-xl border border-[rgb(245,126,62)]/20 bg-[rgba(245,126,62,0.06)] p-3"
+        >
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold text-[rgb(255,184,108)]">
+                Rust 交叉编译矩阵
+              </div>
+              <div class="text-xs text-[rgba(255,184,108,0.72)]">
+                Rust 工具本地运行走宿主内置二进制，这里主要准备导出、远程执行和缓存所需的交叉编译产物。
+              </div>
+            </div>
+            <NTag
+              size="small"
+              :bordered="false"
+              :color="{ color: 'rgba(245,126,62,0.14)', textColor: 'rgb(255,184,108)', borderColor: 'rgba(245,126,62,0.28)' }"
+            >
+              {{ filteredRustTools.length }} 个 Rust 工具
+            </NTag>
+          </div>
+          <div class="overflow-x-auto rounded-lg bg-[rgba(245,126,62,0.06)]">
+            <table class="min-w-full border-collapse bg-[rgba(245,126,62,0.06)] text-sm">
+              <thead>
+                <tr class="border-b border-white/10 text-slate-300">
+                  <th class="sticky left-0 z-10 min-w-[260px] bg-[rgba(245,126,62,0.06)] px-3 py-3 text-left">
+                    工具
+                  </th>
+                  <th
+                    v-for="platform in artifactPlatforms"
+                    :key="`rust-${platform.key}`"
+                    class="min-w-[96px] px-2 py-3 text-center"
+                  >
+                    <div class="flex flex-col items-center gap-1">
+                      <span>{{ platform.label }}</span>
+                      <NCheckbox
+                        :checked="isPlatformFullySelected(platform.key, filteredRustTools)"
+                        :indeterminate="isPlatformPartiallySelected(platform.key, filteredRustTools)"
+                        @update:checked="artifactCenter.setPlatformSelections(platform.key, $event, filteredRustTools)"
+                      />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="tool in filteredRustTools"
+                  :key="tool.id"
+                  class="border-b border-white/5 bg-[rgba(245,126,62,0.06)]"
+                >
+                  <td class="sticky left-0 z-10 bg-[rgba(245,126,62,0.06)] px-3 py-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div>
+                        <div class="font-medium text-slate-100">
+                          {{ tool.name }}
+                        </div>
+                        <div class="text-xs text-slate-400">
+                          {{ tool.id }}
+                        </div>
+                      </div>
+                      <NCheckbox
+                        :checked="isToolFullySelected(tool.id)"
+                        :indeterminate="isToolPartiallySelected(tool.id)"
+                        @update:checked="artifactCenter.setToolSelections(tool.id, $event)"
+                      />
+                    </div>
+                  </td>
+                  <td
+                    v-for="platform in artifactPlatforms"
+                    :key="`${tool.id}-${platform.key}`"
+                    class="bg-[rgba(245,126,62,0.06)] px-2 py-3 text-center"
+                  >
+                    <NCheckbox
+                      :checked="artifactCenter.isSelected(tool.id, platform.key)"
+                      @update:checked="artifactCenter.setSelected(tool.id, platform.key, $event)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <NEmpty
+          v-if="!hasBinaryTools"
+          description="当前筛选下没有 Go 或 Rust 二进制工具"
+          class="py-6"
+        />
+
+        <div
+          v-if="filteredPythonTools.length > 0"
+          class="overflow-x-auto"
+        >
+          <table class="min-w-full border-collapse text-sm">
+            <tbody>
+              <tr
+                v-for="tool in filteredPythonTools"
+                :key="tool.id"
+                class="border-b border-white/5"
               >
-                当前第一版仅支持 Go 工具的全平台二进制矩阵；Python 工具保留单工具脚本导出能力。
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <td class="sticky left-0 z-10 bg-[#151923] px-3 py-3">
+                  <div class="flex items-center gap-2">
+                    <div>
+                      <div class="font-medium text-slate-100">
+                        {{ tool.name }}
+                      </div>
+                      <div class="text-xs text-slate-400">
+                        {{ tool.id }}
+                      </div>
+                    </div>
+                    <NTag
+                      size="small"
+                      :bordered="false"
+                      type="warning"
+                    >
+                      仅脚本导出
+                    </NTag>
+                  </div>
+                </td>
+                <td
+                  :colspan="artifactPlatforms.length"
+                  class="px-3 py-3 text-left text-xs text-slate-500"
+                >
+                  当前产物中心只为 Go / Rust 提供跨平台二进制矩阵；Python 工具保留单工具脚本导出能力。
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </NCard>
 

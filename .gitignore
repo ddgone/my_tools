@@ -12,6 +12,9 @@
 *.out
 vendor/
 
+# Rust
+**/target/
+
 # Build
 build/
 app/build/

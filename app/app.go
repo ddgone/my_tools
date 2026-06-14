@@ -45,6 +45,7 @@ type WindowState struct {
 var topLevelCategoryOrder = map[string]int{
 	"通用测试工具": 0,
 	"KD测试工具": 1,
+	"Rust工具": 2,
 }
 
 func compareCategoryPath(left, right toolspec.CategoryPath) int {

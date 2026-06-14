@@ -22,6 +22,7 @@ import {
   TimeOutline,
   CodeSlash,
   LogoPython,
+  BuildOutline,
   GlobeOutline,
   Play,
   LaptopOutline,
@@ -140,7 +141,7 @@ const treeThemeOverrides = computed(() => ({
 const categoryPathStr = (tool: ToolManifest) =>
   tool.category.length > 0 ? tool.category.join(' > ') : '未分类'
 
-const topLevelCategoryOrder = ['通用测试工具', 'KD测试工具']
+const topLevelCategoryOrder = ['通用测试工具', 'KD测试工具', 'Rust工具']
 
 const filteredTools = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -378,7 +379,15 @@ function toolThemeClass(tool: ToolManifest) {
 }
 
 function kindIcon(kind: string) {
-  return kind === 'python' ? LogoPython : CodeSlash
+  if (kind === 'python') return LogoPython
+  if (kind === 'rust') return BuildOutline
+  return CodeSlash
+}
+
+function kindTag(kind: string) {
+  if (kind === 'python') return 'py'
+  if (kind === 'rust') return 'rs'
+  return 'go'
 }
 
 function kindIconColor(tool: ToolManifest) {
@@ -570,7 +579,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
           size: 10,
           color: kindIconColor(tool),
         }),
-        default: () => tool.kind === 'python' ? 'py' : 'go',
+        default: () => kindTag(tool.kind),
       }),
     ]),
   ])

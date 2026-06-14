@@ -22,3 +22,16 @@ func TestExportDefaultFileNameKeepsPythonStable(t *testing.T) {
 		t.Fatalf("unexpected python export name: %s", got)
 	}
 }
+
+func TestExportDefaultFileNameUsesRustBinaryConvention(t *testing.T) {
+	got := exportDefaultFileName("LAS/LAZ 体素抽稀", "las_voxelizer", "rust", exportModeBinary, "linux", "arm64")
+	if got != "las_voxelizer_linux_arm64" {
+		t.Fatalf("unexpected rust export name: %s", got)
+	}
+}
+
+func TestNormalizeExportModeForRustAlwaysUsesBinary(t *testing.T) {
+	if got := normalizeExportMode("rust", exportModeSource); got != exportModeBinary {
+		t.Fatalf("unexpected rust export mode: %s", got)
+	}
+}
