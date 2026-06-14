@@ -332,6 +332,26 @@ _Avoid_: 用户自维护 requirements.txt, 过期的手写依赖表, pip 命令�
 工作台底部状态栏中的 Python 状态块，用于持续提示当前 **基础 Python** 是否存在、**托管 Python 工具环境** 是否已经创建、是否缺少 pip、以及 **Python 动态依赖扫描** 结果是否已经就绪。它是用户进入 **Python 环境** 设置的轻量入口。
 _Avoid_: 本地错误弹窗, 工具详情提示条
 
+**Rust 环境目录**:
+被桌面宿主视为一个完整 **Rust 环境** 的根目录布局。它不是单独一个 `cargo` 路径，而是能一起解析出 `cargo`、`rustc`、`rustup`，并作为 **Rust 工具** 构建与导出的真实依赖来源。
+_Avoid_: 单个 cargo 路径, rustc 路径, 二进制级切换
+
+**Zig SDK**:
+供 **Rust 工具** 跨平台构建使用的 Zig 可执行环境。它和 **Rust 环境目录** 分开管理，但会在 `cargo-zigbuild` 链路中一起参与交叉编译。
+_Avoid_: 隐式系统 zig, rust 自带 zig
+
+**Rust 派生能力补齐**:
+依附当前 **Rust 环境目录** 的补充能力安装模型，当前主要指 `cargo-zigbuild` 与常用交叉编译 targets。它不作为独立主 SDK 暴露，而是由桌面宿主检测缺口并提供补齐入口。
+_Avoid_: 独立 cargo-zigbuild SDK, targets 下拉框
+
+**Rust 环境任务**:
+围绕 **Rust 环境目录** 和 **Zig SDK** 的后台操作任务，包括托管 Rust / Zig 下载、`cargo-zigbuild` 补齐、常用 targets 补齐。它会在设置页中显示步骤、下载摘要、当前项和失败原因，并允许用户中止后重试。
+_Avoid_: 黑盒安装, 无进度反馈, 阻塞式等待
+
+**Rust 工具**:
+由 `kind: rust` 的 manifest 描述、以 Rust crate 形式存在于 `tools/rust_tools/` 下，并由桌面宿主统一负责本地执行适配、远程执行前构建、导出和缓存管理的工具类型。
+_Avoid_: 仅源码目录, 未声明 kind 的工具, 远端现场 cargo build
+
 **构建缓存**:
 桌面宿主保存在 **运行时目录** 下、可跨多次导出与远程执行复用的 **工具专属产物** 缓存。它的目标是避免为相同工具和目标平台重复准备产物，而不是替代用户显式导出的最终文件。
 _Avoid_: 临时编译目录, 一次性输出, 导出目录

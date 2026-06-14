@@ -47,6 +47,7 @@ go run scripts/build.go
 - 产出宿主程序到 `build/image/host/`
 - 初始化开发态运行时目录 `build/runtime/`
 - 写入默认配置文件
+- 为随宿主分发的 Rust 工具准备本地产物资源
 - 执行 Go 静态检查，但只扫描项目源码目录，不再把 `build/runtime/toolchains/` 下的托管 SDK 源码一起纳入 `go vet`
 
 如果你直接启动 `build/image/host/*.app`，运行时目录仍会优先识别回仓库内的 `build/runtime/`，因此托管 Go SDK 的默认下载位置会落在：
@@ -113,13 +114,42 @@ cd app/frontend && npm run typecheck
 
 用户视角的说明、动态依赖口径和 `<无 Python>` 语义，统一见 [PYTHON_ENVIRONMENT.md](./PYTHON_ENVIRONMENT.md)。
 
-## 8. 常用入口文件
+## 8. Rust 环境配置现状
+
+- 当前桌面宿主已经支持在系统首选项的 Rust 页签里：
+  - 在 `<无 SDK>`、自动探测、手动选择 之间切换
+  - 选择 Rust 环境目录
+  - 选择 Zig SDK
+  - 下载托管 Rust
+  - 下载托管 Zig
+  - 一次性下载 Rust + Zig
+  - 为当前托管 Rust 补齐 `cargo-zigbuild`
+  - 为当前托管 Rust 补齐常用交叉编译 targets
+- Rust 环境配置当前影响：
+  - Rust 工具在源码工作区下的本机现场构建
+  - Rust 工具的远程执行前单工具构建
+  - Rust 单工具导出
+  - Rust 构建缓存准备
+- Rust 工具的本地执行优先使用随宿主分发的本地产物；开发态如果没有打包产物，才会现场调用当前选中的 Rust / Zig 环境构建宿主平台二进制。
+- 当前托管 Rust / Zig 默认落在运行时目录下：
+
+```text
+build/runtime/toolchains/rust/
+build/runtime/toolchains/zig/
+```
+
+- 系统 Rust 的 `cargo-zigbuild` 与 targets 补齐默认受保护；当前宿主优先引导用户切到托管 Rust 后再执行补齐。
+
+用户视角的说明、默认安装路径和能力补齐语义，统一见 [RUST_ENVIRONMENT.md](./RUST_ENVIRONMENT.md)。
+
+## 9. 常用入口文件
 
 ### 宿主入口
 
 - `app/main.go`
 - `app/app.go`
 - `app/execution.go`
+- `app/rust_tools.go`
 - `app/legacy.go`
 
 ### 后端内部包
@@ -127,6 +157,9 @@ cd app/frontend && npm run typecheck
 - `app/internal/ssh/store.go`
 - `app/internal/runtime/remote.go`
 - `app/internal/builder/pack.go`
+- `app/internal/builder/pack_rust.go`
+- `app/internal/toolchain/rustenv.go`
+- `app/internal/toolchain/rustinstall.go`
 - `app/internal/runtimeenv/layout.go`
 
 ### 前端入口
@@ -143,11 +176,13 @@ cd app/frontend && npm run typecheck
 - `libs/catalog/builtin/service.go`
 - `libs/catalog/builtin/manifests/*.yaml`
 
-## 9. 开发注意事项
+## 10. 开发注意事项
 
 - 不要再引用 `app/desktop/`、`HomeView.vue`、`ExecuteView.vue` 等旧路径或旧页面名。
 - 当前前端是单页工作台，不再使用 Vue Router。
 - 不要把 `go build ./...` 生成的普通可执行文件当成正式桌面产物。
 - 不要把运行时目录下的 `toolchains/` 当成源码工作区的一部分，也不要再用仓库根的 `go vet ./...` 直接扫描整个仓库。
 - Python 环境配置当前已经切到托管虚拟环境；如果后续要引入托管 Python 下载，需要先更新当前文档和用户说明。
+- Rust 工具的源码资产当前位于 `tools/rust_tools/`；如新增 Rust 工具，需要同步补 manifest、图标/分类、必要时补随宿主构建资源与接入说明。
+- Rust 交叉编译链当前依赖 `rustup`、`cargo-zigbuild`、Zig 与常用 targets；如果调整目标平台矩阵或安装模型，必须同步更新 `RUST_ENVIRONMENT.md` 与 `RUST_TOOL_INTEGRATION_STANDARD.md`。
 - 新发现的问题先登记到 `docs/ISSUES_AND_REMEDIATION_PLAN.md`，再决定是否进入实现排期。
