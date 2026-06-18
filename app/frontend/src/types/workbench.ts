@@ -30,6 +30,7 @@ export interface ParameterSpec {
   options?: ParameterOption[]
   group?: string
   pathMode?: string
+  repeatable?: boolean
   emit?: boolean
   visibleWhen?: ParameterVisibility
 }

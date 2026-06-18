@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseRemotePlatformOutput(t *testing.T) {
 	t.Run("linux amd64", func(t *testing.T) {
@@ -34,4 +37,27 @@ func TestParseRemotePlatformOutput(t *testing.T) {
 			t.Fatal("expected parse error for unsupported platform")
 		}
 	})
+}
+
+func TestFormatProbeDetail(t *testing.T) {
+	detail := formatProbeDetail("uname -s && uname -m", "Linux\nx86_64", "warning", nil)
+	if !strings.Contains(detail, `stdout: "Linux\nx86_64"`) {
+		t.Fatalf("expected stdout in detail, got: %s", detail)
+	}
+	if !strings.Contains(detail, `stderr: "warning"`) {
+		t.Fatalf("expected stderr in detail, got: %s", detail)
+	}
+
+	errDetail := formatProbeDetail("uname -s && uname -m", "", "", errTestProbe)
+	if !strings.Contains(errDetail, errTestProbe.Error()) {
+		t.Fatalf("expected error message in detail, got: %s", errDetail)
+	}
+}
+
+var errTestProbe = testProbeError("probe failed")
+
+type testProbeError string
+
+func (e testProbeError) Error() string {
+	return string(e)
 }

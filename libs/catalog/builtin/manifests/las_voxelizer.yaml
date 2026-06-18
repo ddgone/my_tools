@@ -1,39 +1,62 @@
 id: las_voxelizer
-name: LAS/LAZ 体素抽稀与强度预览
+name: LAS/LAZ 抽稀偏转与强度图
 kind: rust
 category: Rust工具 > 点云处理工具
 icon: rust
-description: 对 LAS/LAZ 点云执行体素化抽稀，并可输出带地理定位的强度 PNG 预览。
+description: 批量处理 LAS/LAZ 文件，支持抽稀、偏转和强度图任意组合，输入可为文件或目录。
 docs:
-  summary: 适合测试 LAS/LAZ 体素抽稀、代表点选择，以及快速生成强度预览图。
+  summary: 适合批量处理 LAS/LAZ 文件或目录，支持抽稀、origin 偏转和地理定位强度图输出。
   usage: |
-    输入 LAS 或 LAZ 文件后，可以选择输出抽稀后的点云文件，也可以只输出强度预览图。
-    默认使用体素中心点作为代表点；若启用仅栅格模式，则不会写出点云结果。
+    输入支持文件或目录，也支持多行输入多个路径，一行一个。
+    输入目录时只扫描当前层级的 .las/.laz 和 origin.txt，不递归到子目录。
+    偏转只对目录输入生效；若启用偏转但当前目录没有 origin.txt，则自动跳过偏转。
+    输出目录只支持一个；点云输出会自动带来源路径以避免重名，强度图输出在对应点云结果同目录。
 params:
   - key: input
     argKey: input
     type: path
-    pathMode: file
-    label: 输入 LAS/LAZ 文件
-    placeholder: 选择 .las 或 .laz 文件
+    pathMode: fileOrDirectory
+    repeatable: true
+    label: 输入文件或目录
+    placeholder: 支持多行输入，一行一个文件或目录
     required: true
+    help: 文件直接处理；目录只扫描当前层级的 .las/.laz 和 origin.txt，不递归子目录。
   - key: output
     argKey: output
     type: path
-    pathMode: file
-    label: 输出点云文件
-    placeholder: 选择输出 .las 或 .laz 文件
+    pathMode: directory
+    label: 输出目录
+    placeholder: 选择统一输出目录
     required: true
-    visibleWhen:
-      all:
-        - key: raster_only
-          equals: false
+    help: 点云结果和强度图都会输出到该目录下，并自动带来源路径避免重名。
+  - key: thin
+    argKey: thin
+    type: boolean
+    label: 启用抽稀
+    default: true
+  - key: rotate
+    argKey: rotate
+    type: boolean
+    label: 启用偏转
+    default: false
+    help: 仅目录输入会尝试读取当前目录的 origin.txt；找不到时自动跳过偏转。
+  - key: intensity_map
+    argKey: intensity-map
+    type: boolean
+    label: 输出强度图
+    default: false
   - key: voxel_size
     argKey: voxel-size
     type: number
     label: 体素大小（米）
     default: 0.1
     help: 控制抽稀粒度，同时也是默认的强度图分辨率。
+    visibleWhen:
+      any:
+        - key: thin
+          equals: true
+        - key: intensity_map
+          equals: true
   - key: representative
     argKey: representative
     type: select
@@ -44,33 +67,81 @@ params:
         value: center
       - label: 首个点
         value: first
+    visibleWhen:
+      all:
+        - key: thin
+          equals: true
   - key: reserve
     argKey: reserve
     type: number
     label: 预留体素数
     help: 提前为体素索引分配容量，适合已知大致保留量时使用。
+    visibleWhen:
+      all:
+        - key: thin
+          equals: true
   - key: threads
     argKey: threads
     type: number
     label: 线程数
     help: 指定 rayon 线程池大小；留空则使用默认线程数。
-  - key: intensity_preview
-    argKey: intensity-preview
-    type: path
-    pathMode: file
-    label: 强度 PNG 预览
-    placeholder: 选择输出 .png 文件
-    help: 可选；会同时生成同名 .pgw 和 .prj 文件。
   - key: intensity_resolution
     argKey: intensity-resolution
     type: number
     label: 强度图分辨率（米）
     help: 留空则沿用体素大小。
-  - key: raster_only
-    argKey: raster-only
-    type: boolean
-    label: 仅输出栅格预览
-    default: false
+    visibleWhen:
+      all:
+        - key: intensity_map
+          equals: true
+  - key: yaw_deg
+    argKey: yaw-deg
+    type: number
+    label: 偏转角度（度）
+    default: 0
+    visibleWhen:
+      all:
+        - key: rotate
+          equals: true
+  - key: pivot
+    argKey: pivot
+    type: select
+    label: 偏转基点
+    default: centroid
+    options:
+      - label: 质心
+        value: centroid
+      - label: 包围盒中心
+        value: bbox-center
+      - label: 原点
+        value: zero
+    visibleWhen:
+      all:
+        - key: rotate
+          equals: true
+  - key: mapping
+    argKey: mapping
+    type: select
+    label: 坐标映射
+    default: enu
+    options:
+      - label: ENU
+        value: enu
+      - label: 平面
+        value: flat
+    visibleWhen:
+      all:
+        - key: rotate
+          equals: true
+  - key: epsg
+    argKey: epsg
+    type: number
+    label: 目标 EPSG
+    help: 留空则根据 origin.txt 的经纬度自动推断 UTM EPSG。
+    visibleWhen:
+      all:
+        - key: rotate
+          equals: true
   - key: force
     argKey: force
     type: boolean

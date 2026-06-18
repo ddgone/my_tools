@@ -323,8 +323,18 @@ function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | num
       continue
     }
 
-    const escapedValue =
-      typeof value === 'string' ? formatCliValue(value) : String(value)
+    if (param.repeatable && typeof value === 'string') {
+      const items = value
+        .split(/\r?\n/)
+        .map(item => item.trim())
+        .filter(item => item.length > 0)
+      for (const item of items) {
+        parts.push(`${flagPrefix}${argKey}`, formatCliValue(item))
+      }
+      continue
+    }
+
+    const escapedValue = typeof value === 'string' ? formatCliValue(value) : String(value)
     parts.push(`${flagPrefix}${argKey}`, escapedValue)
   }
   return parts.join(' ')

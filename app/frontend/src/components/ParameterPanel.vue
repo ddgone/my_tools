@@ -160,16 +160,18 @@ function tabRawArgs(): string {
 }
 
 function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: string; target: 'file' | 'directory' }> {
+  const fileLabel = param.repeatable ? '加文件' : '选文件'
+  const directoryLabel = param.repeatable ? '加目录' : '选目录'
   switch (param.pathMode) {
     case 'file':
-      return [{ key: 'file', label: '选文件', target: 'file' }]
+      return [{ key: 'file', label: fileLabel, target: 'file' }]
     case 'fileOrDirectory':
       return [
-        { key: 'file', label: '选文件', target: 'file' },
-        { key: 'directory', label: '选目录', target: 'directory' },
+        { key: 'file', label: fileLabel, target: 'file' },
+        { key: 'directory', label: directoryLabel, target: 'directory' },
       ]
     default:
-      return [{ key: 'directory', label: '浏览', target: 'directory' }]
+      return [{ key: 'directory', label: directoryLabel, target: 'directory' }]
   }
 }
 const switchThemeOverrides = computed(() => ({

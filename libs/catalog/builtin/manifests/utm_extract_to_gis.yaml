@@ -3,11 +3,11 @@ name: UTM轨迹提取与GIS转换
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go
-description: 批量提取或直接转换 UTM 轨迹，输出 GeoJSON 与 Shapefile。
+description: 批量提取或直接转换 UTM 轨迹，输出 GeoJSON 与点 Shapefile。
 docs:
   summary: 支持批量提取、直接转换、GeoJSON 合并三种模式，统一输出到指定目录。
   usage: |
-    本工具用于把 UTM 轨迹数据转换为 GIS 可直接使用的 GeoJSON 与 Shapefile。
+    本工具用于把 UTM 轨迹数据转换为 GIS 可直接使用的 GeoJSON 与点 Shapefile。
 
     运行模式：
     1. 批量处理：扫描 out_source 目录下的子文件夹，自动寻找 utm.txt 或 process_result_0.tar.gz
@@ -17,7 +17,7 @@ docs:
     输出规则：
     - 所有模式都支持输出目录
     - 不填写时，默认在输入路径旁边创建 output 目录
-    - 输出内容由“输出内容”控制，可选 GeoJSON、Shapefile 或两者都输出
+    - 输出内容由“输出内容”控制，可选 GeoJSON、点 Shapefile 或两者都输出
 
     批量模式说明：
     - 快速提取：只从压缩包中取出 utm.txt，速度快，临时文件自动清理
@@ -114,13 +114,13 @@ params:
     label: 输出内容
     default: all
     group: 输入输出
-    help: 选择要输出 GeoJSON、Shapefile，还是两者都输出。
+    help: 选择要输出 GeoJSON、点 Shapefile，还是两者都输出。
     options:
-      - label: GeoJSON + Shapefile
+      - label: GeoJSON + 点SHP
         value: all
       - label: 仅 GeoJSON
         value: geojson
-      - label: 仅 Shapefile
+      - label: 仅 点SHP
         value: shp
   - key: zone
     argKey: zone

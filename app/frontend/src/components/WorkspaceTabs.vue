@@ -590,7 +590,19 @@ async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directo
 
   if (result) {
     if (config) {
-      config.formModel[param.key] = result
+      if (param.repeatable) {
+        const currentValue = typeof config.formModel[param.key] === 'string' ? String(config.formModel[param.key] || '') : ''
+        const items = currentValue
+          .split(/\r?\n/)
+          .map(item => item.trim())
+          .filter(item => item.length > 0)
+        if (!items.includes(result)) {
+          items.push(result)
+        }
+        config.formModel[param.key] = items.join('\n')
+      } else {
+        config.formModel[param.key] = result
+      }
     }
   }
 }

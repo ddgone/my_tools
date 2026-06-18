@@ -3,9 +3,9 @@ name: GeoJSON转Shapefile工具
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go
-description: 将 GeoJSON 文件或目录批量转换为点线 Shapefile。
+description: 将 GeoJSON 文件或目录批量转换为点 Shapefile。
 docs:
-  summary: 适用于单个 GeoJSON 文件或整个目录的批量转换，输出 merged_points 与 merged_lines。
+  summary: 适用于单个 GeoJSON 文件或整个目录的批量转换，输出 merged_points。
   usage: |
     这是旧版 TUI 中的 GeoJSON 转 Shapefile 工具的桌面化入口。
     结构化表单覆盖最常用的输入和输出目录模式。

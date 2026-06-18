@@ -34,7 +34,6 @@ type GeoJSONFC struct {
 type SHPFeature struct {
 	Properties map[string]string
 	X, Y       float64
-	LineParts  [][]shp.Point
 }
 
 var wgs84WKT = `GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]`
@@ -107,51 +106,6 @@ func writePointSHP(ctx context.Context, path string, features []SHPFeature) erro
 	return fixDbfPath(path)
 }
 
-func writeLineSHP(ctx context.Context, path string, features []SHPFeature) error {
-	if len(features) == 0 {
-		return nil
-	}
-
-	keys := collectKeys(features)
-	fields := make([]shp.Field, len(keys))
-	for i, k := range keys {
-		fields[i] = shp.StringField(k, 254)
-	}
-
-	writer, err := shp.Create(path, shp.POLYLINE)
-	if err != nil {
-		return err
-	}
-	_ = writer.SetFields(fields)
-
-	n := 0
-	for _, f := range features {
-		if n%1000 == 0 {
-			select {
-			case <-ctx.Done():
-				writer.Close()
-				return fmt.Errorf("任务已被取消")
-			default:
-			}
-		}
-		if len(f.LineParts) == 0 || len(f.LineParts[0]) < 2 {
-			continue
-		}
-		line := shp.NewPolyLine(f.LineParts)
-		writer.Write(line)
-		for i, k := range keys {
-			_ = writer.WriteAttribute(n, i, f.Properties[k])
-		}
-		n++
-	}
-
-	writer.Close()
-	if err := writeWGS84Prj(strings.TrimSuffix(path, ".shp") + ".prj"); err != nil {
-		return err
-	}
-	return fixDbfPath(path)
-}
-
 func parseGeoJSONFile(ctx context.Context, path string) ([]SHPFeature, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -203,40 +157,6 @@ func parseGeoJSONFile(ctx context.Context, path string) ([]SHPFeature, error) {
 					}
 				}
 			}
-		case "linestring":
-			var coords [][]float64
-			if err := json.Unmarshal(f.Geometry.Coordinates, &coords); err == nil && len(coords) >= 2 {
-				var pts []shp.Point
-				for _, c := range coords {
-					if len(c) >= 2 {
-						pts = append(pts, shp.Point{X: c[0], Y: c[1]})
-					}
-				}
-				if len(pts) >= 2 {
-					sf.LineParts = [][]shp.Point{pts}
-					features = append(features, sf)
-				}
-			}
-		case "multilinestring":
-			var coords [][][]float64
-			if err := json.Unmarshal(f.Geometry.Coordinates, &coords); err == nil && len(coords) > 0 {
-				var parts [][]shp.Point
-				for _, line := range coords {
-					var pts []shp.Point
-					for _, c := range line {
-						if len(c) >= 2 {
-							pts = append(pts, shp.Point{X: c[0], Y: c[1]})
-						}
-					}
-					if len(pts) >= 2 {
-						parts = append(parts, pts)
-					}
-				}
-				if len(parts) > 0 {
-					sf.LineParts = parts
-					features = append(features, sf)
-				}
-			}
 		}
 	}
 	return features, nil
@@ -272,7 +192,6 @@ func runConvert(ctx context.Context, inputPath, outputDir string, out io.Writer)
 	}
 
 	var pointFeatures []SHPFeature
-	var lineFeatures []SHPFeature
 
 	for _, path := range geojsonFiles {
 		// 检查是否收到取消信号
@@ -291,20 +210,11 @@ func runConvert(ctx context.Context, inputPath, outputDir string, out io.Writer)
 			fmt.Fprintf(out, "  错误: %v\n", err)
 			continue
 		}
-		var pointCount, lineCount int
-		for _, f := range features {
-			if len(f.LineParts) > 0 {
-				lineFeatures = append(lineFeatures, f)
-				lineCount++
-			} else {
-				pointFeatures = append(pointFeatures, f)
-				pointCount++
-			}
-		}
-		fmt.Fprintf(out, "  点: %d, 线: %d\n", pointCount, lineCount)
+		pointFeatures = append(pointFeatures, features...)
+		fmt.Fprintf(out, "  点: %d\n", len(features))
 	}
 
-	fmt.Fprintf(out, "\n总计: %d 个点, %d 条线\n", len(pointFeatures), len(lineFeatures))
+	fmt.Fprintf(out, "\n总计: %d 个点\n", len(pointFeatures))
 
 	if len(pointFeatures) > 0 {
 		// 检查是否收到取消信号
@@ -318,20 +228,6 @@ func runConvert(ctx context.Context, inputPath, outputDir string, out io.Writer)
 			return err
 		}
 		fmt.Fprintf(out, "点 Shapefile 输出: %s\n", pointPath)
-	}
-
-	if len(lineFeatures) > 0 {
-		// 检查是否收到取消信号
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("任务已被取消")
-		default:
-		}
-		linePath := filepath.Join(outputDir, "merged_lines.shp")
-		if err := writeLineSHP(ctx, linePath, lineFeatures); err != nil {
-			return err
-		}
-		fmt.Fprintf(out, "线 Shapefile 输出: %s\n", linePath)
 	}
 
 	fmt.Fprintf(out, "\n转换完成！\n")
@@ -348,11 +244,10 @@ func (t *G2STool) Execute(ctx framework.AppContext) {
 	usage := `[yellow]GeoJSON 转 Shapefile 工具[-]
 
 [cyan]说明:[-]
-本工具用于将 GeoJSON 文件（点/线/面）转换为 Shapefile 格式，支持单个文件或整个目录。
+本工具用于将 GeoJSON 文件中的点要素转换为 Shapefile 格式，支持单个文件或整个目录。
 
 [cyan]支持的几何类型:[-]
   Point, MultiPoint → 点 Shapefile
-  LineString, MultiLineString → 线 Shapefile
 
 [cyan]参数详解:[-]
   -input <文件/目录路径>   指定 GeoJSON 文件或包含 .geojson 文件的目录。

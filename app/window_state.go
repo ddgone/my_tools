@@ -40,6 +40,13 @@ func frameFromState(state WindowState) windowFrame {
 	}
 }
 
+func shouldRestoreSavedFrame(state WindowState, frame windowFrame) bool {
+	if state.Maximised || state.Fullscreen {
+		return false
+	}
+	return frame.valid() && isWindowRectVisible(frame.X, frame.Y, frame.Width, frame.Height)
+}
+
 func (a *App) domReady(ctx context.Context) {
 	a.ctx = ctx
 	a.restoreSavedWindowState()
@@ -126,7 +133,7 @@ func (a *App) restoreSavedWindowState() {
 		frame.Height = defaultWindowHeight
 	}
 
-	if frame.valid() && isWindowRectVisible(frame.X, frame.Y, frame.Width, frame.Height) {
+	if shouldRestoreSavedFrame(saved, frame) {
 		if err := nativeSetWindowFrame(a.ctx, frame); err != nil {
 			wailsruntime.WindowSetSize(a.ctx, frame.Width, frame.Height)
 			wailsruntime.WindowSetPosition(a.ctx, frame.X, frame.Y)

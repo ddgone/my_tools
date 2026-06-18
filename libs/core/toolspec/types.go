@@ -110,6 +110,7 @@ type ParameterSpec struct {
 	Options     []ParameterOption    `yaml:"options,omitempty" json:"options,omitempty"`
 	Group       string               `yaml:"group,omitempty" json:"group,omitempty"`
 	PathMode    string               `yaml:"pathMode,omitempty" json:"pathMode,omitempty"`
+	Repeatable  bool                 `yaml:"repeatable,omitempty" json:"repeatable,omitempty"`
 	Emit        *bool                `yaml:"emit,omitempty" json:"emit,omitempty"`
 	VisibleWhen *ParameterVisibility `yaml:"visibleWhen,omitempty" json:"visibleWhen,omitempty"`
 }

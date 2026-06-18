@@ -1,7 +1,7 @@
 [package]
 name = "las_voxelizer"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "las_voxelizer"
@@ -9,8 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
-las = { version = "0.9", features = ["laz"] }
+clap = { version = "4.5", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
+las = { version = "0.9.10", features = ["laz-parallel"] }
 rayon = "1"
 rustc-hash = "2"

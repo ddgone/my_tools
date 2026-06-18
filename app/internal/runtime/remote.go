@@ -339,12 +339,76 @@ type RemotePlatform struct {
 	Arch string
 }
 
+type commandOutput struct {
+	Stdout string
+	Stderr string
+}
+
+func (r *RemoteExecutor) captureOutput(ctx context.Context, cmd string) (commandOutput, error) {
+	session, err := r.SSHClient.NewSession()
+	if err != nil {
+		return commandOutput{}, fmt.Errorf("创建输出捕获会话失败: %w", err)
+	}
+	defer session.Close()
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return commandOutput{}, fmt.Errorf("获取stdout失败: %w", err)
+	}
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	session.Stderr = &stderrBuf
+
+	if err := session.Start(cmd); err != nil {
+		return commandOutput{}, fmt.Errorf("启动远端命令失败: %w", err)
+	}
+
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(&stdoutBuf, stdout)
+		copyDone <- copyErr
+	}()
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- session.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGTERM)
+		select {
+		case <-waitDone:
+		case <-time.After(3 * time.Second):
+			_ = session.Signal(ssh.SIGKILL)
+			<-waitDone
+		}
+		return commandOutput{}, ctx.Err()
+	case copyErr := <-copyDone:
+		result := commandOutput{
+			Stdout: strings.TrimSpace(stdoutBuf.String()),
+			Stderr: strings.TrimSpace(stderrBuf.String()),
+		}
+		if copyErr != nil {
+			return result, fmt.Errorf("接收远端stdout失败: %w", copyErr)
+		}
+		if waitErr := <-waitDone; waitErr != nil {
+			if result.Stderr != "" {
+				return result, fmt.Errorf("%w: %s", waitErr, result.Stderr)
+			}
+			return result, waitErr
+		}
+		return result, nil
+	}
+}
+
 func (r *RemoteExecutor) RunOutput(ctx context.Context, cmd string) (string, error) {
-	var buf bytes.Buffer
-	if err := r.Execute(ctx, cmd, &buf); err != nil {
+	result, err := r.captureOutput(ctx, cmd)
+	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(buf.String()), nil
+	return result.Stdout, nil
 }
 
 func (r *RemoteExecutor) DetectPlatform(ctx context.Context) (RemotePlatform, error) {
@@ -356,17 +420,17 @@ func (r *RemoteExecutor) DetectPlatform(ctx context.Context) (RemotePlatform, er
 
 	failures := make([]string, 0, len(probes))
 	for _, probe := range probes {
-		output, err := r.RunOutput(ctx, probe)
+		result, err := r.captureOutput(ctx, probe)
 		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s => err: %v", probe, err))
+			failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, err))
 			continue
 		}
 
-		platform, parseErr := parseRemotePlatformOutput(output)
+		platform, parseErr := parseRemotePlatformOutput(result.Stdout)
 		if parseErr == nil {
 			return platform, nil
 		}
-		failures = append(failures, fmt.Sprintf("%s => output: %q (%v)", probe, output, parseErr))
+		failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, parseErr))
 	}
 
 	return RemotePlatform{}, fmt.Errorf("无法解析远端平台信息，探测详情: %s", strings.Join(failures, " | "))
@@ -427,18 +491,29 @@ func (r *RemoteExecutor) EstimateDirectoryArchiveSize(ctx context.Context, remot
 func (r *RemoteExecutor) runInt64Probe(ctx context.Context, probes []string) (int64, error) {
 	failures := make([]string, 0, len(probes))
 	for _, probe := range probes {
-		output, err := r.RunOutput(ctx, probe)
+		result, err := r.captureOutput(ctx, probe)
 		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s => err: %v", probe, err))
+			failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, err))
 			continue
 		}
-		value, parseErr := parseInt64(strings.TrimSpace(output))
+		value, parseErr := parseInt64(result.Stdout)
 		if parseErr == nil {
 			return value, nil
 		}
-		failures = append(failures, fmt.Sprintf("%s => output: %q", probe, output))
+		failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, parseErr))
 	}
 	return 0, fmt.Errorf("无法探测远端大小，探测详情: %s", strings.Join(failures, " | "))
+}
+
+func formatProbeDetail(probe string, stdout string, stderr string, detail error) string {
+	parts := []string{
+		fmt.Sprintf("stdout: %q", stdout),
+		fmt.Sprintf("stderr: %q", stderr),
+	}
+	if detail != nil {
+		parts = append(parts, detail.Error())
+	}
+	return fmt.Sprintf("%s => %s", probe, strings.Join(parts, " | "))
 }
 
 func parseInt64(value string) (int64, error) {

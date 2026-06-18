@@ -596,19 +596,6 @@ func writeTrackArtifacts(ctx context.Context, outputDir, trackID string, feature
 		fmt.Fprintf(out, "  [SHP] %s\n", filepath.Base(pointShp))
 	}
 
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	lineShp := base + "_line.shp"
-	if err := writeGeoJSONLineSHP(ctx, lineShp, map[string][]GeoJSONFeature{trackID: features}); err != nil {
-		fmt.Fprintf(out, "  [警告] 线 SHP 失败: %v\n", err)
-	} else {
-		fmt.Fprintf(out, "  [SHP] %s\n", filepath.Base(lineShp))
-	}
-
 	return nil
 }
 
@@ -644,19 +631,6 @@ func writeMergedArtifacts(ctx context.Context, outputDir, baseName string, allFe
 		fmt.Fprintf(out, "  [警告] 合并点 SHP 失败: %v\n", err)
 	} else {
 		fmt.Fprintf(out, "  [合并 SHP] %s\n", filepath.Base(pointShp))
-	}
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	lineShp := base + "_line.shp"
-	if err := writeGeoJSONLineSHP(ctx, lineShp, trackFeatures); err != nil {
-		fmt.Fprintf(out, "  [警告] 合并线 SHP 失败: %v\n", err)
-	} else {
-		fmt.Fprintf(out, "  [合并 SHP] %s\n", filepath.Base(lineShp))
 	}
 
 	return nil
@@ -1093,8 +1067,8 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
   - 不指定时，默认在输入路径旁边创建 output 目录
   - 输出内容由 -artifact-set 控制：
       geojson = 仅输出 .geojson
-      shp     = 仅输出点/线 Shapefile
-      all     = 同时输出 GeoJSON 和 Shapefile
+      shp     = 仅输出点 Shapefile
+      all     = 同时输出 GeoJSON 和点 Shapefile
 
 [cyan]参数说明:[-]
   -input <目录路径>             [批量模式] 批量处理 out_source 目录

@@ -3,16 +3,17 @@ name: 点云pos轨迹转换GeoJSON+Shapefile
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go
-description: 将 POS JSON 轨迹批量转换为 GeoJSON 与点线 Shapefile。
+description: 将 POS JSON 轨迹批量转换为 GeoJSON 与点 Shapefile。
 docs:
-  summary: 旧版 POS 轨迹转换工具的桌面化入口，保留目录批量处理与输出目录覆盖能力。
+  summary: 旧版 POS 轨迹转换工具的桌面化入口，支持目录批量处理、逐轨迹产物输出与输出目录覆盖。
   usage: |
     面向点云 POS 编译系统导出的 JSON 轨迹目录。
-    结构化表单对应旧版 TUI 的最常用输入方式。
+    支持输出 GeoJSON、点 Shapefile，或同时输出两者。
 params:
   - key: input
     argKey: input
     type: path
+    pathMode: directory
     label: 输入目录
     placeholder: 选择包含 POS JSON 文件的目录
     required: true
@@ -20,9 +21,23 @@ params:
   - key: output
     argKey: output
     type: path
+    pathMode: directory
     label: 输出目录
     placeholder: 留空则在输入目录下生成 output
     help: 不填写时会沿用旧版默认行为。
+  - key: artifactSet
+    argKey: artifact-set
+    type: select
+    label: 输出内容
+    default: all
+    help: 选择输出 GeoJSON、点 Shapefile，还是两者都输出。
+    options:
+      - label: GeoJSON + 点SHP
+        value: all
+      - label: 仅 点SHP
+        value: shp
+      - label: 仅 GeoJSON
+        value: geojson
 execution:
   local:
     adapter: go-binary

@@ -65,14 +65,27 @@ var pointFields = []shp.Field{
 	shp.StringField("videoFrameIdx", 20),
 }
 
-var lineFields = []shp.Field{
-	shp.StringField("trackId", 50),
-	shp.StringField("sourceFile", 100),
-	shp.StringField("pointCount", 20),
-	shp.StringField("startTime", 30),
-	shp.StringField("endTime", 30),
-	shp.StringField("startVideo", 100),
-	shp.StringField("endVideo", 100),
+const (
+	artifactGeoJSON = "geojson"
+	artifactSHP     = "shp"
+	artifactAll     = "all"
+)
+
+func shouldWriteGeoJSON(artifactSet string) bool {
+	return artifactSet == artifactGeoJSON || artifactSet == artifactAll
+}
+
+func shouldWriteSHP(artifactSet string) bool {
+	return artifactSet == artifactSHP || artifactSet == artifactAll
+}
+
+func validateArtifactSet(artifactSet string) error {
+	switch artifactSet {
+	case artifactGeoJSON, artifactSHP, artifactAll:
+		return nil
+	default:
+		return fmt.Errorf("错误：-artifact-set 只能是 geojson、shp 或 all")
+	}
 }
 
 func parseJSONFile(ctx context.Context, path string) ([]ExtractedPoint, error) {
@@ -198,67 +211,65 @@ func writePointSHP(ctx context.Context, path string, points []ExtractedPoint) er
 	return nil
 }
 
-func writeLineSHP(ctx context.Context, path string, fileLines map[string][]ExtractedPoint) error {
-	writer, err := shp.Create(path, shp.POLYLINE)
-	if err != nil {
-		return err
-	}
-
-	_ = writer.SetFields(lineFields)
-
-	n := 0
-	for fileName, points := range fileLines {
-		if n%1000 == 0 {
-			select {
-			case <-ctx.Done():
-				writer.Close()
-				return fmt.Errorf("任务已被取消")
-			default:
-			}
-		}
-		if len(points) < 2 {
-			continue
-		}
-
-		var pts []shp.Point
-		for _, p := range points {
-			pts = append(pts, shp.Point{X: p.X, Y: p.Y})
-		}
-		line := shp.NewPolyLine([][]shp.Point{pts})
-		writer.Write(line)
-		_ = writer.WriteAttribute(n, 0, points[0].TrackID)
-		_ = writer.WriteAttribute(n, 1, fileName)
-		_ = writer.WriteAttribute(n, 2, fmt.Sprintf("%d", len(points)))
-		_ = writer.WriteAttribute(n, 3, fmt.Sprintf("%d", points[0].Timestamp))
-		_ = writer.WriteAttribute(n, 4, fmt.Sprintf("%d", points[len(points)-1].Timestamp))
-		_ = writer.WriteAttribute(n, 5, points[0].VideoFile)
-		_ = writer.WriteAttribute(n, 6, points[len(points)-1].VideoFile)
-		n++
-	}
-
-	writer.Close()
-
-	if err := writeWGS84Prj(strings.TrimSuffix(path, ".shp") + ".prj"); err != nil {
-		return err
-	}
-
-	dbfPath := strings.TrimSuffix(path, ".shp") + "dbf"
-	correctDbfPath := strings.TrimSuffix(path, ".shp") + ".dbf"
-	if _, err := os.Stat(dbfPath); err == nil {
-		if err := os.Rename(dbfPath, correctDbfPath); err != nil {
-			return fmt.Errorf("重命名 dbf 文件失败: %v", err)
-		}
-	}
-
-	return nil
-}
-
 func writeWGS84Prj(prjPath string) error {
 	wgs84WKT := `GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]`
 	return os.WriteFile(prjPath, []byte(wgs84WKT), 0644)
 }
 
-func runConvert(ctx context.Context, inputDir, outputDir string, out io.Writer) error {
+func defaultOutputDir(inputDir string) string {
+	return filepath.Join(inputDir, "output")
+}
+
+func allocateArtifactBase(base string, used map[string]int) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base = "track"
+	}
+	if used[base] == 0 {
+		used[base] = 1
+		return base
+	}
+	used[base]++
+	return fmt.Sprintf("%s_%d", base, used[base])
+}
+
+func writeTrackArtifacts(ctx context.Context, outputDir, baseName string, points []ExtractedPoint, artifactSet string, out io.Writer) error {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("创建输出目录 '%s' 失败: %v", outputDir, err)
+	}
+
+	base := filepath.Join(outputDir, baseName)
+	if shouldWriteGeoJSON(artifactSet) {
+		geojsonPath := base + ".geojson"
+		if err := writeGeoJSON(ctx, geojsonPath, points); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "  [GeoJSON] %s (%d 点)\n", filepath.Base(geojsonPath), len(points))
+	}
+
+	if !shouldWriteSHP(artifactSet) {
+		return nil
+	}
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("任务已被取消")
+	default:
+	}
+
+	pointShpPath := base + "_point.shp"
+	if err := writePointSHP(ctx, pointShpPath, points); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "  [SHP] %s\n", filepath.Base(pointShpPath))
+	return nil
+}
+
+func writeMergedArtifacts(ctx context.Context, outputDir string, points []ExtractedPoint, artifactSet string, out io.Writer) error {
+	return writeTrackArtifacts(ctx, outputDir, "merged_pos", points, artifactSet, out)
+}
+
+func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, out io.Writer) error {
 	info, err := os.Stat(inputDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -287,7 +298,8 @@ func runConvert(ctx context.Context, inputDir, outputDir string, out io.Writer) 
 	}
 
 	var allPoints []ExtractedPoint
-	linesFromFiles := make(map[string][]ExtractedPoint)
+	usedBaseNames := map[string]int{}
+	converted := 0
 
 	for _, jsonPath := range jsonFiles {
 		select {
@@ -307,9 +319,19 @@ func runConvert(ctx context.Context, inputDir, outputDir string, out io.Writer) 
 		if len(points) == 0 {
 			continue
 		}
+
+		baseName := allocateArtifactBase(strings.TrimSuffix(filepath.Base(jsonPath), filepath.Ext(jsonPath)), usedBaseNames)
+		fmt.Fprintf(out, "转换: %s\n", filepath.Base(jsonPath))
+		if err := writeTrackArtifacts(ctx, outputDir, baseName, points, artifactSet, out); err != nil {
+			return err
+		}
+
 		allPoints = append(allPoints, points...)
-		fileName := filepath.Base(jsonPath)
-		linesFromFiles[fileName] = points
+		converted++
+	}
+
+	if converted == 0 {
+		return fmt.Errorf("未找到任何有效 POS JSON 轨迹")
 	}
 
 	select {
@@ -318,37 +340,13 @@ func runConvert(ctx context.Context, inputDir, outputDir string, out io.Writer) 
 	default:
 	}
 
-	geojsonPath := filepath.Join(outputDir, "merged_pos_point.geojson")
-	if err := writeGeoJSON(ctx, geojsonPath, allPoints); err != nil {
-		return err
+	fmt.Fprintf(out, "\n转换完成！共处理 %d 个 JSON 文件，%d 个有效轨迹，%d 个点\n", len(jsonFiles), converted, len(allPoints))
+	if converted > 1 {
+		if err := writeMergedArtifacts(ctx, outputDir, allPoints, artifactSet, out); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(out, "GeoJSON 输出: %s (%d 点)\n", geojsonPath, len(allPoints))
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	pointShpPath := filepath.Join(outputDir, "merged_pos_point.shp")
-	if err := writePointSHP(ctx, pointShpPath, allPoints); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "点 Shapefile 输出: %s\n", pointShpPath)
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("任务已被取消")
-	default:
-	}
-
-	lineShpPath := filepath.Join(outputDir, "merged_pos_line.shp")
-	if err := writeLineSHP(ctx, lineShpPath, linesFromFiles); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "线 Shapefile 输出: %s\n", lineShpPath)
-
-	fmt.Fprintf(out, "\n转换完成！共处理 %d 个 JSON 文件，%d 个点\n", len(jsonFiles), len(allPoints))
+	fmt.Fprintf(out, "输出目录: %s\n", outputDir)
 	return nil
 }
 
@@ -362,12 +360,16 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 	usage := `[yellow]点云 POS 轨迹转换 GeoJSON + Shapefile 工具[-]
 
 [cyan]说明:[-]
-本工具用于将点云 POS 编译系统输出的 JSON 轨迹数据转换为 GeoJSON 点集和 Shapefile（点+线）格式，便于在 GIS 软件中查看和分析。
+本工具用于将点云 POS 编译系统输出的 JSON 轨迹数据转换为 GeoJSON 点集和点 Shapefile，便于在 GIS 软件中查看和分析。
 
 [cyan]参数详解:[-]
   -input <目录路径>         指定包含 POS JSON 文件的目录。
                              程序会遍历该目录下所有 .json 文件进行转换。
   -output <目录路径>        指定输出目录。默认在输入目录下创建 output 子文件夹。
+  -artifact-set <模式>      输出内容：all、shp、geojson。
+                             all: GeoJSON + 点 Shapefile
+                             shp: 仅点 Shapefile
+                             geojson: 仅 GeoJSON
 
 [cyan]实际运行示例 (可以直接复制到下方输入):[-]
 
@@ -376,6 +378,9 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 
 2. 指定输出目录:
    -input "<你的pos数据目录>" -output "<输出目录>"
+
+3. 仅输出点 Shapefile:
+   -input "<你的pos数据目录>" -artifact-set shp
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
@@ -389,9 +394,11 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 
 		var inputDir string
 		var outputDir string
+		var artifactSet string
 
 		fs.StringVar(&inputDir, "input", "", "")
 		fs.StringVar(&outputDir, "output", "", "")
+		fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
 
 		if err := fs.Parse(parsedArgs); err != nil {
 			return err
@@ -401,11 +408,15 @@ func (t *POSTool) Execute(ctx framework.AppContext) {
 			return fmt.Errorf("错误：必须指定 -input 参数")
 		}
 
-		if outputDir == "" {
-			outputDir = filepath.Join(inputDir, "output")
+		if err := validateArtifactSet(artifactSet); err != nil {
+			return err
 		}
 
-		return runConvert(runCtx, inputDir, outputDir, out)
+		if outputDir == "" {
+			outputDir = defaultOutputDir(inputDir)
+		}
+
+		return runConvert(runCtx, inputDir, outputDir, artifactSet, out)
 	})
 }
 

@@ -1291,6 +1291,7 @@ export namespace toolspec {
 	    options?: ParameterOption[];
 	    group?: string;
 	    pathMode?: string;
+	    repeatable?: boolean;
 	    emit?: boolean;
 	    visibleWhen?: ParameterVisibility;
 	
@@ -1311,6 +1312,7 @@ export namespace toolspec {
 	        this.options = this.convertValues(source["options"], ParameterOption);
 	        this.group = source["group"];
 	        this.pathMode = source["pathMode"];
+	        this.repeatable = source["repeatable"];
 	        this.emit = source["emit"];
 	        this.visibleWhen = this.convertValues(source["visibleWhen"], ParameterVisibility);
 	    }
