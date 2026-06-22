@@ -5,17 +5,12 @@ import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline, BuildOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
-import { useDownloadStore } from '@/stores/downloads'
-import { useGoEnvStore } from '@/stores/goenv'
-import { useRustEnvStore } from '@/stores/rustenv'
-import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { getBuiltinToolById, getBuiltinToolIcon } from '@/builtin/registry'
-import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
-import { ExportTool, OpenFileDialog, OpenPath } from '../../wailsjs/go/main/App'
-import type { ParameterSpec, SSHConnection } from '@/types/workbench'
+import { useWorkspaceToolActions } from '@/composables/useWorkspaceToolActions'
+import type { SSHConnection } from '@/types/workbench'
 import ToolDetailPanel from './ToolDetailPanel.vue'
 import ParameterPanel from './ParameterPanel.vue'
 import ExecutionTerminal from './ExecutionTerminal.vue'
@@ -24,9 +19,7 @@ import BuiltinToolPanel from './BuiltinToolPanel.vue'
 import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
-import { validateCliArgs } from '@/utils/cliArgs'
 import { getExecutionTheme } from '@/utils/executionTheme'
-import { findMissingRequiredParam } from '@/utils/toolParams'
 import gsap from 'gsap'
 
 const emit = defineEmits<{
@@ -35,22 +28,12 @@ const emit = defineEmits<{
 
 const workbench = useWorkbenchStore()
 const execution = useExecutionStore()
-const downloads = useDownloadStore()
-const goEnv = useGoEnvStore()
-const rustEnv = useRustEnvStore()
-const pythonEnv = usePythonEnvStore()
 const workspace = useWorkspaceStore()
 const message = useMessage()
-
-const launching = ref(false)
-const exporting = ref(false)
-const downloadingResult = ref(false)
-const exportProgressText = ref('')
 const searchInput = ref('')
 const activeSearchIndex = ref(0)
 const contentRef = ref<HTMLElement | null>(null)
 const tabBarRef = ref<HTMLElement | null>(null)
-let disposeExportProgress: (() => void) | null = null
 type UnifiedTabItem = {
   type: 'tool' | 'builtin' | 'ssh' | 'artifact'
   key: string
@@ -231,7 +214,6 @@ const { size: terminalHeight, dividerProps: hDividerProps } = useResizable({
 })
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
-const activeToolTabComputed = computed(() => workspace.activeToolTab)
 const isTerminalVisible = computed(() => workspace.activeToolTerminalVisible)
 const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
 const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
@@ -283,57 +265,6 @@ function toolById(id: string) {
 
 function builtinToolById(id: string) {
   return getBuiltinToolById(id) ?? null
-}
-
-function isMissingGoEnvError(detail: string) {
-  return detail.includes('未检测到可用的 Go 环境')
-    || detail.includes('请先在系统设置 > Go 中选择本地 Go 或下载 SDK')
-    || detail.includes('指定的 Go 工具链不存在')
-}
-
-function isMissingPythonEnvError(detail: string) {
-  return detail.includes('未检测到可用的基础 Python')
-    || detail.includes('当前 Python 工具环境尚未准备好')
-    || detail.includes('当前 Python 工具环境缺少 pip')
-    || detail.includes('当前 Python 工具依赖未安装')
-}
-
-function isMissingRustEnvError(detail: string) {
-  return detail.includes('未检测到可用的 Rust 交叉编译环境')
-    || detail.includes('请先在系统设置 > Rust 中配置')
-    || detail.includes('cargo-zigbuild')
-    || detail.includes('rustup')
-    || detail.includes('zig')
-}
-
-async function openGoSettings(messageText?: string) {
-  workspace.openSettings('go')
-  if (messageText) {
-    message.warning(messageText)
-  }
-  if (!goEnv.state && !goEnv.loading) {
-    await goEnv.loadState()
-  }
-}
-
-async function openPythonSettings(messageText?: string) {
-  workspace.openSettings('python')
-  if (messageText) {
-    message.warning(messageText)
-  }
-  if (!pythonEnv.state && !pythonEnv.loading) {
-    await pythonEnv.loadState()
-  }
-}
-
-async function openRustSettings(messageText?: string) {
-  workspace.openSettings('rust')
-  if (messageText) {
-    message.warning(messageText)
-  }
-  if (!rustEnv.state && !rustEnv.loading) {
-    await rustEnv.loadState()
-  }
 }
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
@@ -400,212 +331,22 @@ const activeTask = computed(() =>
   activeTabTaskId.value ? execution.recentTasks.find((t) => t.id === activeTabTaskId.value) ?? null : null,
 )
 
-async function handleExecute() {
-  const tab = workspace.activeToolTab
-  const tool = tab ? toolById(tab.toolId) : null
-  if (!tool || !tab) return
-
-  const config = workspace.activeExecutionConfig
-  if (!config) return
-
-  const cliArgsError = validateCliArgs(config.rawArgs)
-  if (cliArgsError) {
-    message.error(cliArgsError)
-    return
-  }
-
-  if (config.panelMode !== 'cli') {
-    const missingParam = findMissingRequiredParam(tool, config.formModel)
-    if (missingParam) {
-      message.error(`请先填写“${missingParam.label}”`)
-      return
-    }
-  }
-
-  if (tab.executionTarget === 'remote' && !tab.remoteConfig.connId) {
-    message.error('请选择远程环境后再执行')
-    return
-  }
-
-  if (workspace.activeTabIndex >= 0) {
-    workspace.setTerminalVisible(workspace.activeTabIndex, true)
-  }
-
-  workspace.recordUsage(tool.id, config.rawArgs, config.pythonEnv, config.formModel)
-
-  launching.value = true
-  try {
-    if (tab.executionTarget === 'remote') {
-      await execution.startRemoteExecution({
-        toolId: tool.id,
-        connId: tab.remoteConfig.connId,
-        args: config.rawArgs,
-        pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
-      })
-    } else {
-      await execution.startLocalExecution({
-        toolId: tool.id,
-        args: config.rawArgs,
-        pythonEnv: tool.kind === 'python' ? undefined : undefined,
-      })
-    }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    if (isMissingGoEnvError(detail)) {
-      await openGoSettings('当前操作需要 Go 环境，已为你打开设置')
-      return
-    }
-    if (isMissingPythonEnvError(detail)) {
-      await openPythonSettings('当前操作需要 Python 环境，已为你打开设置')
-      return
-    }
-    if (tool.kind === 'rust' && isMissingRustEnvError(detail)) {
-      await openRustSettings('当前操作需要 Rust 交叉编译环境，已为你打开设置')
-      return
-    }
-    message.error(detail || '执行失败')
-  } finally {
-    launching.value = false
-  }
-}
-
-async function handleCancel() {
-  const task = activeTask.value
-  if (!task || task.status !== 'running') return
-  await execution.cancelExecution(task.id)
-}
-
-function parseExportTarget(value: string) {
-  const [targetOS, targetArch] = value.split('/')
-  return {
-    targetOS: targetOS || undefined,
-    targetArch: targetArch || undefined,
-  }
-}
-
-async function handleExport() {
-  const tab = workspace.activeToolTab
-  const tool = tab ? toolById(tab.toolId) : null
-  if (!tool) return
-  if (!tool.export?.strategy) {
-    message.error('当前工具没有可用的导出能力')
-    return
-  }
-
-  exporting.value = true
-  exportProgressText.value = '准备导出'
-  try {
-    const mode = tool.kind === 'python' ? 'source' : tool.kind === 'go' ? activeGoExportMode.value : 'binary'
-    const target = (tool.kind === 'go' || tool.kind === 'rust') && mode === 'binary'
-      ? parseExportTarget(activeExportTarget.value)
-      : {}
-    const result = await ExportTool({
-      toolId: tool.id,
-      mode,
-      ...target,
-    })
-    if (!result?.filePath) {
-      return
-    }
-
-    message.success(`已导出 ${result.toolName}`)
-    if (workspace.settings.autoOpenExportDir) {
-      try {
-        await OpenPath(result.directory)
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error)
-        message.warning(`导出成功，但打开目录失败：${detail}`)
-      }
-    }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    if (isMissingGoEnvError(detail)) {
-      await openGoSettings('导出 Go 工具前需要先配置 Go 环境')
-      return
-    }
-    if (tool.kind === 'rust' && isMissingRustEnvError(detail)) {
-      await openRustSettings('导出 Rust 工具前需要先配置 Rust 交叉编译环境')
-      return
-    }
-    message.error(detail || '工具导出失败')
-  } finally {
-    exporting.value = false
-    exportProgressText.value = ''
-  }
-}
-
-async function handleDownloadResult() {
-  const task = activeTask.value
-  if (!task || task.remoteResultStatus !== 'available') {
-    message.warning('当前任务没有可下载结果')
-    return
-  }
-
-  downloadingResult.value = true
-  try {
-    const downloadTask = await downloads.startTaskResultDownload(task.id)
-    if (!downloadTask?.id) {
-      return
-    }
-    message.success('已加入下载任务')
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    message.error(detail || '下载结果失败')
-  } finally {
-    downloadingResult.value = false
-  }
-}
-
-async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directory') {
-  const tab = activeToolTabComputed.value
-  const config = workspace.activeExecutionConfig
-  if (!tab) return
-
-  const dialogTarget =
-    target ||
-    (param.pathMode === 'file'
-      ? 'file'
-      : 'directory')
-  let result: string
-
-  if (dialogTarget === 'directory') {
-    result = await OpenFileDialog({
-      title: `选择 ${param.label}`,
-      filterName: '所有文件',
-      filterGlob: '*.*',
-      directory: true,
-      defaultDirectory: '',
-      defaultFilename: '',
-    })
-  } else {
-    result = await OpenFileDialog({
-      title: `选择 ${param.label}`,
-      filterName: '所有文件',
-      filterGlob: '*.*',
-      directory: false,
-      defaultDirectory: '',
-      defaultFilename: '',
-    })
-  }
-
-  if (result) {
-    if (config) {
-      if (param.repeatable) {
-        const currentValue = typeof config.formModel[param.key] === 'string' ? String(config.formModel[param.key] || '') : ''
-        const items = currentValue
-          .split(/\r?\n/)
-          .map(item => item.trim())
-          .filter(item => item.length > 0)
-        if (!items.includes(result)) {
-          items.push(result)
-        }
-        config.formModel[param.key] = items.join('\n')
-      } else {
-        config.formModel[param.key] = result
-      }
-    }
-  }
-}
+const {
+  launching,
+  exporting,
+  downloadingResult,
+  exportProgressText,
+  handleExecute,
+  handleCancel,
+  handleExport,
+  handleDownloadResult,
+  handleFileDialog,
+} = useWorkspaceToolActions({
+  activeToolId,
+  activeTask,
+  activeExportTarget,
+  activeGoExportMode,
+})
 
 function onPythonEnvUpdate(value: string) {
   if (workspace.activeTabIndex >= 0) {
@@ -1025,12 +766,6 @@ onMounted(() => {
   window.addEventListener('pointermove', handleGlobalPointerMove)
   window.addEventListener('pointerup', handleGlobalPointerUp)
   window.addEventListener('pointercancel', handleGlobalPointerCancel)
-  disposeExportProgress = EventsOn('export:progress', (event: { toolId?: string, message?: string }) => {
-    if (event.toolId !== activeToolId.value) {
-      return
-    }
-    exportProgressText.value = String(event.message ?? '').trim()
-  })
 
   if (typeof ResizeObserver !== 'undefined') {
     layoutResizeObserver = new ResizeObserver(() => {
@@ -1051,14 +786,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerup', handleGlobalPointerUp)
   window.removeEventListener('pointercancel', handleGlobalPointerCancel)
   layoutResizeObserver?.disconnect()
-  disposeExportProgress?.()
   clearTabTransforms()
-})
-
-watch(activeToolId, () => {
-  if (!exporting.value) {
-    exportProgressText.value = ''
-  }
 })
 
 watch(searchInput, () => {

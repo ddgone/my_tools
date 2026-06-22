@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { BuiltinToolDefinition, BuiltinToolTabState } from '@/types/builtin'
-import { getVisibleParams, shouldEmitParam } from '@/utils/toolParams'
+import { buildRawArgs } from '@/utils/cliArgs'
 
 export interface ToolTabState {
   tabId: string
@@ -299,52 +299,6 @@ function snapshotToolState(tab: ToolTabState): PersistedToolState {
     exportTarget: tab.exportTarget,
     updatedAt: Date.now(),
   }
-}
-
-function buildRawArgs(tool: ToolManifest, formModel: Record<string, string | number | boolean | null>): string {
-  const parts: string[] = []
-  const flagPrefix = tool.kind === 'rust' ? '--' : '-'
-  for (const param of getVisibleParams(tool, formModel)) {
-    if (!shouldEmitParam(param)) {
-      continue
-    }
-
-    const value = formModel[param.key]
-    const argKey = param.argKey || param.key
-
-    if (param.type === 'boolean') {
-      if (value === true) {
-        parts.push(`${flagPrefix}${argKey}`)
-      }
-      continue
-    }
-
-    if (value === undefined || value === null || value === '') {
-      continue
-    }
-
-    if (param.repeatable && typeof value === 'string') {
-      const items = value
-        .split(/\r?\n/)
-        .map(item => item.trim())
-        .filter(item => item.length > 0)
-      for (const item of items) {
-        parts.push(`${flagPrefix}${argKey}`, formatCliValue(item))
-      }
-      continue
-    }
-
-    const escapedValue = typeof value === 'string' ? formatCliValue(value) : String(value)
-    parts.push(`${flagPrefix}${argKey}`, escapedValue)
-  }
-  return parts.join(' ')
-}
-
-function formatCliValue(value: string): string {
-  if (!/[\s'"]/.test(value)) {
-    return value
-  }
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
 export interface SSHTabState {

@@ -1,5 +1,59 @@
+import type { ToolManifest } from '@/types/workbench'
+import { getVisibleParams, shouldEmitParam } from '@/utils/toolParams'
+
 function isWhitespace(char: string): boolean {
   return /\s/u.test(char)
+}
+
+export function formatCliValue(value: string): string {
+  if (!/[\s'"]/.test(value)) {
+    return value
+  }
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+export function buildRawArgs(
+  tool: ToolManifest,
+  formModel: Record<string, string | number | boolean | null>,
+): string {
+  const parts: string[] = []
+  const flagPrefix = tool.kind === 'rust' ? '--' : '-'
+
+  for (const param of getVisibleParams(tool, formModel)) {
+    if (!shouldEmitParam(param)) {
+      continue
+    }
+
+    const value = formModel[param.key]
+    const argKey = param.argKey || param.key
+
+    if (param.type === 'boolean') {
+      if (value === true) {
+        parts.push(`${flagPrefix}${argKey}`)
+      }
+      continue
+    }
+
+    if (value === undefined || value === null || value === '') {
+      continue
+    }
+
+    if (param.repeatable && typeof value === 'string') {
+      const items = value
+        .split(/\r?\n/)
+        .map(item => item.trim())
+        .filter(item => item.length > 0)
+      for (const item of items) {
+        parts.push(`${flagPrefix}${argKey}`, formatCliValue(item))
+      }
+      continue
+    }
+
+    const escapedValue = typeof value === 'string' ? formatCliValue(value) : String(value)
+    parts.push(`${flagPrefix}${argKey}`, escapedValue)
+  }
+
+  return parts.join(' ')
 }
 
 export function parseCliArgs(input: string): string[] {
