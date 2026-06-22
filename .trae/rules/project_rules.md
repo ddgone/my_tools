@@ -1,79 +1,66 @@
-# 项目质量检查规范
+# 项目精简规则
 
-## 项目结构（标准 Wails 布局）
+适用范围：本规则用于当前项目的日常开发、自检和 AI 协作。
 
-```
-my_tools/
-├── app/                   # Wails 桌面应用（Go module）
-│   ├── frontend/          # Vue 3 + Vite 前端
-│   ├── internal/          # 后端内部包
-│   │   ├── ssh/           # SSH 连接持久化存储
-│   │   ├── runtime/       # SSH 远程执行器
-│   │   ├── runtimeenv/    # 运行时目录布局
-│   │   └── builder/       # 工具构建打包
-│   ├── main.go            # Wails 入口 + go:embed
-│   ├── app.go             # App struct + startup + SSH API
-│   ├── execution.go       # 本地/远程执行引擎
-│   ├── dialog.go          # Wails 原生文件对话框
-│   ├── legacy.go          # 旧工具桥接注册
-│   ├── go.mod             # module fire-salamander-desktop
-│   └── wails.json         # frontend:dir = "frontend"
-├── libs/                  # 共享 Go 库
-│   ├── core/toolspec/     # 工具规格核心类型
-│   ├── catalog/builtin/   # 内置工具清单 (YAML + loader)
-│   └── framework/         # 旧工具框架（桥接用）
-├── tools/                 # 工具实现
-│   ├── go_tools/          # Go 原生工具 (3个)
-│   └── python_tools/      # Python 脚本工具
-├── build/                 # 构建产物（gitignore）
-│   ├── image/host/        # 只读：桌面宿主 exe
-│   └── runtime/           # 可变：缓存/脚本/日志/导出/配置
-├── docs/                  # 文档 + ADR
-├── scripts/
-│   ├── build.go           # 构建脚本
-│   └── package/
-│       └── main.go         # 安装包打包脚本
-└── go.work                # use . ./app
-```
+目标：保持代码可读、可改、可验证，不过度引入大团队式流程。
 
-## 构建命令
+## 一、生产代码
 
-```bash
-# 当前平台构建 + 初始化运行时目录 + 生成默认配置
-go run scripts/build.go
+1. 单文件建议不超过 `800` 行有效代码，不含空行和注释；超过时优先拆分。
+2. 单函数圈复杂度建议不超过 `15`；明显难读时，即使未超也应主动拆分。
+3. 同一目录下源代码文件建议不超过 `20` 个；超过后优先按职责拆子目录。
+4. 遵守目录职责边界：
+   - `app/`：桌面宿主、执行编排、运行时相关
+   - `libs/`：跨模块复用的公共能力
+   - `tools/`：具体工具实现
+   - `app/frontend/`：前端界面与前端本地工具链
+   - `build/`：产物目录，不当作源码目录使用
+5. 同一段逻辑被 `3` 处及以上复用时，应抽到公共位置，避免复制粘贴扩散。
+6. 命名要表达职责，禁止 `temp`、`misc`、`helper2`、`final_new` 这类临时命名。
+7. 修改以小步为主，优先复用已有实现，避免顺手重构无关代码。
 
-# 全平台交叉编译
-go run scripts/build.go -all
+## 二、测试代码
 
-# 打安装包（产物在 build/exports/）
-go run scripts/package/main.go           # 版本号 dev
-go run scripts/package/main.go 1.0.0     # 指定版本号
+1. 新增生产逻辑时，优先补对应测试；如果暂时不补，必须写清楚验证方式。
+2. 测试覆盖率应保持在合理较高水平，重点覆盖核心流程、关键分支、边界条件和高风险逻辑；不要求机械地为每个函数补齐单测，但重要逻辑必须可验证。
+3. 单测试文件建议不超过 `1500` 行有效代码；过长时按场景或被测对象拆分。
+4. 单测试函数建议不超过 `60` 行；过长时拆测试或抽离公共构造。
+5. 每个测试应能单独运行，禁止依赖执行顺序。
+6. 测试命名统一使用 `should_xxx_when_xxx` 风格；Go 中可对应 `TestShouldXxxWhenYyy`。
+7. 当前项目以后端 Go 测试为主；前端若没有完整测试框架，至少保证复杂逻辑可被单独验证，不把核心逻辑全部塞进组件里。
 
-# 开发模式
-cd app && "$(go env GOPATH)/bin/wails" dev
-```
+## 三、AI 协作补充规则
 
-## 产物目录
+1. 先搜再改：AI 写代码前，先确认仓库里是否已有类似实现，避免重复造轮子。
+2. 小步提交：一次只解决一个明确问题，避免单次改动过散、过大。
+3. 不乱扩边界：AI 不得随意改变 `app / libs / tools / frontend` 的职责分层；拿不准先停下来确认。
+4. 禁止伪抽象：没有明确复用场景时，不要为了“更通用”提前抽象。
+5. 避免无关修改：遇到不相关文件或已有脏改动，不顺手一起改。
+6. 生成代码与手写代码标准一致，不能因为是 AI 产出就放宽要求。
+7. 改完要自查，至少说明三件事：改了什么、为什么这么改、怎么验证。
+8. 优先可读性和可维护性，不追求炫技式设计。
 
-| 路径                        | 用途                     |
-|---------------------------|------------------------|
-| `build/image/host/`       | 只读：桌面宿主构建产物        |
-| `build/runtime/cache/`    | 单工具编译缓存、Python脚本副本  |
-| `build/runtime/config/`   | SSH连接配置、应用首选项        |
-| `build/runtime/logs/`     | 运行日志                    |
-| `build/runtime/exports/`  | 单工具导出产物               |
-| `build/exports/`          | 安装包输出                   |
-
-开发态自动使用 `build/runtime/`，安装态回退到 `~/.fire-salamander/`。
-`build/` 整个目录在 `.gitignore` 中。
-
-## 代码检查
+## 四、默认验证命令
 
 ```bash
-# Go 静态分析
-go vet ./...
+# Go 测试
+cd app && go test ./...
+
+# Go 静态检查
+go vet ./libs/...
+go vet ./tools/...
+cd app && go vet ./...
 
 # 前端
 cd app/frontend && npm run lint
 cd app/frontend && npm run typecheck
+
+# 最终编译检查
+go run scripts/build.go
 ```
+
+注意：
+
+1. 不要在仓库根直接执行 `go test ./...`，避免扫描到 `build/` 下托管环境内容。
+2. `build/` 是运行时和构建产物目录，不纳入源码治理。
+3. `go run scripts/build.go` 更适合在提交前或交付前执行，用于做最终构建确认。
