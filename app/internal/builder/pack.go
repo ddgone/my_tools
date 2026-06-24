@@ -406,14 +406,14 @@ func computePythonCacheKey(req BuildRequest, scriptPath string) (string, error) 
 
 func computeGoCacheKey(req BuildRequest, importPath string, targetOS string, targetArch string) (string, error) {
 	digest := sha256.New()
-	writeCacheToken(digest, "go-cache-v2")
+	writeCacheToken(digest, "go-cache-v3")
 	writeCacheToken(digest, req.ToolID)
 	writeCacheToken(digest, importPath)
 	writeCacheToken(digest, targetOS)
 	writeCacheToken(digest, targetArch)
 	writeCacheToken(digest, renderGoWrapper(req.ToolID, importPath))
 
-	files, err := collectGoRelevantFiles(req.RepoRoot)
+	files, err := collectGoRelevantFiles(req.RepoRoot, req.SourceEntry)
 	if err != nil {
 		return "", fmt.Errorf("扫描 Go 构建输入失败: %w", err)
 	}
@@ -425,58 +425,52 @@ func computeGoCacheKey(req BuildRequest, importPath string, targetOS string, tar
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-func collectGoRelevantFiles(repoRoot string) ([]string, error) {
-	files := make([]string, 0, 64)
-	err := filepath.WalkDir(repoRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+func collectGoRelevantFiles(repoRoot, sourceEntry string) ([]string, error) {
+	var files []string
+
+	// Root module/workspace files
+	for _, name := range []string{"go.mod", "go.sum", "go.work", "go.work.sum"} {
+		if _, err := os.Stat(filepath.Join(repoRoot, name)); err == nil {
+			files = append(files, name)
+		}
+	}
+
+	// Shared libraries: libs/
+	collectDirGoFiles(&files, repoRoot, filepath.Join(repoRoot, "libs"))
+
+	// Tool's own source directory
+	toolDir := filepath.Dir(filepath.Join(repoRoot, filepath.FromSlash(sourceEntry)))
+	collectDirGoFiles(&files, repoRoot, toolDir)
+
+	sort.Strings(files)
+	return files, nil
+}
+
+func collectDirGoFiles(files *[]string, repoRoot, dir string) {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return
+	}
+	filepath.WalkDir(dir, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		relPath, err := filepath.Rel(repoRoot, currentPath)
 		if err != nil {
 			return err
 		}
 		relPath = filepath.ToSlash(relPath)
-		if entry.IsDir() {
-			if shouldSkipGoCacheDir(relPath, entry.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if isGoCacheInput(relPath) {
-			files = append(files, relPath)
+		switch strings.ToLower(filepath.Ext(relPath)) {
+		case ".go", ".mod", ".sum":
+			*files = append(*files, relPath)
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(files)
-	return files, nil
-}
-
-func shouldSkipGoCacheDir(relPath string, base string) bool {
-	switch relPath {
-	case ".", "":
-		return false
-	case "app/frontend":
-		return true
-	}
-	switch base {
-	case ".git", ".trae", "build", "node_modules", "dist":
-		return true
-	default:
-		return false
-	}
-}
-
-func isGoCacheInput(relPath string) bool {
-	ext := strings.ToLower(filepath.Ext(relPath))
-	switch ext {
-	case ".go", ".mod", ".sum", ".work":
-		return true
-	default:
-		return false
-	}
 }
 
 func hashSingleFile(digest hash.Hash, filePath string, label string) error {

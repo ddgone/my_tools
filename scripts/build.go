@@ -430,52 +430,66 @@ func goWrapper(importPath string) string {
 
 func computeGoCacheKey(rootDir string, tool bundledTool, importPath string, target Target) string {
 	digest := sha256.New()
-	writeKeyToken(digest, "go-cache-v2")
+	writeKeyToken(digest, "go-cache-v3")
 	writeKeyToken(digest, tool.ID)
 	writeKeyToken(digest, importPath)
 	writeKeyToken(digest, target.OS)
 	writeKeyToken(digest, target.Arch)
 	writeKeyToken(digest, goWrapper(importPath))
 
-	// Hash all .go, .mod, .sum, .work files in the repo
-	files, _ := collectGoFiles(rootDir)
+	files, _ := collectGoFiles(rootDir, tool.SourceEntry)
 	for _, relPath := range files {
 		hashFile(digest, filepath.Join(rootDir, filepath.FromSlash(relPath)), relPath)
 	}
 	return hex.EncodeToString(digest.Sum(nil))
 }
 
-func collectGoFiles(repoRoot string) ([]string, error) {
+func collectGoFiles(repoRoot, sourceEntry string) ([]string, error) {
 	var files []string
-	err := filepath.WalkDir(repoRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+
+	// Root module/workspace files
+	for _, name := range []string{"go.mod", "go.sum", "go.work", "go.work.sum"} {
+		if _, err := os.Stat(filepath.Join(repoRoot, name)); err == nil {
+			files = append(files, name)
+		}
+	}
+
+	// Shared libraries: libs/
+	collectDirGoFiles(&files, repoRoot, filepath.Join(repoRoot, "libs"))
+
+	// Tool's own source directory
+	toolDir := filepath.Dir(filepath.Join(repoRoot, filepath.FromSlash(sourceEntry)))
+	collectDirGoFiles(&files, repoRoot, toolDir)
+
+	sort.Strings(files)
+	return files, nil
+}
+
+func collectDirGoFiles(files *[]string, repoRoot, dir string) {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return
+	}
+	filepath.WalkDir(dir, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, err := filepath.Rel(repoRoot, currentPath)
 		if err != nil {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if entry.IsDir() {
-			switch rel {
-			case ".", "":
-				return nil
-			case "app/frontend", "build", ".git", ".trae", "node_modules", "dist":
-				return filepath.SkipDir
-			}
-			return nil
-		}
 		switch strings.ToLower(filepath.Ext(rel)) {
-		case ".go", ".mod", ".sum", ".work":
-			files = append(files, rel)
+		case ".go", ".mod", ".sum":
+			*files = append(*files, rel)
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(files)
-	return files, nil
 }
 
 // ---- Rust tool build ----
