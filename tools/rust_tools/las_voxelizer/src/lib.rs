@@ -202,8 +202,8 @@ struct JobPlan {
     mode: JobMode,
 }
 
-fn main() -> Result<()> {
-    let cli = BatchCli::parse();
+pub fn run(args: &[String]) -> Result<()> {
+    let cli = BatchCli::parse_from(args);
     validate_batch_args(&cli)?;
     configure_threads(cli.threads)?;
 

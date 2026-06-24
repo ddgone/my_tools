@@ -3,9 +3,9 @@ name = "las_voxelizer"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
+[lib]
 name = "las_voxelizer"
-path = "src/main.rs"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"

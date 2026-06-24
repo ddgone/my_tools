@@ -20,7 +20,7 @@ import (
 type App struct {
 	ctx           context.Context
 	mu            sync.RWMutex
-	legacy        map[string]*legacyTool
+	pyTools       map[string]*pythonToolEntry
 	manifests     map[string]toolspec.ToolManifest
 	tasks         map[string]*ExecutionTask
 	downloadTasks map[string]*DownloadTask
@@ -137,7 +137,7 @@ const defaultAppConfigJSON = `{
 
 func NewApp() *App {
 	return &App{
-		legacy:        map[string]*legacyTool{},
+		pyTools:       map[string]*pythonToolEntry{},
 		manifests:     map[string]toolspec.ToolManifest{},
 		tasks:         map[string]*ExecutionTask{},
 		downloadTasks: map[string]*DownloadTask{},
@@ -310,13 +310,13 @@ func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
 
 func (a *App) ensureTooling() error {
 	toolInitOnce.Do(func() {
-		legacy := loadLegacyTools()
-		manifests, err := buildToolManifests(legacy)
+		pyTools := loadPythonTools()
+		manifests, err := loadToolManifests()
 		if err != nil {
 			cachedToolingErr = err
 			return
 		}
-		cachedLegacy = legacy
+		cachedPyTools = pyTools
 		cachedManifests = manifests
 	})
 
@@ -326,7 +326,7 @@ func (a *App) ensureTooling() error {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.legacy = cachedLegacy
+	a.pyTools = cachedPyTools
 	a.manifests = cachedManifests
 
 	return nil

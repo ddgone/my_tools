@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-func TestEnsureToolingLoadsPythonLegacyTools(t *testing.T) {
+func TestEnsureToolingLoadsPythonTools(t *testing.T) {
 	app := NewApp()
 	if err := app.ensureTooling(); err != nil {
 		t.Fatalf("ensureTooling failed: %v", err)
 	}
 
-	if len(app.legacy) < 2 {
-		t.Fatalf("expected at least 2 Python legacy tools, got %d", len(app.legacy))
+	if len(app.pyTools) < 2 {
+		t.Fatalf("expected at least 2 Python tools, got %d", len(app.pyTools))
 	}
 
 	if _, ok := app.manifests["geojson_to_shp"]; !ok {

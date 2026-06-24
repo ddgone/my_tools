@@ -14,9 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"my_tools/libs/core/procutil"
-	"my_tools/libs/framework"
 )
 
 const (
@@ -78,74 +75,36 @@ type downloadResult struct {
 	Err  error
 }
 
-type HDFSDownloadTool struct{}
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("hdfs_download", flag.ContinueOnError)
+	fs.SetOutput(out)
 
-func (t *HDFSDownloadTool) ID() string       { return "hdfs_download" }
-func (t *HDFSDownloadTool) Name() string     { return "HDFS 批量下载工具" }
-func (t *HDFSDownloadTool) Category() string { return "KD测试工具 > HDFS工具" }
+	var inputRaw string
+	var outputDir string
+	var clientStr string
+	var username string
+	var parallel int
+	var skip bool
 
-func (t *HDFSDownloadTool) Execute(ctx framework.AppContext) {
-	usage := `HDFS 批量下载工具
+	fs.StringVar(&inputRaw, "input", "", "")
+	fs.StringVar(&outputDir, "output", "", "")
+	fs.StringVar(&clientStr, "client", defaultNamenode, "")
+	fs.StringVar(&username, "user", defaultUser, "")
+	fs.IntVar(&parallel, "parallel", defaultParallel, "")
+	fs.BoolVar(&skip, "skip", false, "")
 
-说明:
-通过 WebHDFS 从 HDFS 下载单个文件或整个目录到本地目录。
-支持一次输入多个 HDFS 路径，适合批量拉取测试数据。
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
-参数:
-  -input <路径列表>       HDFS 路径列表，支持逗号、分号或换行分隔。
-  -output <本地目录>      本地保存目录。
-  -client <host:port>     WebHDFS Namenode 地址。默认: 10.11.5.136:50070
-  -user <用户名>          WebHDFS 用户名。默认: hdfs
-  -parallel <并发数>      并发下载文件数。默认: 4
-  -skip                   如果本地已有同名文件且大小一致，则跳过下载。
-
-示例:
-1. 下载单个目录:
-   -input "/user/test/job_001" -output "D:\downloads\job_001"
-
-2. 批量下载多个路径:
-   -input "/user/test/a,/user/test/b" -output "D:\downloads"
-
-3. 指定用户名并跳过已存在文件:
-   -input "/user/test/a" -output "D:\downloads" -client "10.11.5.136:50070" -user "hdfs" -skip
-`
-
-	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs, err := procutil.ParseArgs(args)
-		if err != nil {
-			return err
-		}
-
-		fs := flag.NewFlagSet("hdfs_download", flag.ContinueOnError)
-		fs.SetOutput(out)
-
-		var inputRaw string
-		var outputDir string
-		var clientStr string
-		var username string
-		var parallel int
-		var skip bool
-
-		fs.StringVar(&inputRaw, "input", "", "")
-		fs.StringVar(&outputDir, "output", "", "")
-		fs.StringVar(&clientStr, "client", defaultNamenode, "")
-		fs.StringVar(&username, "user", defaultUser, "")
-		fs.IntVar(&parallel, "parallel", defaultParallel, "")
-		fs.BoolVar(&skip, "skip", false, "")
-
-		if err := fs.Parse(parsedArgs); err != nil {
-			return err
-		}
-
-		return runDownload(runCtx, downloadConfig{
-			InputRaw:  inputRaw,
-			OutputDir: outputDir,
-			Client:    clientStr,
-			User:      username,
-			Parallel:  parallel,
-			Skip:      skip,
-		}, out)
-	})
+	return runDownload(ctx, downloadConfig{
+		InputRaw:  inputRaw,
+		OutputDir: outputDir,
+		Client:    clientStr,
+		User:      username,
+		Parallel:  parallel,
+		Skip:      skip,
+	}, out)
 }
 
 func NewHDFSClient(namenode, username string) *HDFSClient {
@@ -659,8 +618,4 @@ func buildSuffixPath(segments []string, depth int) string {
 		return filepath.Join(segments...)
 	}
 	return filepath.Join(segments[len(segments)-depth:]...)
-}
-
-func init() {
-	framework.Register(&HDFSDownloadTool{})
 }

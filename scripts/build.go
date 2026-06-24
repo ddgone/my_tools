@@ -134,6 +134,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Go tools are only built for native platform (same as Rust native build).
+	// Cross-compilation via GOOS/GOARCH is available but not used in default build.
+	if err := buildBundledGoTools(rootDir, hostDir); err != nil {
+		fmt.Printf("\n❌ Go 工具构建失败: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Println("\n====================================")
 	fmt.Printf("✅ 产物: %s\n", hostDir)
 	entries, _ := os.ReadDir(hostDir)
@@ -315,7 +322,22 @@ func buildBundledRustTool(crateDir, toolID, targetOS, targetArch, outputPath str
 		return err
 	}
 
-	targetDir, err := os.MkdirTemp("", toolID+"_bundled_rust_")
+	crateDirAbs, err := filepath.Abs(crateDir)
+	if err != nil {
+		return fmt.Errorf("解析 crate 目录绝对路径失败: %w", err)
+	}
+
+	wrapperDir, err := os.MkdirTemp("", toolID+"_bundled_rust_wrapper_")
+	if err != nil {
+		return fmt.Errorf("创建 Rust wrapper 临时目录失败: %w", err)
+	}
+	defer os.RemoveAll(wrapperDir)
+
+	if err := writeRustWrapperCrate(wrapperDir, toolID, crateDirAbs); err != nil {
+		return err
+	}
+
+	targetDir, err := os.MkdirTemp("", toolID+"_bundled_rust_target_")
 	if err != nil {
 		return fmt.Errorf("创建 Rust 临时构建目录失败: %w", err)
 	}
@@ -343,7 +365,7 @@ func buildBundledRustTool(crateDir, toolID, targetOS, targetArch, outputPath str
 			return rustupErr
 		}
 		targetCmd := exec.Command(rustupBinary, "target", "add", targetTriple)
-		targetCmd.Dir = crateDir
+		targetCmd.Dir = crateDirAbs
 		targetCmd.Stdout = os.Stdout
 		targetCmd.Stderr = os.Stderr
 		if err := targetCmd.Run(); err != nil {
@@ -356,7 +378,7 @@ func buildBundledRustTool(crateDir, toolID, targetOS, targetArch, outputPath str
 		args = []string{"zigbuild", "--release", "--target", targetTriple}
 	}
 	cmd := exec.Command(cargoBinary, args...)
-	cmd.Dir = crateDir
+	cmd.Dir = wrapperDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = rustBuildEnv(cargoBinary, zigBinary, cargoZigbuildBinary, targetDir)
@@ -364,11 +386,47 @@ func buildBundledRustTool(crateDir, toolID, targetOS, targetArch, outputPath str
 		return fmt.Errorf("构建 Rust 工具失败: %w", err)
 	}
 
-	builtBinary := filepath.Join(targetDir, "release", rustBinaryFileName(toolID, targetOS))
+	wrapperBinaryName := rustBinaryFileName("wrapper_"+toolID, targetOS)
+	builtBinary := filepath.Join(targetDir, "release", wrapperBinaryName)
 	if !nativeBuild {
-		builtBinary = filepath.Join(targetDir, targetTriple, "release", rustBinaryFileName(toolID, targetOS))
+		builtBinary = filepath.Join(targetDir, targetTriple, "release", wrapperBinaryName)
 	}
 	return copyBundledRustBinary(builtBinary, outputPath)
+}
+
+func writeRustWrapperCrate(wrapperDir string, toolID string, crateDirAbs string) error {
+	srcDir := filepath.Join(wrapperDir, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		return fmt.Errorf("创建 wrapper src 目录失败: %w", err)
+	}
+
+	cargoToml := fmt.Sprintf(`[package]
+name = "wrapper_%s"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+%s = { path = %q }
+`, toolID, toolID, filepath.ToSlash(crateDirAbs))
+
+	if err := os.WriteFile(filepath.Join(wrapperDir, "Cargo.toml"), []byte(cargoToml), 0644); err != nil {
+		return fmt.Errorf("写入 wrapper Cargo.toml 失败: %w", err)
+	}
+
+	mainRs := fmt.Sprintf(`fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(e) = %s::run(&args) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+}
+`, toolID)
+
+	if err := os.WriteFile(filepath.Join(srcDir, "main.rs"), []byte(mainRs), 0644); err != nil {
+		return fmt.Errorf("写入 wrapper main.rs 失败: %w", err)
+	}
+
+	return nil
 }
 
 func rustTargetSupported(targetOS, targetArch string, nativeBuild bool) bool {
@@ -529,4 +587,111 @@ func pathVarContains(currentPath string, candidate string) bool {
 		}
 	}
 	return false
+}
+
+type goTool struct {
+	ID          string
+	SourceEntry string
+}
+
+var bundledGoTools = []goTool{
+	{ID: "echo_tool", SourceEntry: "tools/go_tools/echo_tool/tool.go"},
+	{ID: "geojson_to_shp", SourceEntry: "tools/go_tools/geojson_to_shapefile/tool.go"},
+	{ID: "hdfs_download", SourceEntry: "tools/go_tools/hdfs_download/tool.go"},
+	{ID: "pos2gis_converter", SourceEntry: "tools/go_tools/pos_trajectory_to_gis/tool.go"},
+	{ID: "recursive_content_dir_diff", SourceEntry: "tools/go_tools/recursive_content_dir_diff/tool.go"},
+	{ID: "utm_geojson_converter", SourceEntry: "tools/go_tools/utm_extract_to_gis/tool.go"},
+}
+
+func buildBundledGoTools(rootDir, hostDir string) error {
+	if len(bundledGoTools) == 0 {
+		return nil
+	}
+
+	assetsRoot := filepath.Join(hostDir, "assets", "go", runtime.GOOS+"_"+runtime.GOARCH)
+	if err := os.MkdirAll(assetsRoot, 0755); err != nil {
+		return err
+	}
+
+	goBinary, err := lookPathRequired("go", "未找到 Go，请先安装 Go 工具链")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("\n构建 Go 工具...")
+	for _, tool := range bundledGoTools {
+		sourcePath := filepath.Join(rootDir, filepath.FromSlash(tool.SourceEntry))
+		outputPath := filepath.Join(assetsRoot, goBinaryFileName(tool.ID))
+		fmt.Printf("  Go: %s\n", tool.ID)
+
+		if err := buildBundledGoTool(rootDir, goBinary, sourcePath, outputPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func buildBundledGoTool(rootDir, goBinary, sourcePath, outputPath string) error {
+	importPath := goImportPath(sourcePath, rootDir)
+
+	tmpDir, err := os.MkdirTemp("", "go_tool_bundle_")
+	if err != nil {
+		return fmt.Errorf("创建 Go 临时目录失败: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	wrapperPath := filepath.Join(tmpDir, "main.go")
+	wrapper := goWrapperMain(importPath)
+	if err := os.WriteFile(wrapperPath, []byte(wrapper), 0644); err != nil {
+		return fmt.Errorf("写入 Go wrapper 失败: %w", err)
+	}
+
+	cmd := exec.Command(goBinary, "build", "-o", outputPath, wrapperPath)
+	cmd.Dir = rootDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(),
+		"CGO_ENABLED=0",
+		"GOOS="+runtime.GOOS,
+		"GOARCH="+runtime.GOARCH,
+	)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("构建 Go 工具失败: %w", err)
+	}
+	return nil
+}
+
+func goImportPath(sourceEntry string, rootDir string) string {
+	rel, err := filepath.Rel(rootDir, sourceEntry)
+	if err != nil {
+		return "my_tools/tools/go_tools/unknown"
+	}
+	dir := filepath.ToSlash(filepath.Dir(rel))
+	return "my_tools/" + dir
+}
+
+func goWrapperMain(importPath string) string {
+	pkgName := filepath.Base(importPath)
+	return fmt.Sprintf("package main\n\n"+
+		"import (\n"+
+		"\t\"context\"\n"+
+		"\t\"fmt\"\n"+
+		"\t\"os\"\n\n"+
+		"\t%q\n"+
+		")\n\n"+
+		"func main() {\n"+
+		"\terr := %s.Run(context.Background(), os.Args[1:], os.Stdout)\n"+
+		"\tif err != nil {\n"+
+		"\t\tfmt.Fprintln(os.Stderr, err)\n"+
+		"\t\tos.Exit(1)\n"+
+		"\t}\n"+
+		"}\n",
+		importPath, pkgName)
+}
+
+func goBinaryFileName(toolID string) string {
+	if runtime.GOOS == "windows" {
+		return toolID + ".exe"
+	}
+	return toolID
 }

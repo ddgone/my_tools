@@ -669,12 +669,11 @@ func renderGoWrapper(toolID, importPath string) string {
 		"import (\n"+
 		"\t\"context\"\n"+
 		"\t\"fmt\"\n"+
-		"\t\"io\"\n"+
 		"\t\"os\"\n\n"+
 		"\t%q\n"+
 		")\n\n"+
 		"func main() {\n"+
-		"\terr := %s.Run(context.Background(), os.Args[1:], io.Stdout)\n"+
+		"\terr := %s.Run(context.Background(), os.Args[1:], os.Stdout)\n"+
 		"\tif err != nil {\n"+
 		"\t\tfmt.Fprintln(os.Stderr, err)\n"+
 		"\t\tos.Exit(1)\n"+

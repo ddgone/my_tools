@@ -160,4 +160,4 @@ execution:
 export:
   strategy: export-binary
 source:
-  entry: tools/rust_tools/las_voxelizer/src/main.rs
+  entry: tools/rust_tools/las_voxelizer/src/lib.rs

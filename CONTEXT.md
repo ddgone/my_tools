@@ -45,7 +45,7 @@ _Avoid_: 旧 Tool 接口, 运行回调
 _Avoid_: 硬编码注册表, 仅代码配置
 
 **Go 工具**:
-以 Go 为主要实现语言的 **工具**。这类工具优先通过构建生成 **工具专属产物**，再用于本地执行、远程执行或导出。
+以 Go 为主要实现语言的 **工具**。Go 工具是纯库包（`package <tool_id>`），导出约定函数 `func Run(ctx context.Context, args []string, out io.Writer) error`，不包含 `func main()`、不依赖任何框架包、不在 `init()` 中注册。通过 builder 生成的 wrapper 编译为 **工具专属产物**，用于本地执行、远程执行或导出。
 _Avoid_: 原生命令, 内置命令
 
 **HDFS工具**:
@@ -349,8 +349,8 @@ _Avoid_: 独立 cargo-zigbuild SDK, targets 下拉框
 _Avoid_: 黑盒安装, 无进度反馈, 阻塞式等待
 
 **Rust 工具**:
-由 `kind: rust` 的 manifest 描述、以 Rust crate 形式存在于 `tools/rust_tools/` 下，并由桌面宿主统一负责本地执行适配、远程执行前构建、导出和缓存管理的工具类型。
-_Avoid_: 仅源码目录, 未声明 kind 的工具, 远端现场 cargo build
+由 `kind: rust` 的 manifest 描述、以 Rust library crate 形式存在于 `tools/rust_tools/` 下，导出约定函数 `pub fn run(args: &[String])`。由 builder 生成 wrapper crate 编译为二进制，桌面宿主统一负责本地执行、远程执行前构建、导出和缓存管理。
+_Avoid_: binary crate, 仅有 main.rs 的 crate
 
 **构建缓存**:
 桌面宿主保存在 **运行时目录** 下、可跨多次导出与远程执行复用的 **工具专属产物** 缓存。它的目标是避免为相同工具和目标平台重复准备产物，而不是替代用户显式导出的最终文件。

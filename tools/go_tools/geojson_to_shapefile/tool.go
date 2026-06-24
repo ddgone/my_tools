@@ -10,9 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"my_tools/libs/core/procutil"
-	"my_tools/libs/framework"
-
 	"github.com/jonas-p/go-shp"
 )
 
@@ -235,73 +232,35 @@ func runConvert(ctx context.Context, inputPath, outputDir string, out io.Writer)
 	return nil
 }
 
-type G2STool struct{}
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("geojson2shp", flag.ContinueOnError)
+	fs.SetOutput(out)
 
-func (t *G2STool) ID() string       { return "geojson_to_shp" }
-func (t *G2STool) Name() string     { return "GeoJSON转Shapefile工具" }
-func (t *G2STool) Category() string { return "KD测试工具 > 点云处理工具" }
+	var inputPath string
+	var outputDir string
 
-func (t *G2STool) Execute(ctx framework.AppContext) {
-	usage := `[yellow]GeoJSON 转 Shapefile 工具[-]
+	fs.StringVar(&inputPath, "input", "", "")
+	fs.StringVar(&outputDir, "output", "", "")
 
-[cyan]说明:[-]
-本工具用于将 GeoJSON 文件中的点要素转换为 Shapefile 格式，支持单个文件或整个目录。
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
-[cyan]支持的几何类型:[-]
-  Point, MultiPoint → 点 Shapefile
+	if inputPath == "" {
+		return fmt.Errorf("错误：必须指定 -input 参数")
+	}
 
-[cyan]参数详解:[-]
-  -input <文件/目录路径>   指定 GeoJSON 文件或包含 .geojson 文件的目录。
-  -output <目录路径>       指定输出目录。默认在输入目录下创建 output 子文件夹。
-
-[cyan]实际运行示例 (可以直接复制到下方输入):[-]
-
-1. 转换单个文件:
-   -input "<你的.geojson文件路径>"
-
-2. 转换整个目录:
-   -input "<你的geojson文件目录>" -output "<输出目录>"
-`
-
-	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs, err := procutil.ParseArgs(args)
+	if outputDir == "" {
+		info, err := os.Stat(inputPath)
 		if err != nil {
 			return err
 		}
-
-		fs := flag.NewFlagSet("geojson2shp", flag.ContinueOnError)
-		fs.SetOutput(out)
-
-		var inputPath string
-		var outputDir string
-
-		fs.StringVar(&inputPath, "input", "", "")
-		fs.StringVar(&outputDir, "output", "", "")
-
-		if err := fs.Parse(parsedArgs); err != nil {
-			return err
+		if info.IsDir() {
+			outputDir = filepath.Join(inputPath, "output")
+		} else {
+			outputDir = filepath.Join(filepath.Dir(inputPath), "output")
 		}
+	}
 
-		if inputPath == "" {
-			return fmt.Errorf("错误：必须指定 -input 参数")
-		}
-
-		if outputDir == "" {
-			info, err := os.Stat(inputPath)
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				outputDir = filepath.Join(inputPath, "output")
-			} else {
-				outputDir = filepath.Join(filepath.Dir(inputPath), "output")
-			}
-		}
-
-		return runConvert(runCtx, inputPath, outputDir, out)
-	})
-}
-
-func init() {
-	framework.Register(&G2STool{})
+	return runConvert(ctx, inputPath, outputDir, out)
 }

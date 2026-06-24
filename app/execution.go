@@ -44,24 +44,22 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 	}
 
 	a.mu.RLock()
-	legacyTool, legacyOK := a.legacy[req.ToolID]
+	pyTool, pyOK := a.pyTools[req.ToolID]
 	manifest, manifestOK := a.manifests[req.ToolID]
 	a.mu.RUnlock()
 
-	if !legacyOK && !manifestOK {
+	if !pyOK && !manifestOK {
 		return nil, fmt.Errorf("未找到工具: %s", req.ToolID)
 	}
 
 	usage := ""
 	if manifestOK && manifest.Docs.Usage != "" {
 		usage = manifest.Docs.Usage
-	} else if legacyOK && legacyTool != nil {
-		usage = legacyTool.usage
 	}
 
 	toolName := manifest.Name
-	if toolName == "" && legacyOK && legacyTool != nil && legacyTool.tool != nil {
-		toolName = legacyTool.tool.Name()
+	if toolName == "" && pyOK && pyTool != nil {
+		toolName = pyTool.scriptName
 	}
 
 	task := &ExecutionTask{
@@ -84,7 +82,7 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 		switch {
 		case manifestOK && (manifest.Kind == toolspec.ToolKindGo || manifest.Kind == toolspec.ToolKindRust):
 			execErr = executeLocalBinaryTool(runCtx, writer, manifest)(req.Args)
-		case legacyOK && legacyTool != nil && legacyTool.runPython != nil:
+		case pyOK && pyTool != nil && pyTool.run != nil:
 			pythonEnv := strings.TrimSpace(req.PythonEnv)
 			if pythonEnv == "" {
 				pythonEnv, execErr = toolchain.ResolvePythonBinaryForTool(req.ToolID)
@@ -95,7 +93,7 @@ func (a *App) StartLocalExecution(req ExecutionRequest) (*ExecutionTask, error) 
 				}
 			}
 			if execErr == nil {
-				execErr = legacyTool.runPython(runCtx, pythonEnv, req.Args, writer)
+				execErr = pyTool.run(runCtx, pythonEnv, req.Args, writer)
 			}
 		default:
 			execErr = fmt.Errorf("工具 %s 缺少可执行入口", task.ToolName)

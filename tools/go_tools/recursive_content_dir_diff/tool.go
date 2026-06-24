@@ -13,9 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"my_tools/libs/core/procutil"
-	"my_tools/libs/framework"
 )
 
 // FileInfo 存储文件的相对路径和绝对路径
@@ -34,11 +31,51 @@ type Result struct {
 const defaultWorkers = 4
 const defaultDiffDisplayLimit = 50
 
-type RecursiveContentDirDiffTool struct{}
+// Run 是工具的唯一入口，由 builder 生成的 wrapper 调用。
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("recursive_content_dir_diff", flag.ContinueOnError)
+	fs.SetOutput(out)
 
-func (t *RecursiveContentDirDiffTool) ID() string       { return "recursive_content_dir_diff" }
-func (t *RecursiveContentDirDiffTool) Name() string     { return "递归目录内容比对" }
-func (t *RecursiveContentDirDiffTool) Category() string { return "通用测试工具 > 文件操作" }
+	var dirA string
+	var dirB string
+	var concurrency int
+	var noProgress bool
+	var showAllDiffs bool
+	var ignores strSliceFlag
+
+	fs.StringVar(&dirA, "dir-a", "", "")
+	fs.StringVar(&dirB, "dir-b", "", "")
+	fs.StringVar(&dirA, "left", "", "")
+	fs.StringVar(&dirB, "right", "", "")
+	fs.IntVar(&concurrency, "c", defaultWorkers, "")
+	fs.IntVar(&concurrency, "workers", defaultWorkers, "")
+	fs.BoolVar(&noProgress, "no-progress", false, "")
+	fs.BoolVar(&showAllDiffs, "show-all-diffs", false, "")
+	fs.Var(&ignores, "ignore", "")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	rest := fs.Args()
+	if dirA == "" && dirB == "" {
+		if len(rest) != 2 {
+			return fmt.Errorf("错误：请通过 -dir-a/-dir-b 指定两个目录，或直接提供两个位置参数")
+		}
+		dirA, dirB = rest[0], rest[1]
+	} else if len(rest) > 0 {
+		return fmt.Errorf("错误：已使用 -dir-a/-dir-b 时，不应再附加位置参数")
+	}
+
+	return runComparison(ctx, comparisonConfig{
+		DirA:         dirA,
+		DirB:         dirB,
+		Concurrency:  concurrency,
+		IgnoreRules:  ignores.Values(),
+		ShowProgress: !noProgress,
+		ShowAllDiffs: showAllDiffs,
+	}, out)
+}
 
 // shouldIgnore 判断给定的相对路径（或基名）是否应该被忽略。
 func shouldIgnore(ignorePatterns []string, relPath, baseName string) bool {
@@ -352,84 +389,6 @@ func compareDirs(ctx context.Context, dir1, dir2 string, concurrency int, ignore
 	return diffs, nil
 }
 
-func (t *RecursiveContentDirDiffTool) Execute(ctx framework.AppContext) {
-	usage := `递归目录内容比对工具
-
-说明:
-递归比较两个目录是否完全一致，检查目录结构、文件名、文件大小和文件内容。
-
-参数:
-  -dir-a <目录路径>        对比目录A
-  -dir-b <目录路径>        对比目录B
-  -workers <数量>          并发 worker 数量。默认 4
-  -ignore <规则列表>       忽略规则。支持重复传入，也支持逗号/分号/换行分隔
-  -no-progress             禁用扫描和比较进度输出
-  -show-all-diffs          显示全部差异，不再限制输出条数
-
-兼容旧命令行:
-  仍支持直接传两个位置参数，例如：
-  "D:\a" "D:\b"
-
-兼容旧参数:
-  -left / -right 仍可使用，但推荐改用 -dir-a / -dir-b
-
-忽略规则示例:
-  -ignore logs
-  -ignore logs/access.log
-  -ignore "logs,cache,temp/output"
-`
-
-	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs, err := procutil.ParseArgs(args)
-		if err != nil {
-			return err
-		}
-
-		fs := flag.NewFlagSet("recursive_content_dir_diff", flag.ContinueOnError)
-		fs.SetOutput(out)
-
-		var dirA string
-		var dirB string
-		var concurrency int
-		var noProgress bool
-		var showAllDiffs bool
-		var ignores strSliceFlag
-
-		fs.StringVar(&dirA, "dir-a", "", "")
-		fs.StringVar(&dirB, "dir-b", "", "")
-		fs.StringVar(&dirA, "left", "", "")
-		fs.StringVar(&dirB, "right", "", "")
-		fs.IntVar(&concurrency, "c", defaultWorkers, "")
-		fs.IntVar(&concurrency, "workers", defaultWorkers, "")
-		fs.BoolVar(&noProgress, "no-progress", false, "")
-		fs.BoolVar(&showAllDiffs, "show-all-diffs", false, "")
-		fs.Var(&ignores, "ignore", "")
-
-		if err := fs.Parse(parsedArgs); err != nil {
-			return err
-		}
-
-		rest := fs.Args()
-		if dirA == "" && dirB == "" {
-			if len(rest) != 2 {
-				return fmt.Errorf("错误：请通过 -dir-a/-dir-b 指定两个目录，或直接提供两个位置参数")
-			}
-			dirA, dirB = rest[0], rest[1]
-		} else if len(rest) > 0 {
-			return fmt.Errorf("错误：已使用 -dir-a/-dir-b 时，不应再附加位置参数")
-		}
-
-		return runComparison(runCtx, comparisonConfig{
-			DirA:         dirA,
-			DirB:         dirB,
-			Concurrency:  concurrency,
-			IgnoreRules:  ignores.Values(),
-			ShowProgress: !noProgress,
-			ShowAllDiffs: showAllDiffs,
-		}, out)
-	})
-}
-
 type comparisonConfig struct {
 	DirA         string
 	DirB         string
@@ -529,8 +488,4 @@ func (s *strSliceFlag) Values() []string {
 		values = append(values, item)
 	}
 	return values
-}
-
-func init() {
-	framework.Register(&RecursiveContentDirDiffTool{})
 }

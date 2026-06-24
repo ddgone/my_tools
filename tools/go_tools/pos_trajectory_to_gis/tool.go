@@ -10,9 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"my_tools/libs/core/procutil"
-	"my_tools/libs/framework"
-
 	"github.com/jonas-p/go-shp"
 )
 
@@ -351,76 +348,33 @@ func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, ou
 	return nil
 }
 
-type POSTool struct{}
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("pos2gis", flag.ContinueOnError)
+	fs.SetOutput(out)
 
-func (t *POSTool) ID() string       { return "pos2gis_converter" }
-func (t *POSTool) Name() string     { return "点云pos轨迹转换GeoJSON+Shapefile" }
-func (t *POSTool) Category() string { return "KD测试工具 > 点云处理工具" }
+	var inputDir string
+	var outputDir string
+	var artifactSet string
 
-func (t *POSTool) Execute(ctx framework.AppContext) {
-	usage := `[yellow]点云 POS 轨迹转换 GeoJSON + Shapefile 工具[-]
+	fs.StringVar(&inputDir, "input", "", "")
+	fs.StringVar(&outputDir, "output", "", "")
+	fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
 
-[cyan]说明:[-]
-本工具用于将点云 POS 编译系统输出的 JSON 轨迹数据转换为 GeoJSON 点集和点 Shapefile，便于在 GIS 软件中查看和分析。
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
-[cyan]参数详解:[-]
-  -input <目录路径>         指定包含 POS JSON 文件的目录。
-                             程序会遍历该目录下所有 .json 文件进行转换。
-  -output <目录路径>        指定输出目录。默认在输入目录下创建 output 子文件夹。
-  -artifact-set <模式>      输出内容：all、shp、geojson。
-                             all: GeoJSON + 点 Shapefile
-                             shp: 仅点 Shapefile
-                             geojson: 仅 GeoJSON
+	if inputDir == "" {
+		return fmt.Errorf("错误：必须指定 -input 参数")
+	}
 
-[cyan]实际运行示例 (可以直接复制到下方输入):[-]
+	if err := validateArtifactSet(artifactSet); err != nil {
+		return err
+	}
 
-1. 基本用法（只指定输入目录，输出默认放 input/output）:
-   -input "<你的pos数据目录>"
+	if outputDir == "" {
+		outputDir = defaultOutputDir(inputDir)
+	}
 
-2. 指定输出目录:
-   -input "<你的pos数据目录>" -output "<输出目录>"
-
-3. 仅输出点 Shapefile:
-   -input "<你的pos数据目录>" -artifact-set shp
-`
-
-	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs, err := procutil.ParseArgs(args)
-		if err != nil {
-			return err
-		}
-
-		fs := flag.NewFlagSet("pos2gis", flag.ContinueOnError)
-		fs.SetOutput(out)
-
-		var inputDir string
-		var outputDir string
-		var artifactSet string
-
-		fs.StringVar(&inputDir, "input", "", "")
-		fs.StringVar(&outputDir, "output", "", "")
-		fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
-
-		if err := fs.Parse(parsedArgs); err != nil {
-			return err
-		}
-
-		if inputDir == "" {
-			return fmt.Errorf("错误：必须指定 -input 参数")
-		}
-
-		if err := validateArtifactSet(artifactSet); err != nil {
-			return err
-		}
-
-		if outputDir == "" {
-			outputDir = defaultOutputDir(inputDir)
-		}
-
-		return runConvert(runCtx, inputDir, outputDir, artifactSet, out)
-	})
-}
-
-func init() {
-	framework.Register(&POSTool{})
+	return runConvert(ctx, inputDir, outputDir, artifactSet, out)
 }

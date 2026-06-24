@@ -18,9 +18,6 @@ import (
 	"strings"
 	"sync"
 
-	"my_tools/libs/core/procutil"
-	"my_tools/libs/framework"
-
 	"github.com/im7mortal/UTM"
 	"github.com/jonas-p/go-shp"
 )
@@ -1043,171 +1040,90 @@ func runBatchMode(ctx context.Context, inputDir, outputDir string, zone int, ext
 	return nil
 }
 
-// Custom parsing logic has been moved to framework.ParseArgs
+func Run(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("utm_tool", flag.ContinueOnError)
+	fs.SetOutput(out)
 
-// ---------------- Tool Integration ----------------
+	var inputDir string
+	var zone int
+	var convertPath string
+	var mergeDir string
+	var outputDir string
+	var artifactSet string
+	var extractMode string
+	var workers int
+	var cleanupPolicy string
 
-type UTMTool struct{}
+	fs.StringVar(&inputDir, "input", "", "")
+	fs.IntVar(&zone, "zone", 50, "")
+	fs.StringVar(&convertPath, "convert", "", "")
+	fs.StringVar(&mergeDir, "merge", "", "")
+	fs.StringVar(&outputDir, "output", "", "")
+	fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
+	fs.StringVar(&extractMode, "extract-mode", extractModeQuick, "")
+	fs.IntVar(&workers, "workers", 4, "")
+	fs.StringVar(&cleanupPolicy, "cleanup-policy", cleanupKeep, "")
 
-func (t *UTMTool) ID() string       { return "utm_geojson_converter" }
-func (t *UTMTool) Name() string     { return "点云UTM提取&UTM转换GeoJSON+Shapefile" }
-func (t *UTMTool) Category() string { return "KD测试工具 > 点云处理工具" }
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if zone < 1 || zone > 60 {
+		return fmt.Errorf("错误：-zone 必须在 1 到 60 之间")
+	}
+	if err := validateArtifactSet(artifactSet); err != nil {
+		return err
+	}
+	if err := validateExtractMode(extractMode); err != nil {
+		return err
+	}
+	if err := validateCleanupPolicy(cleanupPolicy); err != nil {
+		return err
+	}
 
-func (t *UTMTool) Execute(ctx framework.AppContext) {
-	usage := `[yellow]UTM 轨迹提取与 GIS 转换工具[-]
+	modeCount := 0
+	if inputDir != "" {
+		modeCount++
+	}
+	if convertPath != "" {
+		modeCount++
+	}
+	if mergeDir != "" {
+		modeCount++
+	}
+	if modeCount > 1 {
+		return fmt.Errorf("错误：-input、-convert、-merge 不能同时使用，请选择一个模式")
+	}
+	if modeCount == 0 {
+		return fmt.Errorf("错误：必须指定一个运行模式 (-input / -convert / -merge)")
+	}
+	if extractMode != extractModeFull && cleanupPolicy != cleanupKeep {
+		return fmt.Errorf("错误：只有在 -extract-mode full 时才能使用非 keep 的 -cleanup-policy")
+	}
 
-[cyan]工具用途:[-]
-将点云/无人车资料中的 UTM 轨迹文本转换为 GIS 可直接使用的 GeoJSON 与 Shapefile。
-支持三种工作模式：
-  1. 批量处理 out_source 目录，自动从 process_result_0.tar.gz 中提取或解压 utm.txt
-  2. 直接转换模式：支持单个 utm.txt、单个已解压目录，或多个路径批量转换
-  3. 合并已有的 GeoJSON 结果，重新输出 merged_tracks 结果
-
-[cyan]输出规则:[-]
-  - 所有模式都支持 -output 指定输出目录
-  - 不指定时，默认在输入路径旁边创建 output 目录
-  - 输出内容由 -artifact-set 控制：
-      geojson = 仅输出 .geojson
-      shp     = 仅输出点 Shapefile
-      all     = 同时输出 GeoJSON 和点 Shapefile
-
-[cyan]参数说明:[-]
-  -input <目录路径>             [批量模式] 批量处理 out_source 目录
-  -convert <路径列表>           [转换模式] 支持单个 utm.txt、单个目录，或多个路径批量转换
-                              - 单个 utm.txt：直接转换当前轨迹
-                              - 单个目录：扫描目录内已有 utm.txt；若目录根下只有 process_result_0.tar.gz，则自动提取后转换
-                              - 多个路径：统一转换并额外输出 merged_tracks
-  -merge <目录路径>             [合并模式] 合并目录内所有 .geojson 文件
-  -output <目录路径>            可选，指定输出目录
-  -artifact-set <geojson|shp|all>
-                               可选，控制输出产物，默认 all
-  -zone <int>                   [批量/转换] UTM Zone，默认 50
-  -workers <int>                [批量模式] 并发数，默认 4
-  -extract-mode <quick|full>    [批量模式] 提取策略，默认 quick
-                               quick = 只提取 utm.txt，速度快，临时文件自动清理
-                               full  = 完整解压 process_result_0.tar.gz 后再转换
-  -cleanup-policy <keep|delete-extracted|delete-archive|delete-all>
-                               [批量模式] 仅在 extract-mode=full 时生效
-                               keep             = 保留解压结果和压缩包
-                               delete-extracted = 删除解压出的文件
-                               delete-archive   = 删除原始压缩包
-                               delete-all       = 同时删除两者
-
-[cyan]常用示例:[-]
-1. 批量处理 out_source，快速提取并输出全部产物:
-   -input "<out_source目录>" -workers 4 -extract-mode quick -artifact-set all
-
-2. 批量处理并完整解压，转换后删除解压目录:
-   -input "<out_source目录>" -extract-mode full -cleanup-policy delete-extracted
-
-3. 转换单个 utm.txt 到指定目录:
-   -convert "<utm.txt文件路径>" -output "<输出目录>" -zone 50
-
-4. 转换一个已解压目录中的多个 utm.txt:
-   -convert "<目录路径>" -output "<输出目录>" -artifact-set all -zone 50
-
-5. 转换多个目录并合并输出:
-   -convert "D:\a,D:\b,D:\c" -output "D:\merged_output" -artifact-set shp -zone 50
-
-6. 合并目录内已有 GeoJSON:
-   -merge "<geojson目录>" -output "<输出目录>" -artifact-set shp
-`
-
-	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		// Parse args manually using procutil parser
-		parsedArgs, err := procutil.ParseArgs(args)
-		if err != nil {
-			return err
+	if inputDir != "" {
+		if outputDir == "" {
+			outputDir = defaultOutputDir(inputDir, true)
 		}
-
-		fs := flag.NewFlagSet("utm_tool", flag.ContinueOnError)
-		fs.SetOutput(out)
-
-		var inputDir string
-		var zone int
-		var convertPath string
-		var mergeDir string
-		var outputDir string
-		var artifactSet string
-		var extractMode string
-		var workers int
-		var cleanupPolicy string
-
-		fs.StringVar(&inputDir, "input", "", "")
-		fs.IntVar(&zone, "zone", 50, "")
-		fs.StringVar(&convertPath, "convert", "", "")
-		fs.StringVar(&mergeDir, "merge", "", "")
-		fs.StringVar(&outputDir, "output", "", "")
-		fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
-		fs.StringVar(&extractMode, "extract-mode", extractModeQuick, "")
-		fs.IntVar(&workers, "workers", 4, "")
-		fs.StringVar(&cleanupPolicy, "cleanup-policy", cleanupKeep, "")
-
-		if err := fs.Parse(parsedArgs); err != nil {
-			return err
-		}
-		if zone < 1 || zone > 60 {
-			return fmt.Errorf("错误：-zone 必须在 1 到 60 之间")
-		}
-		if err := validateArtifactSet(artifactSet); err != nil {
-			return err
-		}
-		if err := validateExtractMode(extractMode); err != nil {
-			return err
-		}
-		if err := validateCleanupPolicy(cleanupPolicy); err != nil {
-			return err
-		}
-
-		modeCount := 0
-		if inputDir != "" {
-			modeCount++
-		}
-		if convertPath != "" {
-			modeCount++
-		}
-		if mergeDir != "" {
-			modeCount++
-		}
-		if modeCount > 1 {
-			return fmt.Errorf("错误：-input、-convert、-merge 不能同时使用，请选择一个模式")
-		}
-		if modeCount == 0 {
-			return fmt.Errorf("错误：必须指定一个运行模式 (-input / -convert / -merge)")
-		}
-		if extractMode != extractModeFull && cleanupPolicy != cleanupKeep {
-			return fmt.Errorf("错误：只有在 -extract-mode full 时才能使用非 keep 的 -cleanup-policy")
-		}
-
-		if inputDir != "" {
-			if outputDir == "" {
-				outputDir = defaultOutputDir(inputDir, true)
-			}
-			return runBatchMode(runCtx, inputDir, outputDir, zone, extractMode, workers, cleanupPolicy, artifactSet, out)
-		}
-		if convertPath != "" {
-			if outputDir == "" {
-				convertPaths := splitInputPaths(convertPath)
-				if len(convertPaths) == 1 {
-					info, err := os.Stat(convertPaths[0])
-					if err != nil {
-						return fmt.Errorf("路径不存在: %s", convertPaths[0])
-					}
-					outputDir = defaultOutputDir(convertPaths[0], info.IsDir())
+		return runBatchMode(ctx, inputDir, outputDir, zone, extractMode, workers, cleanupPolicy, artifactSet, out)
+	}
+	if convertPath != "" {
+		if outputDir == "" {
+			convertPaths := splitInputPaths(convertPath)
+			if len(convertPaths) == 1 {
+				info, err := os.Stat(convertPaths[0])
+				if err != nil {
+					return fmt.Errorf("路径不存在: %s", convertPaths[0])
 				}
+				outputDir = defaultOutputDir(convertPaths[0], info.IsDir())
 			}
-			return convertInputs(runCtx, convertPath, outputDir, zone, artifactSet, out)
 		}
-		if mergeDir != "" {
-			if outputDir == "" {
-				outputDir = defaultOutputDir(mergeDir, true)
-			}
-			return mergeGeoJSON(runCtx, mergeDir, outputDir, artifactSet, out)
+		return convertInputs(ctx, convertPath, outputDir, zone, artifactSet, out)
+	}
+	if mergeDir != "" {
+		if outputDir == "" {
+			outputDir = defaultOutputDir(mergeDir, true)
 		}
-		return nil
-	})
-}
-
-func init() {
-	framework.Register(&UTMTool{})
+		return mergeGeoJSON(ctx, mergeDir, outputDir, artifactSet, out)
+	}
+	return nil
 }
