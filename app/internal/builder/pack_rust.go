@@ -88,11 +88,10 @@ func buildRustPackage(req BuildRequest) (BuildResult, error) {
 	}
 	defer os.RemoveAll(wrapperDir)
 
-	targetDir, err := os.MkdirTemp("", req.ToolID+"_rust_target_")
-	if err != nil {
-		return BuildResult{}, fmt.Errorf("创建 Rust 构建目录失败: %w", err)
+	targetDir := filepath.Join(filepath.Dir(req.CacheDir), "rust_target")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("创建 Rust 构建缓存目录失败: %w", err)
 	}
-	defer os.RemoveAll(targetDir)
 
 	if err := writeRustWrapperCrate(wrapperDir, req.ToolID, crateRootAbs); err != nil {
 		return BuildResult{}, err

@@ -242,12 +242,17 @@ func buildGoPackage(req BuildRequest) (BuildResult, error) {
 	}
 
 	logBuildProgress(req, "正在构建工具产物")
+	goCacheDir := filepath.Join(filepath.Dir(req.CacheDir), "go_build_cache")
+	if err := os.MkdirAll(goCacheDir, 0755); err != nil {
+		return BuildResult{}, fmt.Errorf("创建 Go 构建缓存目录失败: %w", err)
+	}
 	cmd := procutil.Command(goBinary, "build", "-o", cachePath, wrapperPath)
 	cmd.Dir = req.RepoRoot
 	cmd.Env = append(os.Environ(),
 		"CGO_ENABLED=0",
 		"GOOS="+targetOS,
 		"GOARCH="+targetArch,
+		"GOCACHE="+goCacheDir,
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

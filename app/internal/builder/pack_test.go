@@ -67,7 +67,17 @@ func TestResolveZigBinaryUsesExplicitOverride(t *testing.T) {
 }
 
 func TestRustCommandEnvPrependsCargoAndZigDirs(t *testing.T) {
-	env := rustCommandEnv("/tmp/cargo-home/bin/cargo", "/tmp/zig-home/bin/zig", "/tmp/cargo-home/bin/cargo-zigbuild", "/tmp/target-dir")
+	// Use filepath.Join so paths match OS separators (backslash on Windows)
+	cargoDir := filepath.Join("/", "tmp", "cargo-home", "bin")
+	zigDir := filepath.Join("/", "tmp", "zig-home", "bin")
+	targetDir := filepath.Join("/", "tmp", "target-dir")
+
+	env := rustCommandEnv(
+		filepath.Join(cargoDir, "cargo"),
+		filepath.Join(zigDir, "zig"),
+		filepath.Join(cargoDir, "cargo-zigbuild"),
+		targetDir,
+	)
 	var pathValue string
 	var targetValue string
 	for _, entry := range env {
@@ -78,11 +88,11 @@ func TestRustCommandEnvPrependsCargoAndZigDirs(t *testing.T) {
 			targetValue = strings.TrimPrefix(entry, "CARGO_TARGET_DIR=")
 		}
 	}
-	if targetValue != "/tmp/target-dir" {
+	if targetValue != targetDir {
 		t.Fatalf("unexpected target dir env: %s", targetValue)
 	}
-	if !strings.HasPrefix(pathValue, "/tmp/zig-home/bin"+string(os.PathListSeparator)+"/tmp/cargo-home/bin") &&
-		!strings.HasPrefix(pathValue, "/tmp/cargo-home/bin"+string(os.PathListSeparator)+"/tmp/zig-home/bin") {
+	if !strings.HasPrefix(pathValue, zigDir+string(os.PathListSeparator)+cargoDir) &&
+		!strings.HasPrefix(pathValue, cargoDir+string(os.PathListSeparator)+zigDir) {
 		t.Fatalf("expected PATH to include cargo and zig dirs first, got %s", pathValue)
 	}
 }

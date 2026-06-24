@@ -288,7 +288,6 @@ type bundledTool struct {
 }
 
 var bundledTools = []bundledTool{
-	{ID: "echo_tool", Kind: "go", SourceEntry: "tools/go_tools/echo_tool/tool.go"},
 	{ID: "geojson_to_shp", Kind: "go", SourceEntry: "tools/go_tools/geojson_to_shapefile/tool.go"},
 	{ID: "hdfs_download", Kind: "go", SourceEntry: "tools/go_tools/hdfs_download/tool.go"},
 	{ID: "pos2gis_converter", Kind: "go", SourceEntry: "tools/go_tools/pos_trajectory_to_gis/tool.go"},
@@ -369,11 +368,14 @@ func buildGoToCache(rootDir, cacheDir string, tool bundledTool, target Target) e
 	}
 	outPath := filepath.Join(tmpDir, outName)
 
+	goCacheDir := filepath.Join(rootDir, "tools", "go_tools", "build_cache")
+	os.MkdirAll(goCacheDir, 0755)
 	cmd := exec.Command("go", "build", "-o", outPath, wrapperPath)
 	cmd.Dir = rootDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = appendGoEnv(target)
+	cmd.Env = append(cmd.Env, "GOCACHE="+goCacheDir)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("构建 Go 工具 %s 失败: %w", tool.ID, err)
 	}
@@ -514,12 +516,8 @@ func buildRustToCache(rootDir, cacheDir string, tool bundledTool, target Target)
 		return err
 	}
 
-	// Create target dir
-	targetDir, err := os.MkdirTemp("", tool.ID+"_rust_target_")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(targetDir)
+	// Shared target/ under tools/rust_tools - all Rust tools share dependency compilation
+	targetDir := filepath.Join(rootDir, "tools", "rust_tools", "target")
 
 	cargoBin, _ := exec.LookPath("cargo")
 	if cargoBin == "" {
@@ -544,7 +542,9 @@ func buildRustToCache(rootDir, cacheDir string, tool bundledTool, target Target)
 	buildCmd.Dir = wrapperDir
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
-	buildCmd.Env = rustBuildEnv(cargoBin, targetDir)
+	buildCmd.Env = rustBuildEnv(cargoBin)
+	// Use crate's target/ so incremental compilation works across wrapper rebuilds
+	buildCmd.Env = append(buildCmd.Env, "CARGO_TARGET_DIR="+targetDir)
 	if err := buildCmd.Run(); err != nil {
 		return fmt.Errorf("构建 Rust 工具 %s 失败: %w", tool.ID, err)
 	}
@@ -710,9 +710,8 @@ func rustTargetTriple(targetOS, targetArch string) (string, bool, error) {
 	}
 }
 
-func rustBuildEnv(cargoBinary string, targetDir string) []string {
+func rustBuildEnv(cargoBinary string) []string {
 	env := os.Environ()
-	env = appendOrReplaceEnv(env, "CARGO_TARGET_DIR", targetDir)
 	cargoDir := filepath.Dir(cargoBinary)
 	if cargoDir != "" {
 		current := os.Getenv("PATH")
@@ -743,7 +742,7 @@ func cachePaths(cacheDir, toolID, platform, sourceEntry string) (artifactPath, c
 		return "", "", err
 	}
 
-	artifactName := toolID
+	artifactName := toolID + "_" + platform
 	if strings.Contains(platform, "windows") {
 		artifactName += ".exe"
 	}

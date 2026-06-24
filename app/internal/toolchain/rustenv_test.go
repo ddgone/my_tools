@@ -3,11 +3,15 @@ package toolchain
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestReadInstalledRustTargetsParsesUniqueValues(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("该测试依赖 sh 脚本，在 Windows 上跳过")
+	}
 	t.Parallel()
 
 	script := filepath.Join(t.TempDir(), "rustup")
@@ -29,6 +33,9 @@ func TestReadInstalledRustTargetsParsesUniqueValues(t *testing.T) {
 }
 
 func TestInspectRustTargetsMarksInstalledAndNative(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("该测试依赖 sh 脚本，在 Windows 上跳过")
+	}
 	t.Parallel()
 
 	script := filepath.Join(t.TempDir(), "rustup")
@@ -70,6 +77,9 @@ func TestInspectRustTargetsMarksInstalledAndNative(t *testing.T) {
 }
 
 func TestReadInstalledRustTargetsUsesRustEnvironmentVars(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("该测试依赖 sh 脚本，在 Windows 上跳过")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()

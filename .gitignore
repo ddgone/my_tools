@@ -15,6 +15,9 @@ vendor/
 # Rust
 **/target/
 
+# Go build cache (shared, like Rust target/)
+tools/go_tools/build_cache/
+
 # Build
 build/
 app/build/
