@@ -11,22 +11,15 @@ import (
 	"my_tools/libs/core/toolspec"
 	"my_tools/libs/framework"
 
-	_ "my_tools/tools/go_tools/geojson_to_shapefile"
-	_ "my_tools/tools/go_tools/hdfs_download"
-	_ "my_tools/tools/go_tools/pos_trajectory_to_gis"
-	_ "my_tools/tools/go_tools/recursive_content_dir_diff"
-	_ "my_tools/tools/go_tools/utm_extract_to_gis"
 	_ "my_tools/tools/python_tools"
 )
 
-type terminalRunFunc func(ctx context.Context, args string, out io.Writer) error
 type pythonRunFunc func(ctx context.Context, env string, args string, out io.Writer) error
 
 type legacyTool struct {
 	tool      framework.Tool
 	title     string
 	usage     string
-	run       terminalRunFunc
 	runPython pythonRunFunc
 }
 
@@ -34,7 +27,6 @@ type captureAppContext struct {
 	tool      framework.Tool
 	title     string
 	usage     string
-	run       terminalRunFunc
 	runPython pythonRunFunc
 }
 
@@ -44,9 +36,6 @@ func (c *captureAppContext) PromptInput(title, prompt, defaultValue string, call
 func (c *captureAppContext) PromptChoice(title, prompt string, options []string, callback func(string)) {
 }
 func (c *captureAppContext) ShowTerminal(title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {
-	c.title = title
-	c.usage = usage
-	c.run = run
 }
 func (c *captureAppContext) ShowPythonTerminal(title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {
 	c.title = title
@@ -91,7 +80,6 @@ func loadLegacyTools() map[string]*legacyTool {
 			tool:      tool,
 			title:     capture.title,
 			usage:     stripUsageMarkup(capture.usage),
-			run:       capture.run,
 			runPython: capture.runPython,
 		}
 	}
@@ -109,43 +97,17 @@ func buildToolManifests(legacy map[string]*legacyTool) (map[string]toolspec.Tool
 		manifests[manifest.ID] = manifest
 	}
 
-	for id, legacyTool := range legacy {
+	for id, lt := range legacy {
 		manifest, ok := manifests[id]
 		if !ok {
-			kind := toolspec.ToolKindGo
-			if legacyTool.runPython != nil {
-				kind = toolspec.ToolKindPython
-			}
-			manifest = toolspec.ToolManifest{
-				ID:          id,
-				Name:        legacyTool.tool.Name(),
-				Kind:        kind,
-				Category:    parseCategory(legacyTool.tool.Category()),
-				Icon:        string(kind),
-				Description: deriveSummary(legacyTool.usage, legacyTool.tool.Name()),
-				Docs: toolspec.ToolDocs{
-					Summary: deriveSummary(legacyTool.usage, legacyTool.tool.Name()),
-					Usage:   legacyTool.usage,
-				},
-			}
-		}
-
-		if manifest.Name == "" {
-			manifest.Name = legacyTool.tool.Name()
-		}
-		if len(manifest.Category) == 0 {
-			manifest.Category = parseCategory(legacyTool.tool.Category())
+			continue
 		}
 		if manifest.Docs.Usage == "" {
-			manifest.Docs.Usage = legacyTool.usage
+			manifest.Docs.Usage = lt.usage
 		}
 		if manifest.Docs.Summary == "" {
-			manifest.Docs.Summary = deriveSummary(legacyTool.usage, manifest.Description)
+			manifest.Docs.Summary = deriveSummary(lt.usage, manifest.Description)
 		}
-		if manifest.Description == "" {
-			manifest.Description = deriveSummary(legacyTool.usage, legacyTool.tool.Name())
-		}
-
 		manifests[id] = manifest
 	}
 

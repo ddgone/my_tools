@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/framework"
 
 	"github.com/im7mortal/UTM"
@@ -1113,8 +1114,8 @@ func (t *UTMTool) Execute(ctx framework.AppContext) {
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		// Parse args manually using framework parser
-		parsedArgs, err := framework.ParseArgs(args)
+		// Parse args manually using procutil parser
+		parsedArgs, err := procutil.ParseArgs(args)
 		if err != nil {
 			return err
 		}

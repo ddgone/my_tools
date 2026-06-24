@@ -11,26 +11,28 @@ import (
 
 	"fire-salamander-desktop/internal/builder"
 	"fire-salamander-desktop/internal/runtimeenv"
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/core/toolspec"
-	"my_tools/libs/framework"
 )
 
-func executeLocalRustTool(ctx context.Context, writer io.Writer, manifest toolspec.ToolManifest) func(args string) error {
+func executeLocalBinaryTool(ctx context.Context, writer io.Writer, manifest toolspec.ToolManifest) func(args string) error {
 	return func(args string) error {
-		binaryPath, err := resolveLocalRustBinary(manifest, writer)
+		binaryPath, err := resolveLocalBinary(manifest, writer)
 		if err != nil {
 			return err
 		}
-		parsedArgs, err := framework.ParseArgs(args)
+		parsedArgs, err := procutil.ParseArgs(args)
 		if err != nil {
 			return err
 		}
-		parsedArgs = normalizeRustCLIArgs(parsedArgs)
+		if manifest.Kind == toolspec.ToolKindRust {
+			parsedArgs = normalizeRustCLIArgs(parsedArgs)
+		}
 		cmd := exec.CommandContext(ctx, binaryPath, parsedArgs...)
 		cmd.Stdout = writer
 		cmd.Stderr = writer
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("执行 Rust 工具失败: %w", err)
+			return fmt.Errorf("执行工具失败: %w", err)
 		}
 		return nil
 	}
@@ -68,17 +70,14 @@ func isSingleDashLongFlag(arg string) bool {
 	return true
 }
 
-func resolveLocalRustBinary(manifest toolspec.ToolManifest, writer io.Writer) (string, error) {
-	if assetsDir, ok := runtimeenv.FindBundledAssetsDir(); ok {
-		bundledPath := filepath.Join(assetsDir, "rust", runtime.GOOS+"_"+runtime.GOARCH, rustBinaryName(manifest.ID))
-		if localFileExists(bundledPath) {
-			return bundledPath, nil
-		}
+func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (string, error) {
+	if bundledPath, ok := resolveBundledBinary(manifest); ok {
+		return bundledPath, nil
 	}
 
 	repoRoot, ok := locateRepoRoot()
 	if !ok {
-		return "", fmt.Errorf("未找到已打包的 Rust 本地产物，且当前运行环境缺少源码工作区")
+		return "", fmt.Errorf("未找到已打包的 %s 本地产物，且当前运行环境缺少源码工作区", manifest.Kind)
 	}
 	layout, err := runtimeenv.ResolveLayout()
 	if err != nil {
@@ -88,10 +87,15 @@ func resolveLocalRustBinary(manifest toolspec.ToolManifest, writer io.Writer) (s
 		return "", fmt.Errorf("准备运行时目录失败: %w", err)
 	}
 
+	kind, err := manifestKindToBuilderKind(manifest.Kind)
+	if err != nil {
+		return "", err
+	}
+
 	result, err := builder.BuildPackage(builder.BuildRequest{
 		ToolID:           manifest.ID,
 		ToolName:         manifest.Name,
-		Kind:             builder.KindRust,
+		Kind:             kind,
 		OutputDir:        layout.BuildCacheDir(),
 		CacheDir:         layout.BuildCacheDir(),
 		RepoRoot:         repoRoot,
@@ -105,6 +109,34 @@ func resolveLocalRustBinary(manifest toolspec.ToolManifest, writer io.Writer) (s
 		return "", err
 	}
 	return result.Path, nil
+}
+
+func resolveBundledBinary(manifest toolspec.ToolManifest) (string, bool) {
+	assetsDir, ok := runtimeenv.FindBundledAssetsDir()
+	if !ok {
+		return "", false
+	}
+	kindDir := string(manifest.Kind)
+	binaryName := manifest.ID
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	bundledPath := filepath.Join(assetsDir, kindDir, runtime.GOOS+"_"+runtime.GOARCH, binaryName)
+	if localFileExists(bundledPath) {
+		return bundledPath, true
+	}
+	return "", false
+}
+
+func manifestKindToBuilderKind(kind toolspec.ToolKind) (builder.ToolKind, error) {
+	switch kind {
+	case toolspec.ToolKindGo:
+		return builder.KindGo, nil
+	case toolspec.ToolKindRust:
+		return builder.KindRust, nil
+	default:
+		return "", fmt.Errorf("不支持的编译型工具类型: %s", kind)
+	}
 }
 
 func rustBinaryName(toolID string) string {

@@ -56,6 +56,10 @@ func buildRustPackage(req BuildRequest) (BuildResult, error) {
 	if err != nil {
 		return BuildResult{}, err
 	}
+	crateRootAbs, err := filepath.Abs(crateRoot)
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("解析 crate 根目录绝对路径失败: %w", err)
+	}
 	targetTriple, nativeBuild, err := resolveRustBuildTarget(targetOS, targetArch)
 	if err != nil {
 		return BuildResult{}, err
@@ -78,11 +82,21 @@ func buildRustPackage(req BuildRequest) (BuildResult, error) {
 		return BuildResult{}, err
 	}
 
+	wrapperDir, err := os.MkdirTemp("", req.ToolID+"_rust_wrapper_")
+	if err != nil {
+		return BuildResult{}, fmt.Errorf("创建 Rust wrapper 目录失败: %w", err)
+	}
+	defer os.RemoveAll(wrapperDir)
+
 	targetDir, err := os.MkdirTemp("", req.ToolID+"_rust_target_")
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("创建 Rust 构建目录失败: %w", err)
 	}
 	defer os.RemoveAll(targetDir)
+
+	if err := writeRustWrapperCrate(wrapperDir, req.ToolID, crateRootAbs); err != nil {
+		return BuildResult{}, err
+	}
 
 	if !nativeBuild {
 		rustupBinary, rustupErr := resolveRustupBinary()
@@ -91,7 +105,7 @@ func buildRustPackage(req BuildRequest) (BuildResult, error) {
 		}
 		logBuildProgress(req, "准备 Rust 交叉编译目标")
 		targetCmd := procutil.Command(rustupBinary, "target", "add", targetTriple)
-		targetCmd.Dir = crateRoot
+		targetCmd.Dir = crateRootAbs
 		targetCmd.Env = os.Environ()
 		output, targetErr := targetCmd.CombinedOutput()
 		if targetErr != nil {
@@ -118,16 +132,17 @@ func buildRustPackage(req BuildRequest) (BuildResult, error) {
 	logBuildProgress(req, progressLabel)
 
 	buildCmd := procutil.Command(cargoBinary, args...)
-	buildCmd.Dir = crateRoot
+	buildCmd.Dir = wrapperDir
 	buildCmd.Env = rustCommandEnv(cargoBinary, zigBinary, cargoZigbuildBinary, targetDir)
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
 		return BuildResult{}, fmt.Errorf("构建 Rust 产物失败: %w\n%s", err, strings.TrimSpace(string(output)))
 	}
 
-	builtBinaryPath := filepath.Join(targetDir, "release", rustBinaryBaseName(req.ToolID, targetOS))
+	wrapperBinaryName := rustWrapperBinaryBaseName(req.ToolID, targetOS)
+	builtBinaryPath := filepath.Join(targetDir, "release", wrapperBinaryName)
 	if !nativeBuild {
-		builtBinaryPath = filepath.Join(targetDir, targetTriple, "release", rustBinaryBaseName(req.ToolID, targetOS))
+		builtBinaryPath = filepath.Join(targetDir, targetTriple, "release", wrapperBinaryName)
 	}
 	if !fileExists(builtBinaryPath) {
 		return BuildResult{}, fmt.Errorf("未找到 Rust 构建产物: %s", builtBinaryPath)
@@ -200,7 +215,7 @@ func probeRustCache(req BuildRequest) (BuildResult, error) {
 
 func computeRustCacheKey(req BuildRequest, crateRoot string, targetOS string, targetArch string, targetTriple string, nativeBuild bool) (string, error) {
 	digest := sha256.New()
-	writeCacheToken(digest, "rust-cache-v1")
+	writeCacheToken(digest, "rust-cache-v2")
 	writeCacheToken(digest, req.ToolID)
 	writeCacheToken(digest, targetOS)
 	writeCacheToken(digest, targetArch)
@@ -210,6 +225,13 @@ func computeRustCacheKey(req BuildRequest, crateRoot string, targetOS string, ta
 	} else {
 		writeCacheToken(digest, "cross")
 	}
+
+	crateRootAbs, err := filepath.Abs(crateRoot)
+	if err != nil {
+		return "", fmt.Errorf("解析 crate 根目录绝对路径失败: %w", err)
+	}
+	writeCacheToken(digest, renderRustWrapperCargoToml(req.ToolID, crateRootAbs))
+	writeCacheToken(digest, renderRustWrapperMainRs(req.ToolID))
 
 	files, err := collectRustRelevantFiles(crateRoot)
 	if err != nil {
@@ -309,6 +331,67 @@ func rustBinaryBaseName(toolID string, targetOS string) string {
 		return toolID + ".exe"
 	}
 	return toolID
+}
+
+func rustWrapperBinaryBaseName(toolID string, targetOS string) string {
+	return rustBinaryBaseName("wrapper_"+toolID, targetOS)
+}
+
+func writeRustWrapperCrate(wrapperDir string, toolID string, crateRootAbs string) error {
+	srcDir := filepath.Join(wrapperDir, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		return fmt.Errorf("创建 wrapper src 目录失败: %w", err)
+	}
+
+	cargoToml := fmt.Sprintf(`[package]
+name = "wrapper_%s"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+%s = { path = %q }
+`, toolID, toolID, filepath.ToSlash(crateRootAbs))
+
+	if err := os.WriteFile(filepath.Join(wrapperDir, "Cargo.toml"), []byte(cargoToml), 0644); err != nil {
+		return fmt.Errorf("写入 wrapper Cargo.toml 失败: %w", err)
+	}
+
+	mainRs := fmt.Sprintf(`fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(e) = %s::run(&args) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+}
+`, toolID)
+
+	if err := os.WriteFile(filepath.Join(srcDir, "main.rs"), []byte(mainRs), 0644); err != nil {
+		return fmt.Errorf("写入 wrapper main.rs 失败: %w", err)
+	}
+
+	return nil
+}
+
+func renderRustWrapperCargoToml(toolID string, crateRootAbs string) string {
+	return fmt.Sprintf(`[package]
+name = "wrapper_%s"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+%s = { path = %q }
+`, toolID, toolID, filepath.ToSlash(crateRootAbs))
+}
+
+func renderRustWrapperMainRs(toolID string) string {
+	return fmt.Sprintf(`fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(e) = %s::run(&args) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+}
+`, toolID)
 }
 
 func resolveCargoBinary() (string, error) {

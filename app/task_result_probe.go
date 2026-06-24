@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"fire-salamander-desktop/internal/runtime"
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/core/toolspec"
-	"my_tools/libs/framework"
 )
 
 type remoteResultHint struct {
@@ -23,7 +23,7 @@ func resolveRemoteResultHint(params []toolspec.ParameterSpec, rawArgs string, re
 		return remoteResultHint{}, nil
 	}
 
-	parsedArgs, err := framework.ParseArgs(rawArgs)
+	parsedArgs, err := procutil.ParseArgs(rawArgs)
 	if err != nil {
 		return remoteResultHint{}, err
 	}

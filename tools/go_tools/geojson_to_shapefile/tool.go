@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/framework"
 
 	"github.com/jonas-p/go-shp"
@@ -263,7 +264,7 @@ func (t *G2STool) Execute(ctx framework.AppContext) {
 `
 
 	ctx.ShowTerminal(t.Name(), usage, func(runCtx context.Context, args string, out io.Writer) error {
-		parsedArgs, err := framework.ParseArgs(args)
+		parsedArgs, err := procutil.ParseArgs(args)
 		if err != nil {
 			return err
 		}

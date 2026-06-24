@@ -199,8 +199,8 @@ arg1 "arg 2 with space" --flag value
 		// but we can clean it up after the command finishes.
 		defer os.Remove(tempPath)
 
-		// Parse arguments using framework parser
-		parsedArgs, err := framework.ParseArgs(args)
+		// Parse arguments using procutil parser
+		parsedArgs, err := procutil.ParseArgs(args)
 		if err != nil {
 			return err
 		}

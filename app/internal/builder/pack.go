@@ -401,7 +401,7 @@ func computePythonCacheKey(req BuildRequest, scriptPath string) (string, error) 
 
 func computeGoCacheKey(req BuildRequest, importPath string, targetOS string, targetArch string) (string, error) {
 	digest := sha256.New()
-	writeCacheToken(digest, "go-cache-v1")
+	writeCacheToken(digest, "go-cache-v2")
 	writeCacheToken(digest, req.ToolID)
 	writeCacheToken(digest, importPath)
 	writeCacheToken(digest, targetOS)
@@ -664,68 +664,21 @@ func copyFile(srcPath, dstPath string, mode os.FileMode) error {
 }
 
 func renderGoWrapper(toolID, importPath string) string {
+	pkgName := path.Base(importPath)
 	return fmt.Sprintf("package main\n\n"+
 		"import (\n"+
 		"\t\"context\"\n"+
 		"\t\"fmt\"\n"+
 		"\t\"io\"\n"+
-		"\t\"os\"\n"+
-		"\t\"strings\"\n\n"+
-		"\t\"my_tools/libs/framework\"\n"+
-		"\t_ %q\n"+
+		"\t\"os\"\n\n"+
+		"\t%q\n"+
 		")\n\n"+
-		"type captureAppContext struct {\n"+
-		"\trun func(ctx context.Context, args string, out io.Writer) error\n"+
-		"}\n\n"+
-		"func (c *captureAppContext) ShowModal(title, message string) {}\n"+
-		"func (c *captureAppContext) PromptInput(title, prompt, defaultValue string, callback func(string)) {}\n"+
-		"func (c *captureAppContext) PromptChoice(title, prompt string, options []string, callback func(string)) {}\n"+
-		"func (c *captureAppContext) ShowTerminal(title string, usage string, run func(ctx context.Context, args string, out io.Writer) error) {\n"+
-		"\tc.run = run\n"+
-		"}\n"+
-		"func (c *captureAppContext) ShowPythonTerminal(title string, usage string, run func(ctx context.Context, env string, args string, out io.Writer) error) {}\n"+
-		"func (c *captureAppContext) GetLastParam(key string) string { return \"\" }\n"+
-		"func (c *captureAppContext) RecordUsage(params map[string]string) {}\n\n"+
-		"func joinArgs(args []string) string {\n"+
-		"\tif len(args) == 0 {\n"+
-		"\t\treturn \"\"\n"+
-		"\t}\n"+
-		"\tparts := make([]string, 0, len(args))\n"+
-		"\tfor _, arg := range args {\n"+
-		"\t\tif arg == \"\" {\n"+
-		"\t\t\tparts = append(parts, \"\\\"\\\"\")\n"+
-		"\t\t\tcontinue\n"+
-		"\t\t}\n"+
-		"\t\tif strings.ContainsAny(arg, \" \\t\\r\\n\") {\n"+
-		"\t\t\tparts = append(parts, \"\\\"\"+strings.ReplaceAll(arg, \"\\\"\", \"\\\\\\\"\")+\"\\\"\")\n"+
-		"\t\t\tcontinue\n"+
-		"\t\t}\n"+
-		"\t\tparts = append(parts, arg)\n"+
-		"\t}\n"+
-		"\treturn strings.Join(parts, \" \")\n"+
-		"}\n\n"+
 		"func main() {\n"+
-		"\tvar selected framework.Tool\n"+
-		"\tfor _, tool := range framework.Registry {\n"+
-		"\t\tif tool.ID() == %q {\n"+
-		"\t\t\tselected = tool\n"+
-		"\t\t\tbreak\n"+
-		"\t\t}\n"+
-		"\t}\n"+
-		"\tif selected == nil {\n"+
-		"\t\tfmt.Fprintf(os.Stderr, \"未找到工具: %%s\\n\", %q)\n"+
-		"\t\tos.Exit(1)\n"+
-		"\t}\n\n"+
-		"\tcapture := &captureAppContext{}\n"+
-		"\tselected.Execute(capture)\n"+
-		"\tif capture.run == nil {\n"+
-		"\t\tfmt.Fprintf(os.Stderr, \"工具 %%s 缺少 Go 执行入口\\n\", %q)\n"+
-		"\t\tos.Exit(1)\n"+
-		"\t}\n\n"+
-		"\tif err := capture.run(context.Background(), joinArgs(os.Args[1:]), os.Stdout); err != nil {\n"+
+		"\terr := %s.Run(context.Background(), os.Args[1:], io.Stdout)\n"+
+		"\tif err != nil {\n"+
 		"\t\tfmt.Fprintln(os.Stderr, err)\n"+
 		"\t\tos.Exit(1)\n"+
 		"\t}\n"+
 		"}\n",
-		importPath, toolID, toolID, toolID)
+		importPath, pkgName)
 }

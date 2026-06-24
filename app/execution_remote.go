@@ -13,8 +13,8 @@ import (
 	"fire-salamander-desktop/internal/runtime"
 	"fire-salamander-desktop/internal/runtimeenv"
 	"fire-salamander-desktop/internal/ssh"
+	"my_tools/libs/core/procutil"
 	"my_tools/libs/core/toolspec"
-	"my_tools/libs/framework"
 )
 
 type RemoteExecRequest struct {
@@ -191,7 +191,7 @@ func locateRepoRoot() (string, bool) {
 }
 
 func buildRemoteRunCommand(remoteEntry string, params remoteExecParams) (string, string, error) {
-	parsedArgs, err := framework.ParseArgs(params.args)
+	parsedArgs, err := procutil.ParseArgs(params.args)
 	if err != nil {
 		return "", "", err
 	}
