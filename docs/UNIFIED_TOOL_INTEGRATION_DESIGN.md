@@ -678,7 +678,7 @@ framework 退役时，Python adapter 的最小改动：
 ### 13.2 使用方式
 
 ```bash
-go run scripts/new-tool -name "示例工具" -id example_tool -kind go -category "示例>子类"
+go run ./scripts/new-tool/ -name "示例工具" -id example_tool -kind go -category "示例>子类"
 ```
 
 ### 13.3 生成内容
@@ -824,7 +824,7 @@ scripts/new-tool/
 
 ## 14. 迁移计划
 
-### 阶段一：基础设施统一
+### 阶段一：基础设施统一 ✅ 已完成
 
 不改动现有工具，只改 builder 和执行层，让新模型可用。
 
@@ -859,7 +859,7 @@ scripts/new-tool/
 5. 确认 manifest 的 `source.entry` 指向正确。
 6. 分别验证本地执行和远程执行。
 
-### 阶段三：迁移 Rust 工具
+### 阶段三：迁移 Rust 工具 ✅ 已完成
 
 | 工具 | 改动 |
 |------|------|
@@ -893,14 +893,14 @@ scripts/new-tool/
 | 3 | 实现生成逻辑 |
 | 4 | 用生成器创建一个测试工具验证 |
 
-### 阶段六：产物打包
+### 阶段六：产物打包 ✅ 已完成
 
 | 步骤 | 改动 |
 |------|------|
 | 1 | `scripts/build.go` 增加遍历 manifest 编译产物的步骤 |
 | 2 | 产物输出到 `assets/<kind>/<os>_<arch>/` |
 
-### 阶段七：文档更新
+### 阶段七：文档更新 ✅ 已完成
 
 | 步骤 | 改动 |
 |------|------|

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
 	"fire-salamander-desktop/internal/builder"
 	"fire-salamander-desktop/internal/runtimeenv"
@@ -28,12 +29,29 @@ func executeLocalBinaryTool(ctx context.Context, writer io.Writer, manifest tool
 		if manifest.Kind == toolspec.ToolKindRust {
 			parsedArgs = normalizeRustCLIArgs(parsedArgs)
 		}
-		cmd := exec.CommandContext(ctx, binaryPath, parsedArgs...)
+
+		startTime := time.Now()
+		fmt.Fprintf(writer, "\n━━━ 本地执行开始 ━━━\n")
+		fmt.Fprintf(writer, "工具: %s (%s)\n", manifest.Name, manifest.ID)
+		fmt.Fprintf(writer, "产物: %s\n", binaryPath)
+		fmt.Fprintf(writer, "命令: %s %s\n", filepath.Base(binaryPath), strings.Join(parsedArgs, " "))
+		fmt.Fprintf(writer, "━━━━━━━━━━━━━━━━━━━━\n\n")
+
+		cmd := procutil.CommandContext(ctx, binaryPath, parsedArgs...)
 		cmd.Stdout = writer
 		cmd.Stderr = writer
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("执行工具失败: %w", err)
+		execErr := cmd.Run()
+
+		elapsed := time.Since(startTime).Round(time.Millisecond)
+		fmt.Fprintf(writer, "\n━━━ 本地执行结束 ━━━\n")
+		fmt.Fprintf(writer, "耗时: %s\n", elapsed)
+		if execErr != nil {
+			fmt.Fprintf(writer, "状态: 失败\n")
+			fmt.Fprintf(writer, "━━━━━━━━━━━━━━━━━━━━\n")
+			return fmt.Errorf("执行工具失败: %w", execErr)
 		}
+		fmt.Fprintf(writer, "状态: 成功\n")
+		fmt.Fprintf(writer, "━━━━━━━━━━━━━━━━━━━━\n")
 		return nil
 	}
 }
@@ -70,14 +88,13 @@ func isSingleDashLongFlag(arg string) bool {
 	return true
 }
 
+// resolveLocalBinary 获取工具的本地可执行产物。
+// 所有编译型工具统一通过 builder.BuildPackage 获取产物——优先命中缓存，
+// 缓存未命中时在源码工作区下现场构建。不再区分 assets 和缓存两条路径。
 func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (string, error) {
-	if bundledPath, ok := resolveBundledBinary(manifest); ok {
-		return bundledPath, nil
-	}
-
 	repoRoot, ok := locateRepoRoot()
 	if !ok {
-		return "", fmt.Errorf("未找到已打包的 %s 本地产物，且当前运行环境缺少源码工作区", manifest.Kind)
+		return "", fmt.Errorf("未找到源码工作区，无法获取编译型工具产物: %s", manifest.Kind)
 	}
 	layout, err := runtimeenv.ResolveLayout()
 	if err != nil {
@@ -109,23 +126,6 @@ func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (strin
 		return "", err
 	}
 	return result.Path, nil
-}
-
-func resolveBundledBinary(manifest toolspec.ToolManifest) (string, bool) {
-	assetsDir, ok := runtimeenv.FindBundledAssetsDir()
-	if !ok {
-		return "", false
-	}
-	kindDir := string(manifest.Kind)
-	binaryName := manifest.ID
-	if runtime.GOOS == "windows" {
-		binaryName += ".exe"
-	}
-	bundledPath := filepath.Join(assetsDir, kindDir, runtime.GOOS+"_"+runtime.GOARCH, binaryName)
-	if localFileExists(bundledPath) {
-		return bundledPath, true
-	}
-	return "", false
 }
 
 func manifestKindToBuilderKind(kind toolspec.ToolKind) (builder.ToolKind, error) {

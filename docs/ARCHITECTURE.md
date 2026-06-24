@@ -24,8 +24,9 @@
 - `python_settings.go`：Python 环境状态、基础 Python 选择、托管虚拟环境创建/重建、依赖一键安装与禁用态桥接 API。
 - `rust_settings.go`：Rust 环境状态、Rust / Zig 候选、托管下载、能力补齐与禁用态桥接 API。
 - `rust_toolchain_task.go`：Rust / Zig 下载安装与能力补齐任务状态桥接。
-- `rust_tools.go`：Rust 工具本地执行入口、本地产物解析与源码工作区下的本机构建兜底。
-- `legacy.go`：旧工具注册闭包向新宿主的桥接。
+- `binary_tools.go`：Go / Rust 编译型工具本地执行入口，统一子进程执行、本地产物解析与源码工作区下的本机构建兜底。
+- `python_tools.go`：Python 工具执行入口，直接构造脚本执行闭包。
+- `legacy.go`：工具清单加载与初始化缓存。
 
 ### `app/internal/ssh/`
 
@@ -39,10 +40,11 @@
 
 负责为远程执行和单工具导出准备单工具产物。
 
-- Go 工具：现场生成 wrapper 并编译。
+- Go 工具：生成 wrapper main.go 调用工具的 `Run` 函数，`go build` 编译为独立二进制。
 - Python 工具：复制脚本到目标位置。
-- Rust 工具：解析 crate 根目录，按目标平台调用 `cargo build` 或 `cargo zigbuild` 生成单工具产物。
+- Rust 工具：生成 wrapper crate（Cargo.toml + main.rs）调用 library crate 的 `run` 函数，`cargo build` / `cargo zigbuild` 编译为独立二进制。
 - Go / Rust 工具链解析由 `app/internal/toolchain/` 提供，不再散落在 builder 内部的路径猜测逻辑中。
+- 所有编译型工具均以纯库包形式存在，不含 `main()` 入口，不依赖 `libs/framework`。
 
 ### `app/internal/toolchain/`
 
@@ -106,7 +108,7 @@
 3. `execution.go` 创建任务、推送状态事件、收集日志。
 4. 前端通过 Wails 事件更新标签状态和执行终端。
 
-本地执行不会现场调用 `go build`。对 Go 工具来说，它直接运行编译进宿主的 bridge 闭包，因此不依赖用户额外配置 Go 环境。
+本地执行不会现场调用 `go build`。对 Go 工具来说，它优先使用随宿主打包的二进制产物（`assets/go/<os>_<arch>/`），源码工作区下无产物时自动现场构建并缓存。
 
 对 Python 工具来说，本地执行会先解析当前基础 Python 对应的托管虚拟环境，并检查该工具脚本动态扫描出的第三方依赖是否已经安装；若未就绪，则阻断当前操作并引导用户进入 Python 设置页。
 
@@ -146,7 +148,7 @@
 - 单工具导出与产物中心已落地，但远程执行后的结果下载仍未形成闭环。
 - 构建链路对仓库目录和部分默认环境仍有依赖，但 Go SDK 默认落点已统一到运行时目录下的 `toolchains/`。
 - 部分设置项已经暴露到 UI，但仍有历史选项尚未接入实际业务逻辑。
-- Go 环境当前只影响远程执行、Go 导出和构建缓存，不影响 Go 工具的本地执行。
+- Go 环境影响 Go 工具的本地执行（无打包产物时需现场构建）、远程执行、导出和构建缓存准备。
 - Python 环境当前直接影响 Python 工具的本地执行；当前通过托管虚拟环境隔离依赖，但仍不提供托管 Python 下载。
 - Rust 环境当前影响 Rust 工具的本机现场构建、远程执行前的单工具构建、Rust 导出与构建缓存准备；系统 Rust 的 `cargo-zigbuild` / targets 补齐默认受保护，不再直接由宿主无提示修改。
 - 工作区内置工具当前运行在前端本地，适合即时转换、编解码、解析和校验类能力，不适合需要远端环境、长任务或导出产物的工具。

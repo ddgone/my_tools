@@ -146,7 +146,12 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 	}
 
 	fmt.Fprintf(writer, "[远程] 执行: %s\n", runCmd)
+	fmt.Fprintf(writer, "\n━━━ 远端执行开始 ━━━\n")
+	remoteStart := time.Now()
 	runErr := executor.Execute(ctx, runCmd, writer)
+	remoteElapsed := time.Since(remoteStart).Round(time.Millisecond)
+	fmt.Fprintf(writer, "\n━━━ 远端执行结束 ━━━\n")
+	fmt.Fprintf(writer, "耗时: %s\n", remoteElapsed)
 
 	if ctx.Err() == nil && resultHint.Path != "" {
 		probe, probeErr := probeRemoteResult(ctx, executor, resultHint.Path)
