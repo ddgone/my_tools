@@ -97,44 +97,8 @@ export namespace exportpkg {
 
 }
 
-export namespace main {
+export namespace gosettings {
 	
-	export class CacheCleanupResult {
-	    mode: string;
-	    removedDirs: number;
-	    freedBytes: number;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheCleanupResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.mode = source["mode"];
-	        this.removedDirs = source["removedDirs"];
-	        this.freedBytes = source["freedBytes"];
-	        this.message = source["message"];
-	    }
-	}
-	export class CacheInfo {
-	    totalBytes: number;
-	    totalDirs: number;
-	    orphanedDirs: number;
-	    orphanedBytes: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.totalBytes = source["totalBytes"];
-	        this.totalDirs = source["totalDirs"];
-	        this.orphanedDirs = source["orphanedDirs"];
-	        this.orphanedBytes = source["orphanedBytes"];
-	    }
-	}
 	export class GoOfficialRelease {
 	    version: string;
 	    stable: boolean;
@@ -317,22 +281,116 @@ export namespace main {
 	        this.directory = source["directory"];
 	    }
 	}
-	export class InstallRustToolchainRequest {
-	    rustVersion: string;
-	    zigVersion: string;
-	    directory: string;
+
+}
+
+export namespace main {
+	
+	export class CacheCleanupResult {
+	    mode: string;
+	    removedDirs: number;
+	    freedBytes: number;
+	    message: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new InstallRustToolchainRequest(source);
+	        return new CacheCleanupResult(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.rustVersion = source["rustVersion"];
-	        this.zigVersion = source["zigVersion"];
-	        this.directory = source["directory"];
+	        this.mode = source["mode"];
+	        this.removedDirs = source["removedDirs"];
+	        this.freedBytes = source["freedBytes"];
+	        this.message = source["message"];
 	    }
 	}
+	export class CacheInfo {
+	    totalBytes: number;
+	    totalDirs: number;
+	    orphanedDirs: number;
+	    orphanedBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalBytes = source["totalBytes"];
+	        this.totalDirs = source["totalDirs"];
+	        this.orphanedDirs = source["orphanedDirs"];
+	        this.orphanedBytes = source["orphanedBytes"];
+	    }
+	}
+	export class WindowState {
+	    width: number;
+	    height: number;
+	    x: number;
+	    y: number;
+	    maximised: boolean;
+	    fullscreen: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WindowState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.maximised = source["maximised"];
+	        this.fullscreen = source["fullscreen"];
+	    }
+	}
+	export class WorkbenchBootstrap {
+	    appTitle: string;
+	    platform: string;
+	    hostStack: string[];
+	    primaryFlow: string[];
+	    moduleBoundaries: string[];
+	    parameterModes: string[];
+	    tools: toolspec.ToolManifest[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkbenchBootstrap(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appTitle = source["appTitle"];
+	        this.platform = source["platform"];
+	        this.hostStack = source["hostStack"];
+	        this.primaryFlow = source["primaryFlow"];
+	        this.moduleBoundaries = source["moduleBoundaries"];
+	        this.parameterModes = source["parameterModes"];
+	        this.tools = this.convertValues(source["tools"], toolspec.ToolManifest);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace pythonsettings {
+	
 	export class PythonDependencyStatus {
 	    packageName: string;
 	    moduleName: string;
@@ -501,6 +559,27 @@ export namespace main {
 	        this.environmentDirectory = source["environmentDirectory"];
 	        this.error = source["error"];
 	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+
+}
+
+export namespace rustsettings {
+	
+	export class InstallRustToolchainRequest {
+	    rustVersion: string;
+	    zigVersion: string;
+	    directory: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallRustToolchainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rustVersion = source["rustVersion"];
+	        this.zigVersion = source["zigVersion"];
+	        this.directory = source["directory"];
 	    }
 	}
 	export class RustOfficialRelease {
@@ -781,70 +860,6 @@ export namespace main {
 	        this.error = source["error"];
 	        this.updatedAt = source["updatedAt"];
 	    }
-	}
-	export class WindowState {
-	    width: number;
-	    height: number;
-	    x: number;
-	    y: number;
-	    maximised: boolean;
-	    fullscreen: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new WindowState(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.width = source["width"];
-	        this.height = source["height"];
-	        this.x = source["x"];
-	        this.y = source["y"];
-	        this.maximised = source["maximised"];
-	        this.fullscreen = source["fullscreen"];
-	    }
-	}
-	export class WorkbenchBootstrap {
-	    appTitle: string;
-	    platform: string;
-	    hostStack: string[];
-	    primaryFlow: string[];
-	    moduleBoundaries: string[];
-	    parameterModes: string[];
-	    tools: toolspec.ToolManifest[];
-	
-	    static createFrom(source: any = {}) {
-	        return new WorkbenchBootstrap(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.appTitle = source["appTitle"];
-	        this.platform = source["platform"];
-	        this.hostStack = source["hostStack"];
-	        this.primaryFlow = source["primaryFlow"];
-	        this.moduleBoundaries = source["moduleBoundaries"];
-	        this.parameterModes = source["parameterModes"];
-	        this.tools = this.convertValues(source["tools"], toolspec.ToolManifest);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class ZigOfficialRelease {
 	    version: string;

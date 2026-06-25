@@ -12,16 +12,23 @@ import (
 
 	"fire-salamander-desktop/internal/execution"
 	"fire-salamander-desktop/internal/ssh"
+
+	gosettings "fire-salamander-desktop/internal/toolchainsettings/go"
+	pythonsettings "fire-salamander-desktop/internal/toolchainsettings/python"
+	rustsettings "fire-salamander-desktop/internal/toolchainsettings/rust"
 )
 
 type App struct {
-	state     *SharedState
-	dialog    *DialogManager
-	window    *WindowManager
-	export    *ExportManager
-	task      *TaskResultManager
-	execution *ExecutionManager
-	artifact  *ArtifactBatchManager
+	state          *SharedState
+	dialog         *DialogManager
+	window         *WindowManager
+	export         *ExportManager
+	task           *TaskResultManager
+	execution      *ExecutionManager
+	artifact       *ArtifactBatchManager
+	goSettings     *GoSettingsManager
+	pythonSettings *PythonSettingsManager
+	rustSettings   *RustSettingsManager
 }
 
 type WindowState struct {
@@ -130,13 +137,16 @@ func NewApp() *App {
 	exportMgr := NewExportManager(state, dialog)
 	taskMgr := NewTaskResultManager(state, dialog, exportMgr)
 	return &App{
-		state:     state,
-		dialog:    dialog,
-		window:    NewWindowManager(state),
-		export:    exportMgr,
-		task:      taskMgr,
-		execution: execution.NewManager(state, taskMgr, ensureTooling),
-		artifact:  NewArtifactBatchManager(state),
+		state:          state,
+		dialog:         dialog,
+		window:         NewWindowManager(state),
+		export:         exportMgr,
+		task:           taskMgr,
+		execution:      execution.NewManager(state, taskMgr, ensureTooling),
+		artifact:       NewArtifactBatchManager(state),
+		goSettings:     gosettings.NewManager(state, ensureTooling),
+		pythonSettings: pythonsettings.NewManager(state, ensureTooling),
+		rustSettings:   rustsettings.NewManager(state, ensureTooling),
 	}
 }
 
@@ -316,5 +326,3 @@ func (a *App) TestSSHConnectionRaw(host string, port int, user, password, keyPat
 	verifier := ssh.NewHostKeyVerifier("")
 	return ssh.TestConnection(host, port, user, password, keyPath, verifier)
 }
-
-// Dialog delegates

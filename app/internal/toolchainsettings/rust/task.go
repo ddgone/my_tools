@@ -1,4 +1,4 @@
-package main
+package rustsettings
 
 import (
 	"context"
@@ -7,21 +7,22 @@ import (
 	"strings"
 	"time"
 
+	"fire-salamander-desktop/internal/shared"
 	"fire-salamander-desktop/internal/toolchain"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-func (a *App) getRustToolchainTaskState() *RustToolchainTask {
-	a.state.Mu.RLock()
-	defer a.state.Mu.RUnlock()
-	return cloneRustToolchainTask(a.state.RustTask)
+func (m *Manager) getRustToolchainTaskState() *shared.RustToolchainTask {
+	m.state.Mu.RLock()
+	defer m.state.Mu.RUnlock()
+	return cloneRustToolchainTask(m.state.RustTask)
 }
 
-func (a *App) cancelRustToolchainTask() error {
-	a.state.Mu.Lock()
-	cancel := a.state.RustCancel
-	a.state.Mu.Unlock()
+func (m *Manager) cancelRustToolchainTask() error {
+	m.state.Mu.Lock()
+	cancel := m.state.RustCancel
+	m.state.Mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
@@ -29,11 +30,11 @@ func (a *App) cancelRustToolchainTask() error {
 	return nil
 }
 
-func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*RustToolchainTask, error) {
-	a.state.Mu.Lock()
-	if a.state.RustTask != nil && a.state.RustTask.Status == "running" {
-		task := cloneRustToolchainTask(a.state.RustTask)
-		a.state.Mu.Unlock()
+func (m *Manager) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*shared.RustToolchainTask, error) {
+	m.state.Mu.Lock()
+	if m.state.RustTask != nil && m.state.RustTask.Status == "running" {
+		task := cloneRustToolchainTask(m.state.RustTask)
+		m.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -44,7 +45,7 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 	case strings.TrimSpace(req.RustVersion) == "" && strings.TrimSpace(req.ZigVersion) != "":
 		kind = "install-zig"
 	}
-	task := &RustToolchainTask{
+	task := &shared.RustToolchainTask{
 		Kind:            kind,
 		Status:          "running",
 		Message:         "准备执行 Rust 交叉编译环境安装任务",
@@ -54,11 +55,11 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 		Directory:       strings.TrimSpace(req.Directory),
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.state.RustTask = task
-	a.state.RustCancel = cancel
+	m.state.RustTask = task
+	m.state.RustCancel = cancel
 	copyTask := cloneRustToolchainTask(task)
-	a.state.Mu.Unlock()
-	a.emitRustToolchainTask(copyTask)
+	m.state.Mu.Unlock()
+	m.emitRustToolchainTask(copyTask)
 
 	go func() {
 		installKind := kind
@@ -69,7 +70,7 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 			req.Directory,
 			&toolchain.RustInstallHooks{
 				OnProgress: func(progress toolchain.RustInstallProgress) {
-					a.updateRustToolchainTask(func(task *RustToolchainTask) {
+					m.updateRustToolchainTask(func(task *shared.RustToolchainTask) {
 						task.Kind = installKind
 						task.Status = "running"
 						task.Message = strings.TrimSpace(progress.Message)
@@ -91,17 +92,17 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 			},
 		)
 		if errors.Is(runErr, context.Canceled) {
-			a.finishRustToolchainTask("canceled", "Rust 交叉编译环境安装任务已停止", runErr)
+			m.finishRustToolchainTask("canceled", "Rust 交叉编译环境安装任务已停止", runErr)
 			return
 		}
 		if runErr != nil {
-			a.finishRustToolchainTask("failed", "Rust 交叉编译环境安装任务失败", runErr)
+			m.finishRustToolchainTask("failed", "Rust 交叉编译环境安装任务失败", runErr)
 			return
 		}
 
 		cfg, cfgErr := toolchain.LoadRustConfig()
 		if cfgErr != nil {
-			a.finishRustToolchainTask("failed", "Rust 环境已安装，但读取环境配置失败", cfgErr)
+			m.finishRustToolchainTask("failed", "Rust 环境已安装，但读取环境配置失败", cfgErr)
 			return
 		}
 		if strings.TrimSpace(installResult.RustDirectory) != "" {
@@ -117,35 +118,35 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 		cfg.LastInstallDirectory = toolchain.NormalizeRustInstallBaseDirectory(req.Directory)
 		cfg.Disabled = false
 		if saveErr := toolchain.SaveRustConfig(cfg); saveErr != nil {
-			a.finishRustToolchainTask("failed", "Rust 环境已安装，但保存环境配置失败", saveErr)
+			m.finishRustToolchainTask("failed", "Rust 环境已安装，但保存环境配置失败", saveErr)
 			return
 		}
-		a.finishRustToolchainTask("completed", "Rust 交叉编译环境安装任务已完成", nil)
+		m.finishRustToolchainTask("completed", "Rust 交叉编译环境安装任务已完成", nil)
 	}()
 
 	return copyTask, nil
 }
 
-func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, error) {
-	a.state.Mu.Lock()
-	if a.state.RustTask != nil && a.state.RustTask.Status == "running" {
-		task := cloneRustToolchainTask(a.state.RustTask)
-		a.state.Mu.Unlock()
+func (m *Manager) startInstallRustCapabilityTask(kind string) (*shared.RustToolchainTask, error) {
+	m.state.Mu.Lock()
+	if m.state.RustTask != nil && m.state.RustTask.Status == "running" {
+		task := cloneRustToolchainTask(m.state.RustTask)
+		m.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	task := &RustToolchainTask{
+	task := &shared.RustToolchainTask{
 		Kind:            kind,
 		Status:          "running",
 		Message:         "准备补齐 Rust 环境能力",
 		ProgressPercent: 0,
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.state.RustTask = task
-	a.state.RustCancel = cancel
+	m.state.RustTask = task
+	m.state.RustCancel = cancel
 	copyTask := cloneRustToolchainTask(task)
-	a.state.Mu.Unlock()
-	a.emitRustToolchainTask(copyTask)
+	m.state.Mu.Unlock()
+	m.emitRustToolchainTask(copyTask)
 
 	go func() {
 		var runErr error
@@ -153,7 +154,7 @@ func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, e
 		case "cargo-zigbuild":
 			runErr = toolchain.InstallCargoZigbuildForActiveRust(ctx, &toolchain.RustInstallHooks{
 				OnProgress: func(progress toolchain.RustInstallProgress) {
-					a.updateRustToolchainTask(func(task *RustToolchainTask) {
+					m.updateRustToolchainTask(func(task *shared.RustToolchainTask) {
 						task.Kind = kind
 						task.Status = "running"
 						task.Message = strings.TrimSpace(progress.Message)
@@ -171,7 +172,7 @@ func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, e
 		case "targets":
 			runErr = toolchain.InstallTargetsForActiveRust(ctx, &toolchain.RustInstallHooks{
 				OnProgress: func(progress toolchain.RustInstallProgress) {
-					a.updateRustToolchainTask(func(task *RustToolchainTask) {
+					m.updateRustToolchainTask(func(task *shared.RustToolchainTask) {
 						task.Kind = kind
 						task.Status = "running"
 						task.Message = strings.TrimSpace(progress.Message)
@@ -190,72 +191,72 @@ func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, e
 			runErr = fmt.Errorf("不支持的 Rust 补齐任务: %s", kind)
 		}
 		if errors.Is(runErr, context.Canceled) {
-			a.finishRustToolchainTask("canceled", "Rust 补齐任务已停止", runErr)
+			m.finishRustToolchainTask("canceled", "Rust 补齐任务已停止", runErr)
 			return
 		}
 		if runErr != nil {
-			a.finishRustToolchainTask("failed", "Rust 补齐任务失败", runErr)
+			m.finishRustToolchainTask("failed", "Rust 补齐任务失败", runErr)
 			return
 		}
-		a.finishRustToolchainTask("completed", "Rust 补齐任务已完成", nil)
+		m.finishRustToolchainTask("completed", "Rust 补齐任务已完成", nil)
 	}()
 
 	return copyTask, nil
 }
 
-func (a *App) updateRustToolchainTask(update func(task *RustToolchainTask)) {
-	a.state.Mu.Lock()
-	defer a.state.Mu.Unlock()
-	if a.state.RustTask == nil {
+func (m *Manager) updateRustToolchainTask(update func(task *shared.RustToolchainTask)) {
+	m.state.Mu.Lock()
+	defer m.state.Mu.Unlock()
+	if m.state.RustTask == nil {
 		return
 	}
-	update(a.state.RustTask)
-	a.state.RustTask.UpdatedAt = time.Now().UnixMilli()
-	a.emitRustToolchainTaskLocked()
+	update(m.state.RustTask)
+	m.state.RustTask.UpdatedAt = time.Now().UnixMilli()
+	m.emitRustToolchainTaskLocked()
 }
 
-func (a *App) finishRustToolchainTask(status string, message string, err error) {
-	a.state.Mu.Lock()
-	defer a.state.Mu.Unlock()
-	if a.state.RustTask == nil {
+func (m *Manager) finishRustToolchainTask(status string, message string, err error) {
+	m.state.Mu.Lock()
+	defer m.state.Mu.Unlock()
+	if m.state.RustTask == nil {
 		return
 	}
-	a.state.RustTask.Status = status
-	a.state.RustTask.Message = message
-	a.state.RustTask.ProgressPercent = clampRustProgressForStatus(a.state.RustTask.ProgressPercent, status)
-	a.state.RustTask.TransferSpeed = ""
-	a.state.RustTask.UpdatedAt = time.Now().UnixMilli()
+	m.state.RustTask.Status = status
+	m.state.RustTask.Message = message
+	m.state.RustTask.ProgressPercent = clampRustProgressForStatus(m.state.RustTask.ProgressPercent, status)
+	m.state.RustTask.TransferSpeed = ""
+	m.state.RustTask.UpdatedAt = time.Now().UnixMilli()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		classifiedMessage, classifiedDetail := toolchain.DescribeRustInstallError(err)
 		if strings.TrimSpace(message) == "" || strings.TrimSpace(message) == "Rust 交叉编译环境安装任务失败" {
-			a.state.RustTask.Message = classifiedMessage
+			m.state.RustTask.Message = classifiedMessage
 		}
-		a.state.RustTask.Detail = ""
-		a.state.RustTask.Error = classifiedDetail
-		if a.state.RustTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.state.RustTask.Message) {
-			a.state.RustTask.Error = strings.TrimSpace(err.Error())
+		m.state.RustTask.Detail = ""
+		m.state.RustTask.Error = classifiedDetail
+		if m.state.RustTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(m.state.RustTask.Message) {
+			m.state.RustTask.Error = strings.TrimSpace(err.Error())
 		}
 	}
 	if errors.Is(err, context.Canceled) {
-		a.state.RustTask.Detail = ""
-		a.state.RustTask.Error = ""
+		m.state.RustTask.Detail = ""
+		m.state.RustTask.Error = ""
 	}
-	a.state.RustCancel = nil
-	a.emitRustToolchainTaskLocked()
+	m.state.RustCancel = nil
+	m.emitRustToolchainTaskLocked()
 }
 
-func (a *App) emitRustToolchainTask(task *RustToolchainTask) {
-	if task == nil || a.state.Ctx == nil {
+func (m *Manager) emitRustToolchainTask(task *shared.RustToolchainTask) {
+	if task == nil || m.state.Ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.state.Ctx, "rust:toolchain:task", task)
+	wailsruntime.EventsEmit(m.state.Ctx, "rust:toolchain:task", task)
 }
 
-func (a *App) emitRustToolchainTaskLocked() {
-	a.emitRustToolchainTask(cloneRustToolchainTask(a.state.RustTask))
+func (m *Manager) emitRustToolchainTaskLocked() {
+	m.emitRustToolchainTask(cloneRustToolchainTask(m.state.RustTask))
 }
 
-func cloneRustToolchainTask(task *RustToolchainTask) *RustToolchainTask {
+func cloneRustToolchainTask(task *shared.RustToolchainTask) *shared.RustToolchainTask {
 	if task == nil {
 		return nil
 	}

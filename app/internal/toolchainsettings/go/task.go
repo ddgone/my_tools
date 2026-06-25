@@ -1,4 +1,4 @@
-package main
+package gosettings
 
 import (
 	"context"
@@ -6,21 +6,22 @@ import (
 	"strings"
 	"time"
 
+	"fire-salamander-desktop/internal/shared"
 	"fire-salamander-desktop/internal/toolchain"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-func (a *App) getGoToolchainTaskState() *GoToolchainTask {
-	a.state.Mu.RLock()
-	defer a.state.Mu.RUnlock()
-	return cloneGoToolchainTask(a.state.GoTask)
+func (m *Manager) getGoToolchainTaskState() *shared.GoToolchainTask {
+	m.state.Mu.RLock()
+	defer m.state.Mu.RUnlock()
+	return cloneGoToolchainTask(m.state.GoTask)
 }
 
-func (a *App) cancelGoToolchainTask() error {
-	a.state.Mu.Lock()
-	cancel := a.state.GoCancel
-	a.state.Mu.Unlock()
+func (m *Manager) cancelGoToolchainTask() error {
+	m.state.Mu.Lock()
+	cancel := m.state.GoCancel
+	m.state.Mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
@@ -28,15 +29,15 @@ func (a *App) cancelGoToolchainTask() error {
 	return nil
 }
 
-func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToolchainTask, error) {
-	a.state.Mu.Lock()
-	if a.state.GoTask != nil && a.state.GoTask.Status == "running" {
-		task := cloneGoToolchainTask(a.state.GoTask)
-		a.state.Mu.Unlock()
+func (m *Manager) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*shared.GoToolchainTask, error) {
+	m.state.Mu.Lock()
+	if m.state.GoTask != nil && m.state.GoTask.Status == "running" {
+		task := cloneGoToolchainTask(m.state.GoTask)
+		m.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	task := &GoToolchainTask{
+	task := &shared.GoToolchainTask{
 		Kind:            "install",
 		Status:          "running",
 		Message:         "准备执行 Go SDK 下载任务",
@@ -45,16 +46,16 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 		Directory:       strings.TrimSpace(req.Directory),
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.state.GoTask = task
-	a.state.GoCancel = cancel
+	m.state.GoTask = task
+	m.state.GoCancel = cancel
 	copyTask := cloneGoToolchainTask(task)
-	a.state.Mu.Unlock()
-	a.emitGoToolchainTask(copyTask)
+	m.state.Mu.Unlock()
+	m.emitGoToolchainTask(copyTask)
 
 	go func() {
 		installResult, runErr := toolchain.InstallOfficialReleaseWithOptions(ctx, req.Version, req.Directory, &toolchain.GoInstallHooks{
 			OnProgress: func(progress toolchain.GoInstallProgress) {
-				a.updateGoToolchainTask(func(task *GoToolchainTask) {
+				m.updateGoToolchainTask(func(task *shared.GoToolchainTask) {
 					task.Kind = "install"
 					task.Status = "running"
 					task.Message = strings.TrimSpace(progress.Message)
@@ -74,17 +75,17 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 			},
 		})
 		if errors.Is(runErr, context.Canceled) {
-			a.finishGoToolchainTask("canceled", "Go SDK 下载任务已停止", runErr)
+			m.finishGoToolchainTask("canceled", "Go SDK 下载任务已停止", runErr)
 			return
 		}
 		if runErr != nil {
-			a.finishGoToolchainTask("failed", "Go SDK 下载任务失败", runErr)
+			m.finishGoToolchainTask("failed", "Go SDK 下载任务失败", runErr)
 			return
 		}
 
 		cfg, cfgErr := toolchain.LoadConfig()
 		if cfgErr != nil {
-			a.finishGoToolchainTask("failed", "Go SDK 已安装，但读取环境配置失败", cfgErr)
+			m.finishGoToolchainTask("failed", "Go SDK 已安装，但读取环境配置失败", cfgErr)
 			return
 		}
 		cfg.SelectedBinary = installResult.BinaryPath
@@ -92,68 +93,68 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 		cfg.LastInstallDirectory = toolchain.NormalizeInstallBaseDirectory(req.Directory)
 		cfg.Disabled = false
 		if saveErr := toolchain.SaveConfig(cfg); saveErr != nil {
-			a.finishGoToolchainTask("failed", "Go SDK 已安装，但保存环境配置失败", saveErr)
+			m.finishGoToolchainTask("failed", "Go SDK 已安装，但保存环境配置失败", saveErr)
 			return
 		}
-		a.finishGoToolchainTask("completed", "Go SDK 下载任务已完成", nil)
+		m.finishGoToolchainTask("completed", "Go SDK 下载任务已完成", nil)
 	}()
 
 	return copyTask, nil
 }
 
-func (a *App) updateGoToolchainTask(update func(task *GoToolchainTask)) {
-	a.state.Mu.Lock()
-	defer a.state.Mu.Unlock()
-	if a.state.GoTask == nil {
+func (m *Manager) updateGoToolchainTask(update func(task *shared.GoToolchainTask)) {
+	m.state.Mu.Lock()
+	defer m.state.Mu.Unlock()
+	if m.state.GoTask == nil {
 		return
 	}
-	update(a.state.GoTask)
-	a.state.GoTask.UpdatedAt = time.Now().UnixMilli()
-	a.emitGoToolchainTaskLocked()
+	update(m.state.GoTask)
+	m.state.GoTask.UpdatedAt = time.Now().UnixMilli()
+	m.emitGoToolchainTaskLocked()
 }
 
-func (a *App) finishGoToolchainTask(status string, message string, err error) {
-	a.state.Mu.Lock()
-	defer a.state.Mu.Unlock()
-	if a.state.GoTask == nil {
+func (m *Manager) finishGoToolchainTask(status string, message string, err error) {
+	m.state.Mu.Lock()
+	defer m.state.Mu.Unlock()
+	if m.state.GoTask == nil {
 		return
 	}
-	a.state.GoTask.Status = status
-	a.state.GoTask.Message = message
-	a.state.GoTask.ProgressPercent = clampGoProgressForStatus(a.state.GoTask.ProgressPercent, status)
-	a.state.GoTask.TransferSpeed = ""
-	a.state.GoTask.UpdatedAt = time.Now().UnixMilli()
+	m.state.GoTask.Status = status
+	m.state.GoTask.Message = message
+	m.state.GoTask.ProgressPercent = clampGoProgressForStatus(m.state.GoTask.ProgressPercent, status)
+	m.state.GoTask.TransferSpeed = ""
+	m.state.GoTask.UpdatedAt = time.Now().UnixMilli()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		classifiedMessage, classifiedDetail := toolchain.DescribeGoInstallError(err)
 		if strings.TrimSpace(message) == "" || strings.TrimSpace(message) == "Go SDK 下载任务失败" {
-			a.state.GoTask.Message = classifiedMessage
+			m.state.GoTask.Message = classifiedMessage
 		}
-		a.state.GoTask.Detail = ""
-		a.state.GoTask.Error = classifiedDetail
-		if a.state.GoTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.state.GoTask.Message) {
-			a.state.GoTask.Error = strings.TrimSpace(err.Error())
+		m.state.GoTask.Detail = ""
+		m.state.GoTask.Error = classifiedDetail
+		if m.state.GoTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(m.state.GoTask.Message) {
+			m.state.GoTask.Error = strings.TrimSpace(err.Error())
 		}
 	}
 	if errors.Is(err, context.Canceled) {
-		a.state.GoTask.Detail = ""
-		a.state.GoTask.Error = ""
+		m.state.GoTask.Detail = ""
+		m.state.GoTask.Error = ""
 	}
-	a.state.GoCancel = nil
-	a.emitGoToolchainTaskLocked()
+	m.state.GoCancel = nil
+	m.emitGoToolchainTaskLocked()
 }
 
-func (a *App) emitGoToolchainTask(task *GoToolchainTask) {
-	if task == nil || a.state.Ctx == nil {
+func (m *Manager) emitGoToolchainTask(task *shared.GoToolchainTask) {
+	if task == nil || m.state.Ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.state.Ctx, "go:toolchain:task", task)
+	wailsruntime.EventsEmit(m.state.Ctx, "go:toolchain:task", task)
 }
 
-func (a *App) emitGoToolchainTaskLocked() {
-	a.emitGoToolchainTask(cloneGoToolchainTask(a.state.GoTask))
+func (m *Manager) emitGoToolchainTaskLocked() {
+	m.emitGoToolchainTask(cloneGoToolchainTask(m.state.GoTask))
 }
 
-func cloneGoToolchainTask(task *GoToolchainTask) *GoToolchainTask {
+func cloneGoToolchainTask(task *shared.GoToolchainTask) *shared.GoToolchainTask {
 	if task == nil {
 		return nil
 	}

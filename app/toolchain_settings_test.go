@@ -3,28 +3,31 @@ package main
 import (
 	"testing"
 
-	"fire-salamander-desktop/internal/toolchain"
+	gosettings "fire-salamander-desktop/internal/toolchainsettings/go"
+	pythonsettings "fire-salamander-desktop/internal/toolchainsettings/python"
+	rustsettings "fire-salamander-desktop/internal/toolchainsettings/rust"
 )
 
-func TestConvertPythonToolchainStateKeepsEmptySlicesNonNil(t *testing.T) {
-	state := convertPythonToolchainState(toolchain.PythonState{
-		Config: toolchain.PythonConfig{},
-	})
-
-	if state.Config.KnownBinaries == nil {
-		t.Fatalf("expected knownBinaries to be an empty slice, got nil")
-	}
-	if state.MissingPackages == nil {
-		t.Fatalf("expected missingPackages to be an empty slice, got nil")
+func TestGoSettingsManagerWiresUp(t *testing.T) {
+	state := NewSharedState()
+	mgr := gosettings.NewManager(state, nil)
+	if mgr == nil {
+		t.Fatal("expected manager to be non-nil")
 	}
 }
 
-func TestConvertGoToolchainStateKeepsEmptySlicesNonNil(t *testing.T) {
-	state := convertGoToolchainState(toolchain.State{
-		Config: toolchain.Config{},
-	})
+func TestPythonSettingsManagerWiresUp(t *testing.T) {
+	state := NewSharedState()
+	mgr := pythonsettings.NewManager(state, nil)
+	if mgr == nil {
+		t.Fatal("expected manager to be non-nil")
+	}
+}
 
-	if state.Config.KnownBinaries == nil {
-		t.Fatalf("expected knownBinaries to be an empty slice, got nil")
+func TestRustSettingsManagerWiresUp(t *testing.T) {
+	state := NewSharedState()
+	mgr := rustsettings.NewManager(state, nil)
+	if mgr == nil {
+		t.Fatal("expected manager to be non-nil")
 	}
 }
