@@ -30,6 +30,10 @@ export function CheckRustToolchainEnvironment() {
   return window['go']['main']['App']['CheckRustToolchainEnvironment']();
 }
 
+export function CleanBuildCache(arg1) {
+  return window['go']['main']['App']['CleanBuildCache'](arg1);
+}
+
 export function ClearArtifactBatchTasks() {
   return window['go']['main']['App']['ClearArtifactBatchTasks']();
 }
@@ -60,6 +64,10 @@ export function EstimateArtifactBatchCache(arg1) {
 
 export function ExportTool(arg1) {
   return window['go']['main']['App']['ExportTool'](arg1);
+}
+
+export function GetCacheInfo() {
+  return window['go']['main']['App']['GetCacheInfo']();
 }
 
 export function GetCurrentWindowState() {

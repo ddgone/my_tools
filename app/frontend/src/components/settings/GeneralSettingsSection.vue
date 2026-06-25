@@ -1,8 +1,60 @@
 <script setup lang="ts">
-import { NInput, NSelect, NSwitch } from 'naive-ui'
+import { ref } from 'vue'
+import {
+  NButton,
+  NDivider,
+  NIcon,
+  NInput,
+  NPopconfirm,
+  NSelect,
+  NSwitch,
+  NText,
+  useMessage,
+} from 'naive-ui'
+import { TrashOutline } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { CleanBuildCache, GetCacheInfo } from '../../../wailsjs/go/main/App'
+import type { main } from '../../../wailsjs/go/models'
 
 const workspace = useWorkspaceStore()
+const message = useMessage()
+
+const cacheInfo = ref<main.CacheInfo | null>(null)
+const loadingCacheInfo = ref(false)
+const cleaningCache = ref(false)
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
+}
+
+async function refreshCacheInfo() {
+  loadingCacheInfo.value = true
+  try {
+    cacheInfo.value = await GetCacheInfo()
+  } catch {
+    cacheInfo.value = null
+  } finally {
+    loadingCacheInfo.value = false
+  }
+}
+
+async function doCleanCache(mode: string) {
+  cleaningCache.value = true
+  try {
+    const result = await CleanBuildCache(mode)
+    message.success(result.message || `已清理 ${result.removedDirs} 个缓存目录`)
+    await refreshCacheInfo()
+  } catch (e: any) {
+    message.error(e?.toString() || '清理缓存失败')
+  } finally {
+    cleaningCache.value = false
+  }
+}
+
+refreshCacheInfo()
 </script>
 
 <template>
@@ -96,6 +148,84 @@ const workspace = useWorkspaceStore()
           :options="[{ label: '精简模式', value: 'compact' }, { label: '详细模式', value: 'verbose' }]"
           @update:value="(v: string | number) => workspace.settings.verboseShortcuts = v === 'verbose'"
         />
+      </div>
+    </div>
+
+    <NDivider style="margin: 4px 0" />
+
+    <div class="settings-row align-start">
+      <div class="settings-label">
+        构建缓存
+      </div>
+      <div class="settings-value">
+        <div class="flex flex-col gap-y-2 w-full">
+          <NText v-if="loadingCacheInfo" depth="3" class="text-xs">
+            正在计算缓存大小...
+          </NText>
+          <NText v-else-if="cacheInfo && cacheInfo.totalBytes > 0" depth="3" class="text-xs">
+            当前缓存 {{ formatBytes(cacheInfo.totalBytes) }}
+            <template v-if="cacheInfo.orphanedDirs > 0">
+              ，其中 {{ cacheInfo.orphanedDirs }} 个无用工具缓存 {{ formatBytes(cacheInfo.orphanedBytes) }}
+            </template>
+          </NText>
+          <NText v-else depth="3" class="text-xs">
+            暂无构建缓存
+          </NText>
+
+          <div class="flex gap-x-2">
+            <NPopconfirm
+              v-if="cacheInfo && cacheInfo.orphanedDirs > 0"
+              @positive-click="doCleanCache('orphaned')"
+            >
+              <template #trigger>
+                <NButton
+                  size="tiny"
+                  secondary
+                  :loading="cleaningCache"
+                  type="warning"
+                >
+                  <template #icon>
+                    <NIcon :component="TrashOutline" size="14" />
+                  </template>
+                  清理无用缓存
+                </NButton>
+              </template>
+              确认清理 {{ cacheInfo.orphanedDirs }} 个无用工具缓存（{{ formatBytes(cacheInfo.orphanedBytes) }}）？
+            </NPopconfirm>
+            <NButton
+              v-else
+              size="tiny"
+              secondary
+              :loading="cleaningCache"
+              @click="doCleanCache('orphaned')"
+            >
+              <template #icon>
+                <NIcon :component="TrashOutline" size="14" />
+              </template>
+              清理无用缓存
+            </NButton>
+
+            <NPopconfirm
+              v-if="cacheInfo && cacheInfo.totalBytes > 0"
+              @positive-click="doCleanCache('all')"
+            >
+              <template #trigger>
+                <NButton
+                  size="tiny"
+                  secondary
+                  :loading="cleaningCache"
+                  type="error"
+                >
+                  <template #icon>
+                    <NIcon :component="TrashOutline" size="14" />
+                  </template>
+                  清理全部缓存
+                </NButton>
+              </template>
+              确认清理全部构建缓存（{{ formatBytes(cacheInfo.totalBytes) }}）？下次构建工具时需要重新编译。
+            </NPopconfirm>
+          </div>
+        </div>
       </div>
     </div>
   </div>

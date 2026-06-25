@@ -179,6 +179,42 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class CacheCleanupResult {
+	    mode: string;
+	    removedDirs: number;
+	    freedBytes: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheCleanupResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.removedDirs = source["removedDirs"];
+	        this.freedBytes = source["freedBytes"];
+	        this.message = source["message"];
+	    }
+	}
+	export class CacheInfo {
+	    totalBytes: number;
+	    totalDirs: number;
+	    orphanedDirs: number;
+	    orphanedBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalBytes = source["totalBytes"];
+	        this.totalDirs = source["totalDirs"];
+	        this.orphanedDirs = source["orphanedDirs"];
+	        this.orphanedBytes = source["orphanedBytes"];
+	    }
+	}
 	export class DownloadTask {
 	    id: string;
 	    sourceTaskId: string;

@@ -17,6 +17,8 @@ export function CheckPythonToolchainEnvironment():Promise<main.PythonToolchainSt
 
 export function CheckRustToolchainEnvironment():Promise<main.RustToolchainState>;
 
+export function CleanBuildCache(arg1:string):Promise<main.CacheCleanupResult>;
+
 export function ClearArtifactBatchTasks():Promise<void>;
 
 export function DeleteGoToolchainEnvironment():Promise<main.GoToolchainState>;
@@ -32,6 +34,8 @@ export function DownloadTaskResult(arg1:string):Promise<string>;
 export function EstimateArtifactBatchCache(arg1:main.ArtifactBatchRequest):Promise<main.ArtifactBatchEstimate>;
 
 export function ExportTool(arg1:main.ExportToolRequest):Promise<main.ExportToolResult>;
+
+export function GetCacheInfo():Promise<main.CacheInfo>;
 
 export function GetCurrentWindowState():Promise<main.WindowState>;
 
