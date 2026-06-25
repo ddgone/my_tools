@@ -11,25 +11,6 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type GoToolchainTask struct {
-	Kind             string  `json:"kind"`
-	Status           string  `json:"status"`
-	Message          string  `json:"message"`
-	Detail           string  `json:"detail,omitempty"`
-	CurrentItem      string  `json:"currentItem,omitempty"`
-	CurrentSource    string  `json:"currentSource,omitempty"`
-	ProgressPercent  float64 `json:"progressPercent"`
-	Step             int     `json:"step"`
-	TotalSteps       int     `json:"totalSteps"`
-	Version          string  `json:"version,omitempty"`
-	Directory        string  `json:"directory,omitempty"`
-	TransferredBytes int64   `json:"transferredBytes,omitempty"`
-	TotalBytes       int64   `json:"totalBytes,omitempty"`
-	TransferSpeed    string  `json:"transferSpeed,omitempty"`
-	Error            string  `json:"error,omitempty"`
-	UpdatedAt        int64   `json:"updatedAt"`
-}
-
 func (a *App) getGoToolchainTaskState() *GoToolchainTask {
 	a.state.Mu.RLock()
 	defer a.state.Mu.RUnlock()

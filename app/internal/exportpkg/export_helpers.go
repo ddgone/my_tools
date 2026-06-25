@@ -1,4 +1,4 @@
-package main
+package exportpkg
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"fire-salamander-desktop/internal/builder"
+	"fire-salamander-desktop/internal/execution"
 )
 
 type ExportToolRequest struct {
@@ -64,7 +65,7 @@ func exportArtifact(req exportArtifactRequest) (string, error) {
 	buildReq := builder.BuildRequest{
 		ToolID:      req.toolID,
 		ToolName:    req.toolName,
-		Kind:        builderKind(req.kind),
+		Kind:        execution.BuilderKind(req.kind),
 		OutputDir:   filepath.Dir(req.outputPath),
 		CacheDir:    req.cacheDir,
 		OutputName:  filepath.Base(req.outputPath),
@@ -137,7 +138,7 @@ func copyExportFile(srcPath, dstPath string, mode os.FileMode) error {
 	return os.Chmod(dstPath, mode)
 }
 
-func normalizeExportMode(kind string, mode string) string {
+func NormalizeExportMode(kind string, mode string) string {
 	normalized := strings.TrimSpace(mode)
 	if kind == "python" {
 		return exportModeSource
@@ -151,7 +152,7 @@ func normalizeExportMode(kind string, mode string) string {
 	return exportModeBinary
 }
 
-func normalizeExportTarget(kind string, mode string, targetOS string, targetArch string) (string, string) {
+func NormalizeExportTarget(kind string, mode string, targetOS string, targetArch string) (string, string) {
 	if (kind != "go" && kind != "rust") || mode != exportModeBinary {
 		return "", ""
 	}
@@ -204,10 +205,10 @@ func exportFilterGlob(kind string, mode string, targetOS string) string {
 	return "*"
 }
 
-func exportDefaultFileName(toolName string, toolID string, kind string, mode string, targetOS string, targetArch string) string {
-	base := sanitizeExportBaseName(toolID)
+func ExportDefaultFileName(toolName string, toolID string, kind string, mode string, targetOS string, targetArch string) string {
+	base := SanitizeExportBaseName(toolID)
 	if base == "" {
-		base = sanitizeExportBaseName(toolName)
+		base = SanitizeExportBaseName(toolName)
 	}
 	if base == "" {
 		base = "tool"
@@ -222,11 +223,11 @@ func exportDefaultFileName(toolName string, toolID string, kind string, mode str
 		return base + ".go"
 	}
 	if targetOS != "" {
-		base += "_" + sanitizeExportBaseName(targetOS)
+		base += "_" + SanitizeExportBaseName(targetOS)
 	}
 	if (kind == "go" || kind == "rust") && mode == exportModeBinary {
 		if targetArch != "" {
-			base += "_" + sanitizeExportBaseName(targetArch)
+			base += "_" + SanitizeExportBaseName(targetArch)
 		}
 	}
 	if targetOS == "windows" {
@@ -235,7 +236,7 @@ func exportDefaultFileName(toolName string, toolID string, kind string, mode str
 	return base
 }
 
-func finalizeExportPath(path string, kind string, mode string, targetOS string) string {
+func FinalizeExportPath(path string, kind string, mode string, targetOS string) string {
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {
 		return ""
@@ -255,7 +256,7 @@ func finalizeExportPath(path string, kind string, mode string, targetOS string) 
 	}
 }
 
-func sanitizeExportBaseName(name string) string {
+func SanitizeExportBaseName(name string) string {
 	trimmed := strings.TrimSpace(name)
 	trimmed = strings.Trim(trimmed, ". ")
 	if trimmed == "" {

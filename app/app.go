@@ -10,6 +10,7 @@ import (
 
 	"my_tools/libs/core/toolspec"
 
+	"fire-salamander-desktop/internal/execution"
 	"fire-salamander-desktop/internal/ssh"
 )
 
@@ -125,7 +126,7 @@ const defaultAppConfigJSON = `{
 
 func NewApp() *App {
 	state := NewSharedState()
-	dialog := NewDialogManager(state)
+	dialog := NewDialogManager()
 	exportMgr := NewExportManager(state, dialog)
 	taskMgr := NewTaskResultManager(state, dialog, exportMgr)
 	return &App{
@@ -134,7 +135,7 @@ func NewApp() *App {
 		window:    NewWindowManager(state),
 		export:    exportMgr,
 		task:      taskMgr,
-		execution: NewExecutionManager(state, taskMgr),
+		execution: execution.NewManager(state, taskMgr, ensureTooling),
 		artifact:  NewArtifactBatchManager(state),
 	}
 }
@@ -317,15 +318,3 @@ func (a *App) TestSSHConnectionRaw(host string, port int, user, password, keyPat
 }
 
 // Dialog delegates
-
-func (a *App) OpenFileDialog(req FileDialogRequest) (string, error) {
-	return a.dialog.OpenFileDialog(req)
-}
-
-func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
-	return a.dialog.OpenSaveFileDialog(req)
-}
-
-func (a *App) SaveTextFile(path string, content string) error {
-	return a.dialog.SaveTextFile(path, content)
-}

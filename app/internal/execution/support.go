@@ -1,9 +1,11 @@
-package main
+package execution
 
 import (
 	"bytes"
 	"strings"
 	"sync"
+
+	"fire-salamander-desktop/internal/shared"
 )
 
 type TaskLogEvent struct {
@@ -13,10 +15,10 @@ type TaskLogEvent struct {
 }
 
 type taskEventWriter struct {
-	taskID string
-	task   *TaskResultManager
-	mu     sync.Mutex
-	buffer bytes.Buffer
+	taskID  string
+	emitter shared.TaskEventEmitter
+	mu      sync.Mutex
+	buffer  bytes.Buffer
 }
 
 func (w *taskEventWriter) Write(p []byte) (int, error) {
@@ -30,7 +32,7 @@ func (w *taskEventWriter) Write(p []byte) (int, error) {
 			w.buffer.WriteString(line)
 			break
 		}
-		w.task.emitTaskLog(w.taskID, strings.TrimRight(line, "\r\n"))
+		w.emitter.EmitTaskLog(w.taskID, strings.TrimRight(line, "\r\n"))
 	}
 
 	return len(p), nil
@@ -42,6 +44,6 @@ func (w *taskEventWriter) Flush() {
 	if w.buffer.Len() == 0 {
 		return
 	}
-	w.task.emitTaskLog(w.taskID, strings.TrimRight(w.buffer.String(), "\r\n"))
+	w.emitter.EmitTaskLog(w.taskID, strings.TrimRight(w.buffer.String(), "\r\n"))
 	w.buffer.Reset()
 }

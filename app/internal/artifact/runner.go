@@ -1,6 +1,10 @@
-package main
+package artifact
 
-func recountArtifactTask(task *ArtifactBatchTask) {
+import (
+	"fire-salamander-desktop/internal/shared"
+)
+
+func recountArtifactTask(task *shared.ArtifactBatchTask) {
 	task.TotalCount = len(task.Items)
 	task.SuccessCount = 0
 	task.ErrorCount = 0
@@ -20,11 +24,11 @@ func recountArtifactTask(task *ArtifactBatchTask) {
 	}
 }
 
-func cloneArtifactTask(task *ArtifactBatchTask) *ArtifactBatchTask {
+func cloneArtifactTask(task *shared.ArtifactBatchTask) *shared.ArtifactBatchTask {
 	if task == nil {
 		return nil
 	}
 	copyTask := *task
-	copyTask.Items = append([]ArtifactBatchItemResult(nil), task.Items...)
+	copyTask.Items = append([]shared.ArtifactBatchItemResult(nil), task.Items...)
 	return &copyTask
 }

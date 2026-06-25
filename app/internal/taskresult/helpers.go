@@ -1,9 +1,11 @@
-package main
+package taskresult
 
 import (
 	"fmt"
 	"path"
 	"strings"
+
+	"fire-salamander-desktop/internal/exportpkg"
 )
 
 func calculateDownloadProgress(downloaded int64, total int64) float64 {
@@ -54,7 +56,7 @@ func buildResultDownloadFileName(toolName string, remoteResultPath string, remot
 	base := path.Base(strings.TrimSpace(remoteResultPath))
 	base = strings.TrimSpace(base)
 	if base == "" || base == "." || base == "/" {
-		base = sanitizeExportBaseName(toolName)
+		base = exportpkg.SanitizeExportBaseName(toolName)
 	}
 	if base == "" {
 		base = "result"

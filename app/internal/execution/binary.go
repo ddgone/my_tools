@@ -1,4 +1,4 @@
-package main
+package execution
 
 import (
 	"context"
@@ -16,7 +16,8 @@ import (
 	"my_tools/libs/core/toolspec"
 )
 
-func executeLocalBinaryTool(ctx context.Context, writer io.Writer, manifest toolspec.ToolManifest) func(args string) error {
+// ExecuteLocalBinaryTool returns a closure that executes a compiled tool locally.
+func ExecuteLocalBinaryTool(ctx context.Context, writer io.Writer, manifest toolspec.ToolManifest) func(args string) error {
 	return func(args string) error {
 		binaryPath, err := resolveLocalBinary(manifest, writer)
 		if err != nil {
@@ -56,6 +57,11 @@ func executeLocalBinaryTool(ctx context.Context, writer io.Writer, manifest tool
 	}
 }
 
+// NormalizeRustCLIArgs ensures Rust CLIs receive --flag style args.
+func NormalizeRustCLIArgs(args []string) []string {
+	return normalizeRustCLIArgs(args)
+}
+
 func normalizeRustCLIArgs(args []string) []string {
 	if len(args) == 0 {
 		return nil
@@ -92,7 +98,7 @@ func isSingleDashLongFlag(arg string) bool {
 // 所有编译型工具统一通过 builder.BuildPackage 获取产物——优先命中缓存，
 // 缓存未命中时在源码工作区下现场构建。不再区分 assets 和缓存两条路径。
 func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (string, error) {
-	repoRoot, ok := locateRepoRoot()
+	repoRoot, ok := LocateRepoRoot()
 	if !ok {
 		return "", fmt.Errorf("未找到源码工作区，无法获取编译型工具产物: %s", manifest.Kind)
 	}
@@ -104,7 +110,7 @@ func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (strin
 		return "", fmt.Errorf("准备运行时目录失败: %w", err)
 	}
 
-	kind, err := manifestKindToBuilderKind(manifest.Kind)
+	kind, err := ManifestKindToBuilderKind(manifest.Kind)
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +134,8 @@ func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (strin
 	return result.Path, nil
 }
 
-func manifestKindToBuilderKind(kind toolspec.ToolKind) (builder.ToolKind, error) {
+// ManifestKindToBuilderKind converts toolspec.ToolKind to builder.ToolKind.
+func ManifestKindToBuilderKind(kind toolspec.ToolKind) (builder.ToolKind, error) {
 	switch kind {
 	case toolspec.ToolKindGo:
 		return builder.KindGo, nil

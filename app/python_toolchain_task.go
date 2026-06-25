@@ -11,21 +11,6 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type PythonToolchainTask struct {
-	Kind                 string  `json:"kind"`
-	Status               string  `json:"status"`
-	Message              string  `json:"message"`
-	Detail               string  `json:"detail,omitempty"`
-	CurrentItem          string  `json:"currentItem,omitempty"`
-	ProgressPercent      float64 `json:"progressPercent"`
-	Step                 int     `json:"step"`
-	TotalSteps           int     `json:"totalSteps"`
-	BaseBinary           string  `json:"baseBinary,omitempty"`
-	EnvironmentDirectory string  `json:"environmentDirectory,omitempty"`
-	Error                string  `json:"error,omitempty"`
-	UpdatedAt            int64   `json:"updatedAt"`
-}
-
 func (a *App) getPythonToolchainTaskState() *PythonToolchainTask {
 	a.state.Mu.RLock()
 	defer a.state.Mu.RUnlock()

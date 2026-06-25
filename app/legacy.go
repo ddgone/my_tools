@@ -23,7 +23,7 @@ func loadToolManifests() (map[string]toolspec.ToolManifest, error) {
 
 var (
 	toolInitOnce     sync.Once
-	cachedPyTools    map[string]*pythonToolEntry
+	cachedPyTools    map[string]*PythonToolEntry
 	cachedManifests  map[string]toolspec.ToolManifest
 	cachedToolingErr error
 )

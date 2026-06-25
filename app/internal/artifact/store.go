@@ -1,4 +1,4 @@
-package main
+package artifact
 
 import (
 	"crypto/sha256"
@@ -11,13 +11,14 @@ import (
 	"strings"
 
 	"fire-salamander-desktop/internal/runtimeenv"
+	"fire-salamander-desktop/internal/shared"
 )
 
 func artifactBatchTasksFilePath(layout runtimeenv.Layout) string {
-	return filepath.Join(layout.ConfigDir(), artifactBatchTasksFileName)
+	return filepath.Join(layout.ConfigDir(), shared.ArtifactBatchTasksFileName)
 }
 
-func loadArtifactBatchTasksFile(filePath string) ([]*ArtifactBatchTask, error) {
+func loadArtifactBatchTasksFile(filePath string) ([]*shared.ArtifactBatchTask, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -26,14 +27,14 @@ func loadArtifactBatchTasksFile(filePath string) ([]*ArtifactBatchTask, error) {
 		return nil, fmt.Errorf("读取产物任务持久化文件失败: %w", err)
 	}
 
-	var tasks []*ArtifactBatchTask
+	var tasks []*shared.ArtifactBatchTask
 	if err := json.Unmarshal(data, &tasks); err != nil {
 		return nil, fmt.Errorf("解析产物任务持久化文件失败: %w", err)
 	}
 	return normalizePersistedArtifactTasks(tasks), nil
 }
 
-func saveArtifactBatchTasksFile(filePath string, tasks []*ArtifactBatchTask) error {
+func saveArtifactBatchTasksFile(filePath string, tasks []*shared.ArtifactBatchTask) error {
 	normalized := normalizePersistedArtifactTasks(tasks)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return fmt.Errorf("创建产物任务持久化目录失败: %w", err)
@@ -48,8 +49,8 @@ func saveArtifactBatchTasksFile(filePath string, tasks []*ArtifactBatchTask) err
 	return nil
 }
 
-func normalizePersistedArtifactTasks(tasks []*ArtifactBatchTask) []*ArtifactBatchTask {
-	normalized := make([]*ArtifactBatchTask, 0, len(tasks))
+func normalizePersistedArtifactTasks(tasks []*shared.ArtifactBatchTask) []*shared.ArtifactBatchTask {
+	normalized := make([]*shared.ArtifactBatchTask, 0, len(tasks))
 	for _, task := range tasks {
 		if task == nil || strings.TrimSpace(task.ID) == "" {
 			continue
@@ -61,8 +62,8 @@ func normalizePersistedArtifactTasks(tasks []*ArtifactBatchTask) []*ArtifactBatc
 	sort.Slice(normalized, func(i, j int) bool {
 		return normalized[i].StartedAt > normalized[j].StartedAt
 	})
-	if len(normalized) > maxArtifactBatchTaskHistory {
-		normalized = normalized[:maxArtifactBatchTaskHistory]
+	if len(normalized) > shared.MaxArtifactBatchTaskHistory {
+		normalized = normalized[:shared.MaxArtifactBatchTaskHistory]
 	}
 	return normalized
 }

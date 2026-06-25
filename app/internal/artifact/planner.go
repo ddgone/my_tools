@@ -1,8 +1,10 @@
-package main
+package artifact
 
 import (
 	"fmt"
 	"strings"
+
+	"fire-salamander-desktop/internal/shared"
 )
 
 type artifactBatchResolvedRequest struct {
@@ -13,14 +15,14 @@ type artifactBatchResolvedRequest struct {
 	PreferCache     bool
 	ForceRebuild    bool
 	ContinueOnError bool
-	Items           []ArtifactBatchSelection
+	Items           []shared.ArtifactBatchSelection
 }
 
 func normalizeArtifactBatchMode(mode string) string {
-	if strings.TrimSpace(mode) == artifactBatchModeBuildCache {
-		return artifactBatchModeBuildCache
+	if strings.TrimSpace(mode) == shared.ArtifactBatchModeBuildCache {
+		return shared.ArtifactBatchModeBuildCache
 	}
-	return artifactBatchModeExport
+	return shared.ArtifactBatchModeExport
 }
 
 func artifactItemKey(toolID string, targetOS string, targetArch string) string {

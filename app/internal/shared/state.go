@@ -1,4 +1,4 @@
-package main
+package shared
 
 import (
 	"context"
@@ -8,14 +8,11 @@ import (
 	"my_tools/libs/core/toolspec"
 )
 
-// SharedState 集中保管 App 层所有共享的、需要加锁访问的可变状态。
-// Phase 1 阶段字段保持公开，和原来 App 上的字段名一致，
-// 使得迁移只需将 a.xxx 改为 a.state.Xxx 即可。
-// Phase 2 挪到 internal/ 时再收紧为方法接口。
+// SharedState 集中保管所有共享可变状态，供各 internal 子包使用。
 type SharedState struct {
 	Mu            sync.RWMutex
 	Ctx           context.Context
-	PyTools       map[string]*pythonToolEntry
+	PyTools       map[string]*PythonToolEntry
 	Manifests     map[string]toolspec.ToolManifest
 	Tasks         map[string]*ExecutionTask
 	DownloadTasks map[string]*DownloadTask
@@ -32,7 +29,7 @@ type SharedState struct {
 
 func NewSharedState() *SharedState {
 	return &SharedState{
-		PyTools:       map[string]*pythonToolEntry{},
+		PyTools:       map[string]*PythonToolEntry{},
 		Manifests:     map[string]toolspec.ToolManifest{},
 		Tasks:         map[string]*ExecutionTask{},
 		DownloadTasks: map[string]*DownloadTask{},

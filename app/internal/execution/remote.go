@@ -1,4 +1,4 @@
-package main
+package execution
 
 import (
 	"context"
@@ -48,7 +48,7 @@ type remoteExecutionOutcome struct {
 	keepWorkDir string
 }
 
-func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) (remoteExecutionOutcome, error) {
+func ExecuteRemotely(ctx context.Context, writer io.Writer, params remoteExecParams) (remoteExecutionOutcome, error) {
 	var outcome remoteExecutionOutcome
 	fmt.Fprintf(writer, "[远程] 正在连接 %s@%s:%d ...\n", params.user, params.host, params.port)
 
@@ -75,7 +75,7 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 		return outcome, fmt.Errorf("准备运行时目录失败: %w", err)
 	}
 
-	repoRoot, ok := locateRepoRoot()
+	repoRoot, ok := LocateRepoRoot()
 	if !ok {
 		return outcome, fmt.Errorf("当前运行环境缺少源码工作区，暂时无法构建单工具远程产物")
 	}
@@ -84,7 +84,7 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 	buildResult, err := builder.BuildPackage(builder.BuildRequest{
 		ToolID:           params.toolID,
 		ToolName:         params.toolName,
-		Kind:             builderKind(params.kind),
+		Kind:             BuilderKind(params.kind),
 		OutputDir:        layout.BuildCacheDir(),
 		CacheDir:         layout.BuildCacheDir(),
 		RepoRoot:         repoRoot,
@@ -181,7 +181,8 @@ func executeRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 	return outcome, runErr
 }
 
-func builderKind(kind string) builder.ToolKind {
+// BuilderKind converts a string kind to builder.ToolKind.
+func BuilderKind(kind string) builder.ToolKind {
 	if kind == "python" {
 		return builder.KindPython
 	}
@@ -191,7 +192,8 @@ func builderKind(kind string) builder.ToolKind {
 	return builder.KindGo
 }
 
-func locateRepoRoot() (string, bool) {
+// LocateRepoRoot returns the source workspace root.
+func LocateRepoRoot() (string, bool) {
 	return runtimeenv.FindRepoRoot()
 }
 
@@ -253,4 +255,219 @@ func buildRemoteWorkDir(taskID string) string {
 		safeTaskID = fmt.Sprintf("task-%d", time.Now().UnixNano())
 	}
 	return path.Join("/tmp", "fire-salamander-"+safeTaskID)
+}
+
+// --- remote result probing helpers (moved from task_result_probe.go) ---
+
+type remoteResultHint struct {
+	Path string
+	Kind string
+}
+
+func resolveRemoteResultHint(params []toolspec.ParameterSpec, rawArgs string, remoteWorkDir string) (remoteResultHint, error) {
+	outputParam, ok := findLikelyOutputParam(params)
+	if !ok {
+		return remoteResultHint{}, nil
+	}
+
+	parsedArgs, err := procutil.ParseArgs(rawArgs)
+	if err != nil {
+		return remoteResultHint{}, err
+	}
+	value, ok := extractParamValue(parsedArgs, outputParam)
+	if !ok || strings.TrimSpace(value) == "" {
+		value, ok = inferDefaultOutputValue(params, parsedArgs, outputParam, remoteWorkDir)
+		if !ok || strings.TrimSpace(value) == "" {
+			return remoteResultHint{}, nil
+		}
+	}
+
+	kind := "directory"
+	if strings.TrimSpace(outputParam.PathMode) == "file" {
+		kind = "file"
+	}
+	return remoteResultHint{
+		Path: resolveRemotePath(value, remoteWorkDir),
+		Kind: kind,
+	}, nil
+}
+
+func inferDefaultOutputValue(params []toolspec.ParameterSpec, parsedArgs []string, outputParam toolspec.ParameterSpec, remoteWorkDir string) (string, bool) {
+	if !supportsDefaultOutputInference(outputParam) {
+		return "", false
+	}
+
+	inputValue, inputParam, ok := findLikelyInputParamValue(params, parsedArgs, outputParam)
+	if !ok {
+		return "", false
+	}
+	resolvedInputPath := resolveRemotePath(inputValue, remoteWorkDir)
+	if strings.TrimSpace(resolvedInputPath) == "" {
+		return "", false
+	}
+
+	switch strings.TrimSpace(inputParam.PathMode) {
+	case "file":
+		return path.Join(path.Dir(resolvedInputPath), "output"), true
+	case "directory":
+		return path.Join(resolvedInputPath, "output"), true
+	default:
+		if looksLikeFilePath(resolvedInputPath) {
+			return path.Join(path.Dir(resolvedInputPath), "output"), true
+		}
+		return path.Join(resolvedInputPath, "output"), true
+	}
+}
+
+func supportsDefaultOutputInference(outputParam toolspec.ParameterSpec) bool {
+	if outputParam.Type != toolspec.FieldTypePath {
+		return false
+	}
+	if strings.TrimSpace(outputParam.PathMode) == "file" {
+		return false
+	}
+	if !isLikelyOutputParam(outputParam) {
+		return false
+	}
+
+	text := strings.ToLower(strings.Join([]string{
+		strings.TrimSpace(outputParam.Placeholder),
+		strings.TrimSpace(outputParam.Help),
+	}, " "))
+	return (strings.Contains(text, "默认") || strings.Contains(text, "留空")) && strings.Contains(text, "output")
+}
+
+func findLikelyInputParamValue(params []toolspec.ParameterSpec, parsedArgs []string, outputParam toolspec.ParameterSpec) (string, toolspec.ParameterSpec, bool) {
+	for _, param := range params {
+		if param.Type != toolspec.FieldTypePath {
+			continue
+		}
+		if isSameParam(param, outputParam) || isLikelyOutputParam(param) {
+			continue
+		}
+		value, ok := extractParamValue(parsedArgs, param)
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		return value, param, true
+	}
+	return "", toolspec.ParameterSpec{}, false
+}
+
+func findLikelyOutputParam(params []toolspec.ParameterSpec) (toolspec.ParameterSpec, bool) {
+	for _, param := range params {
+		if isLikelyOutputParam(param) {
+			return param, true
+		}
+	}
+	return toolspec.ParameterSpec{}, false
+}
+
+func isLikelyOutputParam(param toolspec.ParameterSpec) bool {
+	if param.Type != toolspec.FieldTypePath {
+		return false
+	}
+	argKey := strings.TrimSpace(param.ArgKey)
+	key := strings.TrimSpace(param.Key)
+	switch {
+	case argKey == "output":
+		return true
+	case key == "output", key == "outputDir":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSameParam(left toolspec.ParameterSpec, right toolspec.ParameterSpec) bool {
+	return strings.TrimSpace(left.Key) == strings.TrimSpace(right.Key) &&
+		strings.TrimSpace(left.ArgKey) == strings.TrimSpace(right.ArgKey)
+}
+
+func extractParamValue(parsedArgs []string, param toolspec.ParameterSpec) (string, bool) {
+	candidates := make([]string, 0, 4)
+	if key := strings.TrimSpace(param.ArgKey); key != "" {
+		candidates = append(candidates, "-"+key, "--"+key)
+	}
+	if key := strings.TrimSpace(param.Key); key != "" && key != param.ArgKey {
+		candidates = append(candidates, "-"+key, "--"+key)
+	}
+
+	for i := 0; i < len(parsedArgs); i++ {
+		token := parsedArgs[i]
+		if !containsString(candidates, token) {
+			continue
+		}
+		if i+1 >= len(parsedArgs) {
+			return "", false
+		}
+		next := parsedArgs[i+1]
+		if strings.HasPrefix(next, "-") {
+			return "", false
+		}
+		return next, true
+	}
+	return "", false
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveRemotePath(value string, remoteWorkDir string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if path.IsAbs(trimmed) {
+		return path.Clean(trimmed)
+	}
+	return path.Clean(path.Join(strings.TrimSpace(remoteWorkDir), trimmed))
+}
+
+func looksLikeFilePath(value string) bool {
+	base := path.Base(strings.TrimSpace(value))
+	ext := path.Ext(base)
+	return base != "" && ext != "" && ext != "."
+}
+
+func probeRemoteResult(ctx context.Context, executor *runtime.RemoteExecutor, remotePath string) (remoteResultProbe, error) {
+	kind, exists, err := executor.DetectPathKind(ctx, remotePath)
+	if err != nil {
+		return remoteResultProbe{}, err
+	}
+	if !exists {
+		return remoteResultProbe{
+			Status:  "missing",
+			Path:    remotePath,
+			Message: "未发现可下载结果",
+		}, nil
+	}
+
+	message := "已探测到可下载结果"
+	if kind == "directory" {
+		message = "已探测到可下载的输出目录"
+	} else if kind == "file" {
+		message = "已探测到可下载的输出文件"
+	}
+	return remoteResultProbe{
+		Status:  "available",
+		Path:    remotePath,
+		Kind:    kind,
+		Message: message,
+	}, nil
+}
+
+func pathWithinRemoteBase(base string, target string) bool {
+	cleanBase := path.Clean(strings.TrimSpace(base))
+	cleanTarget := path.Clean(strings.TrimSpace(target))
+	if cleanBase == "" || cleanTarget == "" {
+		return false
+	}
+	return cleanTarget == cleanBase || strings.HasPrefix(cleanTarget, cleanBase+"/")
 }

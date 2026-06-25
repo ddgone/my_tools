@@ -1,320 +1,55 @@
-export namespace main {
+export namespace dialog {
 	
-	export class ArtifactBatchEstimate {
-	    totalCount: number;
-	    cachedCount: number;
-	    buildCount: number;
-	    invalidCount: number;
+	export class FileDialogRequest {
+	    title: string;
+	    filterName: string;
+	    filterGlob: string;
+	    directory: boolean;
+	    defaultDirectory: string;
+	    defaultFilename: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new ArtifactBatchEstimate(source);
+	        return new FileDialogRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.totalCount = source["totalCount"];
-	        this.cachedCount = source["cachedCount"];
-	        this.buildCount = source["buildCount"];
-	        this.invalidCount = source["invalidCount"];
-	    }
-	}
-	export class ArtifactBatchItemResult {
-	    key: string;
-	    toolId: string;
-	    toolName: string;
-	    kind: string;
-	    targetOS: string;
-	    targetArch: string;
-	    status: string;
-	    message: string;
-	    outputPath?: string;
-	    cacheHit: boolean;
-	    startedAt: number;
-	    endedAt?: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ArtifactBatchItemResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.toolId = source["toolId"];
-	        this.toolName = source["toolName"];
-	        this.kind = source["kind"];
-	        this.targetOS = source["targetOS"];
-	        this.targetArch = source["targetArch"];
-	        this.status = source["status"];
-	        this.message = source["message"];
-	        this.outputPath = source["outputPath"];
-	        this.cacheHit = source["cacheHit"];
-	        this.startedAt = source["startedAt"];
-	        this.endedAt = source["endedAt"];
-	    }
-	}
-	export class ArtifactBatchSelection {
-	    toolId: string;
-	    targetOS: string;
-	    targetArch: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ArtifactBatchSelection(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.toolId = source["toolId"];
-	        this.targetOS = source["targetOS"];
-	        this.targetArch = source["targetArch"];
-	    }
-	}
-	export class ArtifactBatchRequest {
-	    mode: string;
-	    exportRootDir?: string;
-	    concurrency: number;
-	    skipUnchanged: boolean;
-	    preferCache: boolean;
-	    forceRebuild: boolean;
-	    continueOnError: boolean;
-	    items: ArtifactBatchSelection[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ArtifactBatchRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.mode = source["mode"];
-	        this.exportRootDir = source["exportRootDir"];
-	        this.concurrency = source["concurrency"];
-	        this.skipUnchanged = source["skipUnchanged"];
-	        this.preferCache = source["preferCache"];
-	        this.forceRebuild = source["forceRebuild"];
-	        this.continueOnError = source["continueOnError"];
-	        this.items = this.convertValues(source["items"], ArtifactBatchSelection);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class ArtifactBatchTask {
-	    id: string;
-	    mode: string;
-	    status: string;
-	    exportRootDir?: string;
-	    concurrency: number;
-	    skipUnchanged: boolean;
-	    preferCache: boolean;
-	    forceRebuild: boolean;
-	    continueOnError: boolean;
-	    totalCount: number;
-	    successCount: number;
-	    errorCount: number;
-	    cachedCount: number;
-	    skippedCount: number;
-	    startedAt: number;
-	    endedAt?: number;
-	    currentItem?: string;
-	    exitMessage?: string;
-	    items: ArtifactBatchItemResult[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ArtifactBatchTask(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.mode = source["mode"];
-	        this.status = source["status"];
-	        this.exportRootDir = source["exportRootDir"];
-	        this.concurrency = source["concurrency"];
-	        this.skipUnchanged = source["skipUnchanged"];
-	        this.preferCache = source["preferCache"];
-	        this.forceRebuild = source["forceRebuild"];
-	        this.continueOnError = source["continueOnError"];
-	        this.totalCount = source["totalCount"];
-	        this.successCount = source["successCount"];
-	        this.errorCount = source["errorCount"];
-	        this.cachedCount = source["cachedCount"];
-	        this.skippedCount = source["skippedCount"];
-	        this.startedAt = source["startedAt"];
-	        this.endedAt = source["endedAt"];
-	        this.currentItem = source["currentItem"];
-	        this.exitMessage = source["exitMessage"];
-	        this.items = this.convertValues(source["items"], ArtifactBatchItemResult);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class CacheCleanupResult {
-	    mode: string;
-	    removedDirs: number;
-	    freedBytes: number;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheCleanupResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.mode = source["mode"];
-	        this.removedDirs = source["removedDirs"];
-	        this.freedBytes = source["freedBytes"];
-	        this.message = source["message"];
-	    }
-	}
-	export class CacheInfo {
-	    totalBytes: number;
-	    totalDirs: number;
-	    orphanedDirs: number;
-	    orphanedBytes: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.totalBytes = source["totalBytes"];
-	        this.totalDirs = source["totalDirs"];
-	        this.orphanedDirs = source["orphanedDirs"];
-	        this.orphanedBytes = source["orphanedBytes"];
-	    }
-	}
-	export class DownloadTask {
-	    id: string;
-	    sourceTaskId: string;
-	    toolId: string;
-	    toolName: string;
-	    status: string;
-	    remoteResultPath: string;
-	    remoteResultKind: string;
-	    localPath?: string;
-	    directory?: string;
-	    message?: string;
-	    downloadedBytes: number;
-	    totalBytes: number;
-	    progressPercent: number;
-	    startedAt: number;
-	    endedAt?: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new DownloadTask(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.sourceTaskId = source["sourceTaskId"];
-	        this.toolId = source["toolId"];
-	        this.toolName = source["toolName"];
-	        this.status = source["status"];
-	        this.remoteResultPath = source["remoteResultPath"];
-	        this.remoteResultKind = source["remoteResultKind"];
-	        this.localPath = source["localPath"];
+	        this.title = source["title"];
+	        this.filterName = source["filterName"];
+	        this.filterGlob = source["filterGlob"];
 	        this.directory = source["directory"];
-	        this.message = source["message"];
-	        this.downloadedBytes = source["downloadedBytes"];
-	        this.totalBytes = source["totalBytes"];
-	        this.progressPercent = source["progressPercent"];
-	        this.startedAt = source["startedAt"];
-	        this.endedAt = source["endedAt"];
+	        this.defaultDirectory = source["defaultDirectory"];
+	        this.defaultFilename = source["defaultFilename"];
 	    }
 	}
-	export class ExecutionRequest {
+
+}
+
+export namespace execution {
+	
+	export class RemoteExecRequest {
 	    toolId: string;
+	    connId: string;
 	    args: string;
 	    pythonEnv: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new ExecutionRequest(source);
+	        return new RemoteExecRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.toolId = source["toolId"];
+	        this.connId = source["connId"];
 	        this.args = source["args"];
 	        this.pythonEnv = source["pythonEnv"];
 	    }
 	}
-	export class ExecutionTask {
-	    id: string;
-	    toolId: string;
-	    toolName: string;
-	    status: string;
-	    target: string;
-	    remoteConnId?: string;
-	    args: string;
-	    pythonEnv?: string;
-	    usage: string;
-	    startedAt: number;
-	    endedAt?: number;
-	    exitMessage?: string;
-	    remoteResultStatus?: string;
-	    remoteResultPath?: string;
-	    remoteResultKind?: string;
-	    remoteResultMessage?: string;
-	    remoteResultDownloadedPath?: string;
+
+}
+
+export namespace exportpkg {
 	
-	    static createFrom(source: any = {}) {
-	        return new ExecutionTask(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.toolId = source["toolId"];
-	        this.toolName = source["toolName"];
-	        this.status = source["status"];
-	        this.target = source["target"];
-	        this.remoteConnId = source["remoteConnId"];
-	        this.args = source["args"];
-	        this.pythonEnv = source["pythonEnv"];
-	        this.usage = source["usage"];
-	        this.startedAt = source["startedAt"];
-	        this.endedAt = source["endedAt"];
-	        this.exitMessage = source["exitMessage"];
-	        this.remoteResultStatus = source["remoteResultStatus"];
-	        this.remoteResultPath = source["remoteResultPath"];
-	        this.remoteResultKind = source["remoteResultKind"];
-	        this.remoteResultMessage = source["remoteResultMessage"];
-	        this.remoteResultDownloadedPath = source["remoteResultDownloadedPath"];
-	    }
-	}
 	export class ExportToolRequest {
 	    toolId: string;
 	    mode?: string;
@@ -359,26 +94,45 @@ export namespace main {
 	        this.targetArch = source["targetArch"];
 	    }
 	}
-	export class FileDialogRequest {
-	    title: string;
-	    filterName: string;
-	    filterGlob: string;
-	    directory: boolean;
-	    defaultDirectory: string;
-	    defaultFilename: string;
+
+}
+
+export namespace main {
+	
+	export class CacheCleanupResult {
+	    mode: string;
+	    removedDirs: number;
+	    freedBytes: number;
+	    message: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new FileDialogRequest(source);
+	        return new CacheCleanupResult(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.title = source["title"];
-	        this.filterName = source["filterName"];
-	        this.filterGlob = source["filterGlob"];
-	        this.directory = source["directory"];
-	        this.defaultDirectory = source["defaultDirectory"];
-	        this.defaultFilename = source["defaultFilename"];
+	        this.mode = source["mode"];
+	        this.removedDirs = source["removedDirs"];
+	        this.freedBytes = source["freedBytes"];
+	        this.message = source["message"];
+	    }
+	}
+	export class CacheInfo {
+	    totalBytes: number;
+	    totalDirs: number;
+	    orphanedDirs: number;
+	    orphanedBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalBytes = source["totalBytes"];
+	        this.totalDirs = source["totalDirs"];
+	        this.orphanedDirs = source["orphanedDirs"];
+	        this.orphanedBytes = source["orphanedBytes"];
 	    }
 	}
 	export class GoOfficialRelease {
@@ -749,24 +503,6 @@ export namespace main {
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}
-	export class RemoteExecRequest {
-	    toolId: string;
-	    connId: string;
-	    args: string;
-	    pythonEnv: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new RemoteExecRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.toolId = source["toolId"];
-	        this.connId = source["connId"];
-	        this.args = source["args"];
-	        this.pythonEnv = source["pythonEnv"];
-	    }
-	}
 	export class RustOfficialRelease {
 	    version: string;
 	    stable: boolean;
@@ -1124,6 +860,290 @@ export namespace main {
 	        this.version = source["version"];
 	        this.stable = source["stable"];
 	        this.date = source["date"];
+	    }
+	}
+
+}
+
+export namespace shared {
+	
+	export class ArtifactBatchEstimate {
+	    totalCount: number;
+	    cachedCount: number;
+	    buildCount: number;
+	    invalidCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchEstimate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalCount = source["totalCount"];
+	        this.cachedCount = source["cachedCount"];
+	        this.buildCount = source["buildCount"];
+	        this.invalidCount = source["invalidCount"];
+	    }
+	}
+	export class ArtifactBatchItemResult {
+	    key: string;
+	    toolId: string;
+	    toolName: string;
+	    kind: string;
+	    targetOS: string;
+	    targetArch: string;
+	    status: string;
+	    message: string;
+	    outputPath?: string;
+	    cacheHit: boolean;
+	    startedAt: number;
+	    endedAt?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchItemResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.kind = source["kind"];
+	        this.targetOS = source["targetOS"];
+	        this.targetArch = source["targetArch"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.outputPath = source["outputPath"];
+	        this.cacheHit = source["cacheHit"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	    }
+	}
+	export class ArtifactBatchSelection {
+	    toolId: string;
+	    targetOS: string;
+	    targetArch: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toolId = source["toolId"];
+	        this.targetOS = source["targetOS"];
+	        this.targetArch = source["targetArch"];
+	    }
+	}
+	export class ArtifactBatchRequest {
+	    mode: string;
+	    exportRootDir?: string;
+	    concurrency: number;
+	    skipUnchanged: boolean;
+	    preferCache: boolean;
+	    forceRebuild: boolean;
+	    continueOnError: boolean;
+	    items: ArtifactBatchSelection[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.exportRootDir = source["exportRootDir"];
+	        this.concurrency = source["concurrency"];
+	        this.skipUnchanged = source["skipUnchanged"];
+	        this.preferCache = source["preferCache"];
+	        this.forceRebuild = source["forceRebuild"];
+	        this.continueOnError = source["continueOnError"];
+	        this.items = this.convertValues(source["items"], ArtifactBatchSelection);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ArtifactBatchTask {
+	    id: string;
+	    mode: string;
+	    status: string;
+	    exportRootDir?: string;
+	    concurrency: number;
+	    skipUnchanged: boolean;
+	    preferCache: boolean;
+	    forceRebuild: boolean;
+	    continueOnError: boolean;
+	    totalCount: number;
+	    successCount: number;
+	    errorCount: number;
+	    cachedCount: number;
+	    skippedCount: number;
+	    startedAt: number;
+	    endedAt?: number;
+	    currentItem?: string;
+	    exitMessage?: string;
+	    items: ArtifactBatchItemResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ArtifactBatchTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.mode = source["mode"];
+	        this.status = source["status"];
+	        this.exportRootDir = source["exportRootDir"];
+	        this.concurrency = source["concurrency"];
+	        this.skipUnchanged = source["skipUnchanged"];
+	        this.preferCache = source["preferCache"];
+	        this.forceRebuild = source["forceRebuild"];
+	        this.continueOnError = source["continueOnError"];
+	        this.totalCount = source["totalCount"];
+	        this.successCount = source["successCount"];
+	        this.errorCount = source["errorCount"];
+	        this.cachedCount = source["cachedCount"];
+	        this.skippedCount = source["skippedCount"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.currentItem = source["currentItem"];
+	        this.exitMessage = source["exitMessage"];
+	        this.items = this.convertValues(source["items"], ArtifactBatchItemResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DownloadTask {
+	    id: string;
+	    sourceTaskId: string;
+	    toolId: string;
+	    toolName: string;
+	    status: string;
+	    remoteResultPath: string;
+	    remoteResultKind: string;
+	    localPath?: string;
+	    directory?: string;
+	    message?: string;
+	    downloadedBytes: number;
+	    totalBytes: number;
+	    progressPercent: number;
+	    startedAt: number;
+	    endedAt?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sourceTaskId = source["sourceTaskId"];
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.status = source["status"];
+	        this.remoteResultPath = source["remoteResultPath"];
+	        this.remoteResultKind = source["remoteResultKind"];
+	        this.localPath = source["localPath"];
+	        this.directory = source["directory"];
+	        this.message = source["message"];
+	        this.downloadedBytes = source["downloadedBytes"];
+	        this.totalBytes = source["totalBytes"];
+	        this.progressPercent = source["progressPercent"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	    }
+	}
+	export class ExecutionRequest {
+	    toolId: string;
+	    args: string;
+	    pythonEnv: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExecutionRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.toolId = source["toolId"];
+	        this.args = source["args"];
+	        this.pythonEnv = source["pythonEnv"];
+	    }
+	}
+	export class ExecutionTask {
+	    id: string;
+	    toolId: string;
+	    toolName: string;
+	    status: string;
+	    target: string;
+	    remoteConnId?: string;
+	    args: string;
+	    pythonEnv?: string;
+	    usage: string;
+	    startedAt: number;
+	    endedAt?: number;
+	    exitMessage?: string;
+	    remoteResultStatus?: string;
+	    remoteResultPath?: string;
+	    remoteResultKind?: string;
+	    remoteResultMessage?: string;
+	    remoteResultDownloadedPath?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExecutionTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.status = source["status"];
+	        this.target = source["target"];
+	        this.remoteConnId = source["remoteConnId"];
+	        this.args = source["args"];
+	        this.pythonEnv = source["pythonEnv"];
+	        this.usage = source["usage"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.exitMessage = source["exitMessage"];
+	        this.remoteResultStatus = source["remoteResultStatus"];
+	        this.remoteResultPath = source["remoteResultPath"];
+	        this.remoteResultKind = source["remoteResultKind"];
+	        this.remoteResultMessage = source["remoteResultMessage"];
+	        this.remoteResultDownloadedPath = source["remoteResultDownloadedPath"];
 	    }
 	}
 

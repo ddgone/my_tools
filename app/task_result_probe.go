@@ -17,6 +17,13 @@ type remoteResultHint struct {
 	Kind string
 }
 
+type remoteResultProbe struct {
+	Status  string
+	Path    string
+	Kind    string
+	Message string
+}
+
 func resolveRemoteResultHint(params []toolspec.ParameterSpec, rawArgs string, remoteWorkDir string) (remoteResultHint, error) {
 	outputParam, ok := findLikelyOutputParam(params)
 	if !ok {
