@@ -33,15 +33,15 @@ type RustToolchainTask struct {
 }
 
 func (a *App) getRustToolchainTaskState() *RustToolchainTask {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return cloneRustToolchainTask(a.rustTask)
+	a.state.Mu.RLock()
+	defer a.state.Mu.RUnlock()
+	return cloneRustToolchainTask(a.state.RustTask)
 }
 
 func (a *App) cancelRustToolchainTask() error {
-	a.mu.Lock()
-	cancel := a.rustCancel
-	a.mu.Unlock()
+	a.state.Mu.Lock()
+	cancel := a.state.RustCancel
+	a.state.Mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
@@ -50,10 +50,10 @@ func (a *App) cancelRustToolchainTask() error {
 }
 
 func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*RustToolchainTask, error) {
-	a.mu.Lock()
-	if a.rustTask != nil && a.rustTask.Status == "running" {
-		task := cloneRustToolchainTask(a.rustTask)
-		a.mu.Unlock()
+	a.state.Mu.Lock()
+	if a.state.RustTask != nil && a.state.RustTask.Status == "running" {
+		task := cloneRustToolchainTask(a.state.RustTask)
+		a.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,10 +74,10 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 		Directory:       strings.TrimSpace(req.Directory),
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.rustTask = task
-	a.rustCancel = cancel
+	a.state.RustTask = task
+	a.state.RustCancel = cancel
 	copyTask := cloneRustToolchainTask(task)
-	a.mu.Unlock()
+	a.state.Mu.Unlock()
 	a.emitRustToolchainTask(copyTask)
 
 	go func() {
@@ -147,10 +147,10 @@ func (a *App) startInstallRustToolchainTask(req InstallRustToolchainRequest) (*R
 }
 
 func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, error) {
-	a.mu.Lock()
-	if a.rustTask != nil && a.rustTask.Status == "running" {
-		task := cloneRustToolchainTask(a.rustTask)
-		a.mu.Unlock()
+	a.state.Mu.Lock()
+	if a.state.RustTask != nil && a.state.RustTask.Status == "running" {
+		task := cloneRustToolchainTask(a.state.RustTask)
+		a.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -161,10 +161,10 @@ func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, e
 		ProgressPercent: 0,
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.rustTask = task
-	a.rustCancel = cancel
+	a.state.RustTask = task
+	a.state.RustCancel = cancel
 	copyTask := cloneRustToolchainTask(task)
-	a.mu.Unlock()
+	a.state.Mu.Unlock()
 	a.emitRustToolchainTask(copyTask)
 
 	go func() {
@@ -224,55 +224,55 @@ func (a *App) startInstallRustCapabilityTask(kind string) (*RustToolchainTask, e
 }
 
 func (a *App) updateRustToolchainTask(update func(task *RustToolchainTask)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.rustTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.RustTask == nil {
 		return
 	}
-	update(a.rustTask)
-	a.rustTask.UpdatedAt = time.Now().UnixMilli()
+	update(a.state.RustTask)
+	a.state.RustTask.UpdatedAt = time.Now().UnixMilli()
 	a.emitRustToolchainTaskLocked()
 }
 
 func (a *App) finishRustToolchainTask(status string, message string, err error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.rustTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.RustTask == nil {
 		return
 	}
-	a.rustTask.Status = status
-	a.rustTask.Message = message
-	a.rustTask.ProgressPercent = clampRustProgressForStatus(a.rustTask.ProgressPercent, status)
-	a.rustTask.TransferSpeed = ""
-	a.rustTask.UpdatedAt = time.Now().UnixMilli()
+	a.state.RustTask.Status = status
+	a.state.RustTask.Message = message
+	a.state.RustTask.ProgressPercent = clampRustProgressForStatus(a.state.RustTask.ProgressPercent, status)
+	a.state.RustTask.TransferSpeed = ""
+	a.state.RustTask.UpdatedAt = time.Now().UnixMilli()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		classifiedMessage, classifiedDetail := toolchain.DescribeRustInstallError(err)
 		if strings.TrimSpace(message) == "" || strings.TrimSpace(message) == "Rust 交叉编译环境安装任务失败" {
-			a.rustTask.Message = classifiedMessage
+			a.state.RustTask.Message = classifiedMessage
 		}
-		a.rustTask.Detail = ""
-		a.rustTask.Error = classifiedDetail
-		if a.rustTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.rustTask.Message) {
-			a.rustTask.Error = strings.TrimSpace(err.Error())
+		a.state.RustTask.Detail = ""
+		a.state.RustTask.Error = classifiedDetail
+		if a.state.RustTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.state.RustTask.Message) {
+			a.state.RustTask.Error = strings.TrimSpace(err.Error())
 		}
 	}
 	if errors.Is(err, context.Canceled) {
-		a.rustTask.Detail = ""
-		a.rustTask.Error = ""
+		a.state.RustTask.Detail = ""
+		a.state.RustTask.Error = ""
 	}
-	a.rustCancel = nil
+	a.state.RustCancel = nil
 	a.emitRustToolchainTaskLocked()
 }
 
 func (a *App) emitRustToolchainTask(task *RustToolchainTask) {
-	if task == nil || a.ctx == nil {
+	if task == nil || a.state.Ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.ctx, "rust:toolchain:task", task)
+	wailsruntime.EventsEmit(a.state.Ctx, "rust:toolchain:task", task)
 }
 
 func (a *App) emitRustToolchainTaskLocked() {
-	a.emitRustToolchainTask(cloneRustToolchainTask(a.rustTask))
+	a.emitRustToolchainTask(cloneRustToolchainTask(a.state.RustTask))
 }
 
 func cloneRustToolchainTask(task *RustToolchainTask) *RustToolchainTask {

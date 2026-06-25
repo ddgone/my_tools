@@ -67,25 +67,3 @@ type ArtifactBatchEstimate struct {
 	BuildCount   int `json:"buildCount"`
 	InvalidCount int `json:"invalidCount"`
 }
-
-func (a *App) StartArtifactBatch(req ArtifactBatchRequest) (*ArtifactBatchTask, error) {
-	if err := a.ensureTooling(); err != nil {
-		return nil, err
-	}
-	resolved, task, err := a.prepareArtifactBatch(req)
-	if err != nil {
-		return nil, err
-	}
-
-	a.mu.Lock()
-	a.artifactTasks[task.ID] = task
-	a.trimArtifactBatchTasksLocked()
-	a.persistArtifactBatchTasksLocked()
-	snapshot := cloneArtifactTask(task)
-	a.mu.Unlock()
-	a.emitArtifactTaskUpdate(snapshot)
-
-	go a.runArtifactBatch(task.ID, resolved)
-
-	return snapshot, nil
-}

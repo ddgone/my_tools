@@ -5,12 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
-	"sync"
-
-	"fire-salamander-desktop/internal/runtimeenv"
 
 	"my_tools/libs/core/toolspec"
 
@@ -18,21 +14,13 @@ import (
 )
 
 type App struct {
-	ctx           context.Context
-	mu            sync.RWMutex
-	pyTools       map[string]*pythonToolEntry
-	manifests     map[string]toolspec.ToolManifest
-	tasks         map[string]*ExecutionTask
-	downloadTasks map[string]*DownloadTask
-	artifactTasks map[string]*ArtifactBatchTask
-	cancels       map[string]context.CancelFunc
-	pythonTask    *PythonToolchainTask
-	pythonCancel  context.CancelFunc
-	goTask        *GoToolchainTask
-	goCancel      context.CancelFunc
-	rustTask      *RustToolchainTask
-	rustCancel    context.CancelFunc
-	sshStore      *ssh.Store
+	state     *SharedState
+	dialog    *DialogManager
+	window    *WindowManager
+	export    *ExportManager
+	task      *TaskResultManager
+	execution *ExecutionManager
+	artifact  *ArtifactBatchManager
 }
 
 type WindowState struct {
@@ -136,60 +124,54 @@ const defaultAppConfigJSON = `{
 `
 
 func NewApp() *App {
+	state := NewSharedState()
+	dialog := NewDialogManager(state)
+	exportMgr := NewExportManager(state, dialog)
+	taskMgr := NewTaskResultManager(state, dialog, exportMgr)
 	return &App{
-		pyTools:       map[string]*pythonToolEntry{},
-		manifests:     map[string]toolspec.ToolManifest{},
-		tasks:         map[string]*ExecutionTask{},
-		downloadTasks: map[string]*DownloadTask{},
-		artifactTasks: map[string]*ArtifactBatchTask{},
-		cancels:       map[string]context.CancelFunc{},
-		sshStore:      ssh.NewStore(),
+		state:     state,
+		dialog:    dialog,
+		window:    NewWindowManager(state),
+		export:    exportMgr,
+		task:      taskMgr,
+		execution: NewExecutionManager(state, taskMgr),
+		artifact:  NewArtifactBatchManager(state),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-	_ = a.ensureTooling()
-	_ = a.sshStore.LoadConfig()
+	a.state.Ctx = ctx
+	_ = ensureTooling(a.state)
+	_ = a.state.SSHStore.LoadConfig()
 	_ = a.loadArtifactBatchTasks()
 }
 
+func (a *App) domReady(ctx context.Context) {
+	a.window.DomReady(ctx)
+}
+
+func (a *App) beforeClose(ctx context.Context) bool {
+	return a.window.BeforeClose(ctx)
+}
+
 func (a *App) GetWindowConfig() WindowState {
-	return a.loadWindowConfig()
+	return a.window.GetWindowConfig()
 }
 
 func (a *App) SaveWindowState(state WindowState) error {
-	return a.writeWindowConfig(state)
+	return a.window.SaveWindowState(state)
 }
 
 func (a *App) GetCurrentWindowState() (WindowState, error) {
-	return a.currentWindowState()
+	return a.window.GetCurrentWindowState()
 }
 
 func (a *App) PersistCurrentWindowState() error {
-	return a.persistCurrentWindowState()
+	return a.window.PersistCurrentWindowState()
 }
 
 func (a *App) IsWindowRectVisible(x, y, width, height int) bool {
-	return isWindowRectVisible(x, y, width, height)
-}
-
-func (a *App) loadWindowConfig() WindowState {
-	layout, err := runtimeenv.ResolveLayout()
-	if err != nil {
-		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
-	}
-	data, err := os.ReadFile(filepath.Join(layout.ConfigDir(), "app.json"))
-	if err != nil {
-		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
-	}
-	var cfg struct {
-		Window WindowState `json:"window"`
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return WindowState{Width: 0, Height: 0, X: -1, Y: -1}
-	}
-	return cfg.Window
+	return a.window.IsWindowRectVisible(x, y, width, height)
 }
 
 func defaultConfigDocument() map[string]json.RawMessage {
@@ -216,38 +198,6 @@ func loadConfigDocument(configPath string) (map[string]json.RawMessage, error) {
 	return cfg, nil
 }
 
-func (a *App) writeWindowConfig(state WindowState) error {
-	layout, err := runtimeenv.ResolveLayout()
-	if err != nil {
-		return fmt.Errorf("解析运行时目录失败: %w", err)
-	}
-	if err := os.MkdirAll(layout.ConfigDir(), 0755); err != nil {
-		return fmt.Errorf("创建配置目录失败: %w", err)
-	}
-	configPath := filepath.Join(layout.ConfigDir(), "app.json")
-
-	cfg, err := loadConfigDocument(configPath)
-	if err != nil {
-		return err
-	}
-
-	windowData, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("序列化窗口状态失败: %w", err)
-	}
-	cfg["window"] = windowData
-
-	out, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("格式化配置文件失败: %w", err)
-	}
-
-	if err := os.WriteFile(configPath, out, 0644); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
-	}
-	return nil
-}
-
 type WorkbenchBootstrap struct {
 	AppTitle         string                  `json:"appTitle"`
 	Platform         string                  `json:"platform"`
@@ -259,12 +209,12 @@ type WorkbenchBootstrap struct {
 }
 
 func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
-	if err := a.ensureTooling(); err != nil {
+	if err := ensureTooling(a.state); err != nil {
 		return nil, err
 	}
 
-	tools := make([]toolspec.ToolManifest, 0, len(a.manifests))
-	for _, tool := range a.manifests {
+	tools := make([]toolspec.ToolManifest, 0, len(a.state.Manifests))
+	for _, tool := range a.state.Manifests {
 		tools = append(tools, tool)
 	}
 	sort.Slice(tools, func(i, j int) bool {
@@ -308,44 +258,20 @@ func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
 	}, nil
 }
 
-func (a *App) ensureTooling() error {
-	toolInitOnce.Do(func() {
-		pyTools := loadPythonTools()
-		manifests, err := loadToolManifests()
-		if err != nil {
-			cachedToolingErr = err
-			return
-		}
-		cachedPyTools = pyTools
-		cachedManifests = manifests
-	})
-
-	if cachedToolingErr != nil {
-		return cachedToolingErr
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.pyTools = cachedPyTools
-	a.manifests = cachedManifests
-
-	return nil
-}
-
 func (a *App) ListSSHConnections() []*ssh.Connection {
-	return a.sshStore.List()
+	return a.state.SSHStore.List()
 }
 
 func (a *App) GetSSHConnection(id string) (*ssh.Connection, error) {
-	return a.sshStore.GetCredentials(id)
+	return a.state.SSHStore.GetCredentials(id)
 }
 
 func (a *App) SaveSSHConnection(conn ssh.Connection) (ssh.Connection, error) {
-	id, err := a.sshStore.Save(conn)
+	id, err := a.state.SSHStore.Save(conn)
 	if err != nil {
 		return ssh.Connection{}, err
 	}
-	saved, err := a.sshStore.GetCredentials(id)
+	saved, err := a.state.SSHStore.GetCredentials(id)
 	if err != nil {
 		return ssh.Connection{}, err
 	}
@@ -353,15 +279,15 @@ func (a *App) SaveSSHConnection(conn ssh.Connection) (ssh.Connection, error) {
 }
 
 func (a *App) DeleteSSHConnection(id string) error {
-	return a.sshStore.Delete(id)
+	return a.state.SSHStore.Delete(id)
 }
 
 func (a *App) UpdateSSHConnection(id string, conn ssh.Connection) error {
-	return a.sshStore.Update(id, conn)
+	return a.state.SSHStore.Update(id, conn)
 }
 
 func (a *App) TestSSHConnection(id string) ssh.TestResult {
-	creds, err := a.sshStore.GetCredentials(id)
+	creds, err := a.state.SSHStore.GetCredentials(id)
 	if err != nil {
 		return ssh.TestResult{Success: false, Message: err.Error()}
 	}
@@ -372,7 +298,7 @@ func (a *App) TestSSHConnection(id string) ssh.TestResult {
 	result := ssh.TestConnection(creds.Host, creds.Port, creds.User, creds.Password, creds.KeyPath, verifier)
 	if result.Success && verifier.Accepted != "" && creds.HostKeyFingerprint != verifier.Accepted {
 		creds.HostKeyFingerprint = verifier.Accepted
-		if err := a.sshStore.Update(id, *creds); err != nil {
+		if err := a.state.SSHStore.Update(id, *creds); err != nil {
 			result.Message += " (注意: 主机指纹保存失败)"
 		}
 	}
@@ -388,4 +314,18 @@ func (a *App) TestSSHConnectionRaw(host string, port int, user, password, keyPat
 	}
 	verifier := ssh.NewHostKeyVerifier("")
 	return ssh.TestConnection(host, port, user, password, keyPath, verifier)
+}
+
+// Dialog delegates
+
+func (a *App) OpenFileDialog(req FileDialogRequest) (string, error) {
+	return a.dialog.OpenFileDialog(req)
+}
+
+func (a *App) OpenSaveFileDialog(req FileDialogRequest) (string, error) {
+	return a.dialog.OpenSaveFileDialog(req)
+}
+
+func (a *App) SaveTextFile(path string, content string) error {
+	return a.dialog.SaveTextFile(path, content)
 }

@@ -27,9 +27,9 @@ type PythonToolchainTask struct {
 }
 
 func (a *App) getPythonToolchainTaskState() *PythonToolchainTask {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return clonePythonToolchainTask(a.pythonTask)
+	a.state.Mu.RLock()
+	defer a.state.Mu.RUnlock()
+	return clonePythonToolchainTask(a.state.PythonTask)
 }
 
 func (a *App) startPreparePythonToolchainTask() (*PythonToolchainTask, error) {
@@ -41,9 +41,9 @@ func (a *App) startInstallPythonDependenciesTask() (*PythonToolchainTask, error)
 }
 
 func (a *App) cancelPythonToolchainTask() error {
-	a.mu.Lock()
-	cancel := a.pythonCancel
-	a.mu.Unlock()
+	a.state.Mu.Lock()
+	cancel := a.state.PythonCancel
+	a.state.Mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
@@ -52,10 +52,10 @@ func (a *App) cancelPythonToolchainTask() error {
 }
 
 func (a *App) startPythonToolchainTask(kind toolchain.PythonOperationKind) (*PythonToolchainTask, error) {
-	a.mu.Lock()
-	if a.pythonTask != nil && a.pythonTask.Status == "running" {
-		task := clonePythonToolchainTask(a.pythonTask)
-		a.mu.Unlock()
+	a.state.Mu.Lock()
+	if a.state.PythonTask != nil && a.state.PythonTask.Status == "running" {
+		task := clonePythonToolchainTask(a.state.PythonTask)
+		a.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,10 +66,10 @@ func (a *App) startPythonToolchainTask(kind toolchain.PythonOperationKind) (*Pyt
 		ProgressPercent: 0,
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.pythonTask = task
-	a.pythonCancel = cancel
+	a.state.PythonTask = task
+	a.state.PythonCancel = cancel
 	copyTask := clonePythonToolchainTask(task)
-	a.mu.Unlock()
+	a.state.Mu.Unlock()
 	a.emitPythonToolchainTask(copyTask)
 
 	go func() {
@@ -112,46 +112,46 @@ func (a *App) startPythonToolchainTask(kind toolchain.PythonOperationKind) (*Pyt
 }
 
 func (a *App) updatePythonToolchainTask(update func(task *PythonToolchainTask)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pythonTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.PythonTask == nil {
 		return
 	}
-	update(a.pythonTask)
-	a.pythonTask.UpdatedAt = time.Now().UnixMilli()
+	update(a.state.PythonTask)
+	a.state.PythonTask.UpdatedAt = time.Now().UnixMilli()
 	a.emitPythonToolchainTaskLocked()
 }
 
 func (a *App) finishPythonToolchainTask(status string, message string, err error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.pythonTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.PythonTask == nil {
 		return
 	}
-	a.pythonTask.Status = status
-	a.pythonTask.Message = message
-	a.pythonTask.ProgressPercent = clampPythonProgressForStatus(a.pythonTask.ProgressPercent, status)
-	a.pythonTask.UpdatedAt = time.Now().UnixMilli()
+	a.state.PythonTask.Status = status
+	a.state.PythonTask.Message = message
+	a.state.PythonTask.ProgressPercent = clampPythonProgressForStatus(a.state.PythonTask.ProgressPercent, status)
+	a.state.PythonTask.UpdatedAt = time.Now().UnixMilli()
 	if err != nil && !errors.Is(err, context.Canceled) {
-		a.pythonTask.Error = err.Error()
-		a.pythonTask.Detail = err.Error()
+		a.state.PythonTask.Error = err.Error()
+		a.state.PythonTask.Detail = err.Error()
 	}
 	if errors.Is(err, context.Canceled) {
-		a.pythonTask.Error = ""
+		a.state.PythonTask.Error = ""
 	}
-	a.pythonCancel = nil
+	a.state.PythonCancel = nil
 	a.emitPythonToolchainTaskLocked()
 }
 
 func (a *App) emitPythonToolchainTask(task *PythonToolchainTask) {
-	if task == nil || a.ctx == nil {
+	if task == nil || a.state.Ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.ctx, "python:toolchain:task", task)
+	wailsruntime.EventsEmit(a.state.Ctx, "python:toolchain:task", task)
 }
 
 func (a *App) emitPythonToolchainTaskLocked() {
-	a.emitPythonToolchainTask(clonePythonToolchainTask(a.pythonTask))
+	a.emitPythonToolchainTask(clonePythonToolchainTask(a.state.PythonTask))
 }
 
 func clonePythonToolchainTask(task *PythonToolchainTask) *PythonToolchainTask {

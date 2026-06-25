@@ -31,15 +31,15 @@ type GoToolchainTask struct {
 }
 
 func (a *App) getGoToolchainTaskState() *GoToolchainTask {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return cloneGoToolchainTask(a.goTask)
+	a.state.Mu.RLock()
+	defer a.state.Mu.RUnlock()
+	return cloneGoToolchainTask(a.state.GoTask)
 }
 
 func (a *App) cancelGoToolchainTask() error {
-	a.mu.Lock()
-	cancel := a.goCancel
-	a.mu.Unlock()
+	a.state.Mu.Lock()
+	cancel := a.state.GoCancel
+	a.state.Mu.Unlock()
 	if cancel == nil {
 		return nil
 	}
@@ -48,10 +48,10 @@ func (a *App) cancelGoToolchainTask() error {
 }
 
 func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToolchainTask, error) {
-	a.mu.Lock()
-	if a.goTask != nil && a.goTask.Status == "running" {
-		task := cloneGoToolchainTask(a.goTask)
-		a.mu.Unlock()
+	a.state.Mu.Lock()
+	if a.state.GoTask != nil && a.state.GoTask.Status == "running" {
+		task := cloneGoToolchainTask(a.state.GoTask)
+		a.state.Mu.Unlock()
 		return task, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -64,10 +64,10 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 		Directory:       strings.TrimSpace(req.Directory),
 		UpdatedAt:       time.Now().UnixMilli(),
 	}
-	a.goTask = task
-	a.goCancel = cancel
+	a.state.GoTask = task
+	a.state.GoCancel = cancel
 	copyTask := cloneGoToolchainTask(task)
-	a.mu.Unlock()
+	a.state.Mu.Unlock()
 	a.emitGoToolchainTask(copyTask)
 
 	go func() {
@@ -121,55 +121,55 @@ func (a *App) startInstallGoToolchainTask(req InstallGoToolchainRequest) (*GoToo
 }
 
 func (a *App) updateGoToolchainTask(update func(task *GoToolchainTask)) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.goTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.GoTask == nil {
 		return
 	}
-	update(a.goTask)
-	a.goTask.UpdatedAt = time.Now().UnixMilli()
+	update(a.state.GoTask)
+	a.state.GoTask.UpdatedAt = time.Now().UnixMilli()
 	a.emitGoToolchainTaskLocked()
 }
 
 func (a *App) finishGoToolchainTask(status string, message string, err error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.goTask == nil {
+	a.state.Mu.Lock()
+	defer a.state.Mu.Unlock()
+	if a.state.GoTask == nil {
 		return
 	}
-	a.goTask.Status = status
-	a.goTask.Message = message
-	a.goTask.ProgressPercent = clampGoProgressForStatus(a.goTask.ProgressPercent, status)
-	a.goTask.TransferSpeed = ""
-	a.goTask.UpdatedAt = time.Now().UnixMilli()
+	a.state.GoTask.Status = status
+	a.state.GoTask.Message = message
+	a.state.GoTask.ProgressPercent = clampGoProgressForStatus(a.state.GoTask.ProgressPercent, status)
+	a.state.GoTask.TransferSpeed = ""
+	a.state.GoTask.UpdatedAt = time.Now().UnixMilli()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		classifiedMessage, classifiedDetail := toolchain.DescribeGoInstallError(err)
 		if strings.TrimSpace(message) == "" || strings.TrimSpace(message) == "Go SDK 下载任务失败" {
-			a.goTask.Message = classifiedMessage
+			a.state.GoTask.Message = classifiedMessage
 		}
-		a.goTask.Detail = ""
-		a.goTask.Error = classifiedDetail
-		if a.goTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.goTask.Message) {
-			a.goTask.Error = strings.TrimSpace(err.Error())
+		a.state.GoTask.Detail = ""
+		a.state.GoTask.Error = classifiedDetail
+		if a.state.GoTask.Error == "" && strings.TrimSpace(err.Error()) != strings.TrimSpace(a.state.GoTask.Message) {
+			a.state.GoTask.Error = strings.TrimSpace(err.Error())
 		}
 	}
 	if errors.Is(err, context.Canceled) {
-		a.goTask.Detail = ""
-		a.goTask.Error = ""
+		a.state.GoTask.Detail = ""
+		a.state.GoTask.Error = ""
 	}
-	a.goCancel = nil
+	a.state.GoCancel = nil
 	a.emitGoToolchainTaskLocked()
 }
 
 func (a *App) emitGoToolchainTask(task *GoToolchainTask) {
-	if task == nil || a.ctx == nil {
+	if task == nil || a.state.Ctx == nil {
 		return
 	}
-	wailsruntime.EventsEmit(a.ctx, "go:toolchain:task", task)
+	wailsruntime.EventsEmit(a.state.Ctx, "go:toolchain:task", task)
 }
 
 func (a *App) emitGoToolchainTaskLocked() {
-	a.emitGoToolchainTask(cloneGoToolchainTask(a.goTask))
+	a.emitGoToolchainTask(cloneGoToolchainTask(a.state.GoTask))
 }
 
 func cloneGoToolchainTask(task *GoToolchainTask) *GoToolchainTask {

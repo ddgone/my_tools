@@ -1,69 +1,17 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"fire-salamander-desktop/internal/runtimeenv"
-
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-func (a *App) ListArtifactBatchTasks() []*ArtifactBatchTask {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	tasks := make([]*ArtifactBatchTask, 0, len(a.artifactTasks))
-	for _, task := range a.artifactTasks {
-		tasks = append(tasks, cloneArtifactTask(task))
-	}
-	sort.Slice(tasks, func(i, j int) bool {
-		return tasks[i].StartedAt > tasks[j].StartedAt
-	})
-	return tasks
-}
-
-func (a *App) ClearArtifactBatchTasks() error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	for _, task := range a.artifactTasks {
-		if task != nil && task.Status == "running" {
-			return fmt.Errorf("存在进行中的产物任务，暂时无法清空")
-		}
-	}
-
-	a.artifactTasks = map[string]*ArtifactBatchTask{}
-	a.persistArtifactBatchTasksLocked()
-	return nil
-}
-
-func (a *App) emitArtifactTaskUpdate(task *ArtifactBatchTask) {
-	if task == nil || a.ctx == nil {
-		return
-	}
-	wailsruntime.EventsEmit(a.ctx, "artifact:task:update", task)
-}
-
-func (a *App) trimArtifactBatchTasksLocked() {
-	if len(a.artifactTasks) <= maxArtifactBatchTaskHistory {
-		return
-	}
-	tasks := make([]*ArtifactBatchTask, 0, len(a.artifactTasks))
-	for _, task := range a.artifactTasks {
-		tasks = append(tasks, task)
-	}
-	sort.Slice(tasks, func(i, j int) bool {
-		return tasks[i].StartedAt > tasks[j].StartedAt
-	})
-	for _, task := range tasks[maxArtifactBatchTaskHistory:] {
-		delete(a.artifactTasks, task.ID)
-	}
-}
 
 func artifactBatchTasksFilePath(layout runtimeenv.Layout) string {
 	return filepath.Join(layout.ConfigDir(), artifactBatchTasksFileName)
@@ -119,39 +67,41 @@ func normalizePersistedArtifactTasks(tasks []*ArtifactBatchTask) []*ArtifactBatc
 	return normalized
 }
 
-func (a *App) loadArtifactBatchTasks() error {
-	layout, err := runtimeenv.ResolveLayout()
+func sameArtifactFile(targetPath string, cachePath string) (bool, error) {
+	targetPath = strings.TrimSpace(targetPath)
+	cachePath = strings.TrimSpace(cachePath)
+	if targetPath == "" || cachePath == "" {
+		return false, nil
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	targetDigest, err := digestFile(targetPath)
 	if err != nil {
-		return fmt.Errorf("解析运行时目录失败: %w", err)
+		return false, err
 	}
-	if err := layout.Ensure(); err != nil {
-		return fmt.Errorf("准备运行时目录失败: %w", err)
-	}
-	tasks, err := loadArtifactBatchTasksFile(artifactBatchTasksFilePath(layout))
+	cacheDigest, err := digestFile(cachePath)
 	if err != nil {
-		return err
+		return false, err
 	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.artifactTasks = make(map[string]*ArtifactBatchTask, len(tasks))
-	for _, task := range tasks {
-		a.artifactTasks[task.ID] = task
-	}
-	return nil
+	return targetDigest == cacheDigest, nil
 }
 
-func (a *App) persistArtifactBatchTasksLocked() {
-	layout, err := runtimeenv.ResolveLayout()
+func digestFile(path string) ([32]byte, error) {
+	var zero [32]byte
+	file, err := os.Open(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "持久化产物任务失败: %v\n", err)
-		return
+		return zero, err
 	}
-	tasks := make([]*ArtifactBatchTask, 0, len(a.artifactTasks))
-	for _, task := range a.artifactTasks {
-		tasks = append(tasks, task)
+	defer file.Close()
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return zero, err
 	}
-	if err := saveArtifactBatchTasksFile(artifactBatchTasksFilePath(layout), tasks); err != nil {
-		fmt.Fprintf(os.Stderr, "持久化产物任务失败: %v\n", err)
-	}
+	var sum [32]byte
+	copy(sum[:], digest.Sum(nil))
+	return sum, nil
 }

@@ -20,7 +20,7 @@ func TestWriteWindowConfigCreatesMissingFile(t *testing.T) {
 		Fullscreen: false,
 	}
 
-	if err := app.writeWindowConfig(state); err != nil {
+	if err := app.window.writeWindowConfig(state); err != nil {
 		t.Fatalf("writeWindowConfig failed: %v", err)
 	}
 
@@ -71,11 +71,11 @@ func TestWriteWindowConfigRepairsInvalidFile(t *testing.T) {
 		Fullscreen: false,
 	}
 
-	if err := app.writeWindowConfig(state); err != nil {
+	if err := app.window.writeWindowConfig(state); err != nil {
 		t.Fatalf("writeWindowConfig failed: %v", err)
 	}
 
-	got := app.loadWindowConfig()
+	got := app.window.loadWindowConfig()
 	if got != state {
 		t.Fatalf("expected repaired config to contain %#v, got %#v", state, got)
 	}

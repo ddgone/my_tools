@@ -51,7 +51,7 @@ func TestArtifactBatchTasksFileRoundTrip(t *testing.T) {
 
 func TestClearArtifactBatchTasksRejectsRunningTask(t *testing.T) {
 	app := NewApp()
-	app.artifactTasks["task_running"] = &ArtifactBatchTask{
+	app.state.ArtifactTasks["task_running"] = &ArtifactBatchTask{
 		ID:        "task_running",
 		Status:    "running",
 		StartedAt: 1,

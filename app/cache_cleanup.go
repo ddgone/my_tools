@@ -31,7 +31,7 @@ type CacheCleanupResult struct {
 
 // GetCacheInfo 返回当前缓存目录的统计信息。
 func (a *App) GetCacheInfo() (CacheInfo, error) {
-	if err := a.ensureTooling(); err != nil {
+	if err := ensureTooling(a.state); err != nil {
 		return CacheInfo{}, err
 	}
 
@@ -40,12 +40,12 @@ func (a *App) GetCacheInfo() (CacheInfo, error) {
 		return CacheInfo{}, fmt.Errorf("解析运行时目录失败: %w", err)
 	}
 
-	a.mu.RLock()
-	validIDs := make(map[string]struct{}, len(a.manifests))
-	for id := range a.manifests {
+	a.state.Mu.RLock()
+	validIDs := make(map[string]struct{}, len(a.state.Manifests))
+	for id := range a.state.Manifests {
 		validIDs[id] = struct{}{}
 	}
-	a.mu.RUnlock()
+	a.state.Mu.RUnlock()
 
 	cacheDir := layout.CacheDir()
 	entries, err := os.ReadDir(cacheDir)
@@ -98,7 +98,7 @@ func (a *App) GetCacheInfo() (CacheInfo, error) {
 // CleanBuildCache 清理构建缓存。
 // mode: "all" 清理整个 cache 目录, "orphaned" 只清理 manifests 中不存在的工具缓存。
 func (a *App) CleanBuildCache(mode string) (CacheCleanupResult, error) {
-	if err := a.ensureTooling(); err != nil {
+	if err := ensureTooling(a.state); err != nil {
 		return CacheCleanupResult{}, err
 	}
 
@@ -166,12 +166,12 @@ func (a *App) cleanOrphanedCache() (CacheCleanupResult, error) {
 		return CacheCleanupResult{}, fmt.Errorf("读取构建缓存目录失败: %w", err)
 	}
 
-	a.mu.RLock()
-	validIDs := make(map[string]struct{}, len(a.manifests))
-	for id := range a.manifests {
+	a.state.Mu.RLock()
+	validIDs := make(map[string]struct{}, len(a.state.Manifests))
+	for id := range a.state.Manifests {
 		validIDs[id] = struct{}{}
 	}
-	a.mu.RUnlock()
+	a.state.Mu.RUnlock()
 
 	var totalSize int64
 	var removedCount int

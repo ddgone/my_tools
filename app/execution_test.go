@@ -7,15 +7,15 @@ import (
 
 func TestEnsureToolingLoadsPythonTools(t *testing.T) {
 	app := NewApp()
-	if err := app.ensureTooling(); err != nil {
+	if err := ensureTooling(app.state); err != nil {
 		t.Fatalf("ensureTooling failed: %v", err)
 	}
 
-	if len(app.pyTools) < 2 {
-		t.Fatalf("expected at least 2 Python tools, got %d", len(app.pyTools))
+	if len(app.state.PyTools) < 2 {
+		t.Fatalf("expected at least 2 Python tools, got %d", len(app.state.PyTools))
 	}
 
-	if _, ok := app.manifests["geojson_to_shp"]; !ok {
+	if _, ok := app.state.Manifests["geojson_to_shp"]; !ok {
 		t.Fatalf("expected geojson_to_shp manifest to be available")
 	}
 }
