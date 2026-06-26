@@ -1,3 +1,44 @@
+export namespace cachecleanup {
+	
+	export class Info {
+	    totalBytes: number;
+	    totalDirs: number;
+	    orphanedDirs: number;
+	    orphanedBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Info(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalBytes = source["totalBytes"];
+	        this.totalDirs = source["totalDirs"];
+	        this.orphanedDirs = source["orphanedDirs"];
+	        this.orphanedBytes = source["orphanedBytes"];
+	    }
+	}
+	export class Result {
+	    mode: string;
+	    removedDirs: number;
+	    freedBytes: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.removedDirs = source["removedDirs"];
+	        this.freedBytes = source["freedBytes"];
+	        this.message = source["message"];
+	    }
+	}
+
+}
+
 export namespace dialog {
 	
 	export class FileDialogRequest {
@@ -286,42 +327,6 @@ export namespace gosettings {
 
 export namespace main {
 	
-	export class CacheCleanupResult {
-	    mode: string;
-	    removedDirs: number;
-	    freedBytes: number;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheCleanupResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.mode = source["mode"];
-	        this.removedDirs = source["removedDirs"];
-	        this.freedBytes = source["freedBytes"];
-	        this.message = source["message"];
-	    }
-	}
-	export class CacheInfo {
-	    totalBytes: number;
-	    totalDirs: number;
-	    orphanedDirs: number;
-	    orphanedBytes: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new CacheInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.totalBytes = source["totalBytes"];
-	        this.totalDirs = source["totalDirs"];
-	        this.orphanedDirs = source["orphanedDirs"];
-	        this.orphanedBytes = source["orphanedBytes"];
-	    }
-	}
 	export class WindowState {
 	    width: number;
 	    height: number;

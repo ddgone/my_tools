@@ -3,9 +3,10 @@
 import {gosettings} from '../models';
 import {pythonsettings} from '../models';
 import {rustsettings} from '../models';
-import {main} from '../models';
+import {cachecleanup} from '../models';
 import {shared} from '../models';
 import {exportpkg} from '../models';
+import {main} from '../models';
 import {ssh} from '../models';
 import {dialog} from '../models';
 import {execution} from '../models';
@@ -24,7 +25,7 @@ export function CheckPythonToolchainEnvironment():Promise<pythonsettings.PythonT
 
 export function CheckRustToolchainEnvironment():Promise<rustsettings.RustToolchainState>;
 
-export function CleanBuildCache(arg1:string):Promise<main.CacheCleanupResult>;
+export function CleanBuildCache(arg1:string):Promise<cachecleanup.Result>;
 
 export function ClearArtifactBatchTasks():Promise<void>;
 
@@ -42,7 +43,7 @@ export function EstimateArtifactBatchCache(arg1:shared.ArtifactBatchRequest):Pro
 
 export function ExportTool(arg1:exportpkg.ExportToolRequest):Promise<exportpkg.ExportToolResult>;
 
-export function GetCacheInfo():Promise<main.CacheInfo>;
+export function GetCacheInfo():Promise<cachecleanup.Info>;
 
 export function GetCurrentWindowState():Promise<main.WindowState>;
 

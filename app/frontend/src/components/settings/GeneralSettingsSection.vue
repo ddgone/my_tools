@@ -14,12 +14,12 @@ import {
 import { TrashOutline } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { CleanBuildCache, GetCacheInfo } from '../../../wailsjs/go/main/App'
-import type { main } from '../../../wailsjs/go/models'
+import type { cachecleanup } from '../../../wailsjs/go/models'
 
 const workspace = useWorkspaceStore()
 const message = useMessage()
 
-const cacheInfo = ref<main.CacheInfo | null>(null)
+const cacheInfo = ref<cachecleanup.Info | null>(null)
 const loadingCacheInfo = ref(false)
 const cleaningCache = ref(false)
 
