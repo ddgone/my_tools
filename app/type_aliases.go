@@ -12,9 +12,8 @@ import (
 	rustsettings "fire-salamander-desktop/internal/toolchainsettings/rust"
 )
 
-// Type aliases — all shared types are defined in internal/shared/.
-// Using type aliases keeps existing code unchanged until each manager
-// gets its own package.
+// Type aliases — all shared types are defined in internal/ packages.
+// Using type aliases keeps Wails-bound method signatures stable.
 
 type (
 	SharedState             = shared.SharedState

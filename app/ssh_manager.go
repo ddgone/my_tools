@@ -31,22 +31,7 @@ func (a *App) UpdateSSHConnection(id string, conn ssh.Connection) error {
 }
 
 func (a *App) TestSSHConnection(id string) ssh.TestResult {
-	creds, err := a.state.SSHStore.GetCredentials(id)
-	if err != nil {
-		return ssh.TestResult{Success: false, Message: err.Error()}
-	}
-	if creds.Password == "" && creds.KeyPath == "" {
-		return ssh.TestResult{Success: false, Message: "连接缺少认证凭据"}
-	}
-	verifier := ssh.NewHostKeyVerifier(creds.HostKeyFingerprint)
-	result := ssh.TestConnection(creds.Host, creds.Port, creds.User, creds.Password, creds.KeyPath, verifier)
-	if result.Success && verifier.Accepted != "" && creds.HostKeyFingerprint != verifier.Accepted {
-		creds.HostKeyFingerprint = verifier.Accepted
-		if err := a.state.SSHStore.Update(id, *creds); err != nil {
-			result.Message += " (注意: 主机指纹保存失败)"
-		}
-	}
-	return result
+	return a.state.SSHStore.TestAndUpdate(id)
 }
 
 func (a *App) TestSSHConnectionRaw(host string, port int, user, password, keyPath string) ssh.TestResult {

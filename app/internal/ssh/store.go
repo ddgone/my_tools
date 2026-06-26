@@ -155,3 +155,28 @@ func (s *Store) GetCredentials(id string) (*Connection, error) {
 	cp := *conn
 	return &cp, nil
 }
+
+// TestAndUpdate 测试连接，并在主机指纹变化时自动更新存储。
+func (s *Store) TestAndUpdate(id string) TestResult {
+	creds, err := s.GetCredentials(id)
+	if err != nil {
+		return TestResult{Success: false, Message: err.Error()}
+	}
+	if creds.Password == "" && creds.KeyPath == "" {
+		return TestResult{Success: false, Message: "连接缺少认证凭据"}
+	}
+	return s.testWithFingerprintUpdate(id, *creds)
+}
+
+func (s *Store) testWithFingerprintUpdate(id string, creds Connection) TestResult {
+	verifier := NewHostKeyVerifier(creds.HostKeyFingerprint)
+	result := TestConnection(creds.Host, creds.Port, creds.User, creds.Password, creds.KeyPath, verifier)
+
+	if result.Success && verifier.Accepted != "" && creds.HostKeyFingerprint != verifier.Accepted {
+		creds.HostKeyFingerprint = verifier.Accepted
+		if err := s.Update(id, creds); err != nil {
+			result.Message += " (注意: 主机指纹保存失败)"
+		}
+	}
+	return result
+}
