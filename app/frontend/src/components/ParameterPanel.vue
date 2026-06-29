@@ -33,7 +33,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   execute: []
-  fileDialog: [param: ParameterSpec, target?: 'file' | 'directory']
+  fileDialog: [param: ParameterSpec, target?: 'file' | 'directory' | 'fileOrDirectory']
 }>()
 
 const workspace = useWorkspaceStore()
@@ -159,13 +159,16 @@ function tabRawArgs(): string {
   return activeConfig.value?.rawArgs ?? ''
 }
 
-function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: string; target: 'file' | 'directory' }> {
-  const fileLabel = param.repeatable ? '加文件' : '选文件'
-  const directoryLabel = param.repeatable ? '加目录' : '选目录'
+function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: string; target: 'file' | 'directory' | 'fileOrDirectory' }> {
+  const fileLabel = param.repeatable ? '添加文件' : '选择文件'
+  const directoryLabel = param.repeatable ? '添加目录' : '选择目录'
   switch (param.pathMode) {
     case 'file':
       return [{ key: 'file', label: fileLabel, target: 'file' }]
     case 'fileOrDirectory':
+      if (props.executionTarget === 'remote') {
+        return [{ key: 'fileOrDirectory', label: '浏览路径', target: 'fileOrDirectory' }]
+      }
       return [
         { key: 'file', label: fileLabel, target: 'file' },
         { key: 'directory', label: directoryLabel, target: 'directory' },

@@ -61,3 +61,34 @@ type testProbeError string
 func (e testProbeError) Error() string {
 	return string(e)
 }
+
+func TestParseRemotePathEntries(t *testing.T) {
+	entries := parseRemotePathEntries(strings.Join([]string{
+		"beta.txt\t/tmp/beta.txt\tfile\tfalse",
+		"z-dir\t/tmp/z-dir\tdirectory\tfalse",
+		"alpha-dir\t/tmp/alpha-dir\tdirectory\ttrue",
+		"",
+	}, "\n"))
+
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	if entries[0].Kind != "directory" || entries[0].Name != "alpha-dir" {
+		t.Fatalf("expected first entry to be alpha-dir directory, got %+v", entries[0])
+	}
+	if !entries[0].IsSymlink {
+		t.Fatalf("expected symlink flag to be preserved, got %+v", entries[0])
+	}
+	if entries[2].Kind != "file" || entries[2].Name != "beta.txt" {
+		t.Fatalf("expected file entry last, got %+v", entries[2])
+	}
+}
+
+func TestNormalizeRemotePath(t *testing.T) {
+	if got := normalizeRemotePath(" /tmp/demo/../file.txt \n"); got != "/tmp/file.txt" {
+		t.Fatalf("unexpected normalized path: %q", got)
+	}
+	if got := normalizeRemotePath("."); got != "" {
+		t.Fatalf("expected dot to collapse to empty, got %q", got)
+	}
+}

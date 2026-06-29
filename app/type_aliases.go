@@ -4,6 +4,7 @@ import (
 	"fire-salamander-desktop/internal/artifact"
 	"fire-salamander-desktop/internal/execution"
 	"fire-salamander-desktop/internal/exportpkg"
+	runtimebridge "fire-salamander-desktop/internal/runtime"
 	"fire-salamander-desktop/internal/shared"
 	"fire-salamander-desktop/internal/taskresult"
 
@@ -32,15 +33,17 @@ type (
 	PythonRunFunc           = shared.PythonRunFunc
 
 	// Moved to internal/ packages.
-	ExecutionManager     = execution.Manager
-	RemoteExecRequest    = execution.RemoteExecRequest
-	TaskLogEvent         = execution.TaskLogEvent
-	ArtifactBatchManager = artifact.Manager
-	ExportManager        = exportpkg.Manager
-	TaskResultManager    = taskresult.Manager
-	ExportToolRequest    = exportpkg.ExportToolRequest
-	ExportToolResult     = exportpkg.ExportToolResult
-	ExportProgressEvent  = exportpkg.ExportProgressEvent
+	ExecutionManager       = execution.Manager
+	RemoteExecRequest      = execution.RemoteExecRequest
+	TaskLogEvent           = execution.TaskLogEvent
+	ArtifactBatchManager   = artifact.Manager
+	ExportManager          = exportpkg.Manager
+	TaskResultManager      = taskresult.Manager
+	RemotePathEntry        = runtimebridge.RemotePathEntry
+	RemotePathBrowseResult = runtimebridge.RemotePathBrowseResult
+	ExportToolRequest      = exportpkg.ExportToolRequest
+	ExportToolResult       = exportpkg.ExportToolResult
+	ExportProgressEvent    = exportpkg.ExportProgressEvent
 
 	// Toolchain settings managers (moved to internal/toolchainsettings/).
 	GoSettingsManager     = gosettings.Manager

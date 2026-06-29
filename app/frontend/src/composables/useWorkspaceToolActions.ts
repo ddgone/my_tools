@@ -28,6 +28,21 @@ function parseExportTarget(value: string) {
   }
 }
 
+function remoteDirectoryOf(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) {
+    return ''
+  }
+  if (normalized === '/') {
+    return '/'
+  }
+  const segments = normalized.split('/').filter(Boolean)
+  if (segments.length <= 1) {
+    return normalized.startsWith('/') ? '/' : normalized
+  }
+  return `/${segments.slice(0, -1).join('/')}`
+}
+
 function isMissingGoEnvError(detail: string) {
   return detail.includes('未检测到可用的 Go 环境')
     || detail.includes('请先在系统设置 > Go 中选择本地 Go 或下载 SDK')
@@ -63,6 +78,11 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
   const exporting = ref(false)
   const downloadingResult = ref(false)
   const exportProgressText = ref('')
+  const remotePathPickerVisible = ref(false)
+  const remotePathPickerParam = ref<ParameterSpec | null>(null)
+  const remotePathPickerTarget = ref<'file' | 'directory' | 'fileOrDirectory'>('directory')
+  const remotePathPickerInitialPath = ref('')
+  const remotePathPickerConnectionId = ref('')
   let disposeExportProgress: (() => void) | null = null
 
   function toolById(id: string): ToolManifest | null {
@@ -247,12 +267,108 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
     }
   }
 
-  async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directory') {
+  function applySelectedPath(param: ParameterSpec, selectedPath: string) {
+    const config = workspace.activeExecutionConfig
+    if (!config) {
+      return
+    }
+
+    if (param.repeatable) {
+      const currentValue = typeof config.formModel[param.key] === 'string' ? String(config.formModel[param.key] || '') : ''
+      const items = currentValue
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+      if (!items.includes(selectedPath)) {
+        items.push(selectedPath)
+      }
+      config.formModel[param.key] = items.join('\n')
+      return
+    }
+
+    config.formModel[param.key] = selectedPath
+  }
+
+  function applySelectedPaths(param: ParameterSpec, selectedPaths: string[]) {
+    const normalized = selectedPaths
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    if (normalized.length === 0) {
+      return
+    }
+    if (normalized.length === 1) {
+      applySelectedPath(param, normalized[0])
+      return
+    }
+    const config = workspace.activeExecutionConfig
+    if (!config) {
+      return
+    }
+    const merged = param.repeatable
+      ? [
+        ...String(config.formModel[param.key] || '')
+          .split(/\r?\n/)
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0),
+        ...normalized,
+      ]
+      : normalized
+    config.formModel[param.key] = [...new Set(merged)].join('\n')
+  }
+
+  function closeRemotePathPicker() {
+    remotePathPickerVisible.value = false
+    remotePathPickerParam.value = null
+    remotePathPickerInitialPath.value = ''
+    remotePathPickerConnectionId.value = ''
+    remotePathPickerTarget.value = 'directory'
+  }
+
+  function handleRemotePathPicked(selections: Array<{ path: string, kind: 'file' | 'directory' }>) {
+    const normalizedSelections = selections
+      .map((item) => ({ path: item.path.trim(), kind: item.kind }))
+      .filter((item) => item.path.length > 0)
+    if (!remotePathPickerParam.value || normalizedSelections.length === 0) {
+      closeRemotePathPicker()
+      return
+    }
+    applySelectedPaths(remotePathPickerParam.value, normalizedSelections.map((item) => item.path))
+    if (workspace.activeTabIndex >= 0) {
+      const lastSelection = normalizedSelections[normalizedSelections.length - 1]
+      const rememberedPath = lastSelection.kind === 'directory'
+        ? lastSelection.path
+        : remoteDirectoryOf(lastSelection.path)
+      workspace.setRemoteBrowsePath(workspace.activeTabIndex, rememberedPath)
+    }
+    closeRemotePathPicker()
+  }
+
+  async function handleFileDialog(param: ParameterSpec, target?: 'file' | 'directory' | 'fileOrDirectory') {
     const tab = workspace.activeToolTab
     const config = workspace.activeExecutionConfig
     if (!tab) return
 
     const dialogTarget = target || (param.pathMode === 'file' ? 'file' : 'directory')
+    if (tab.executionTarget === 'remote') {
+      if (!tab.remoteConfig.connId) {
+        message.error('请选择远程环境后再浏览远端路径')
+        return
+      }
+      remotePathPickerParam.value = param
+      remotePathPickerTarget.value = dialogTarget
+      remotePathPickerConnectionId.value = tab.remoteConfig.connId
+      const currentValue = typeof config?.formModel[param.key] === 'string' ? String(config?.formModel[param.key] || '') : ''
+      const items = currentValue
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+      remotePathPickerInitialPath.value = items.length > 0
+        ? items[items.length - 1]
+        : tab.remoteConfig.lastBrowsePath
+      remotePathPickerVisible.value = true
+      return
+    }
+
     const result = await OpenFileDialog({
       title: `选择 ${param.label}`,
       filterName: '所有文件',
@@ -265,21 +381,7 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
     if (!result || !config) {
       return
     }
-
-    if (param.repeatable) {
-      const currentValue = typeof config.formModel[param.key] === 'string' ? String(config.formModel[param.key] || '') : ''
-      const items = currentValue
-        .split(/\r?\n/)
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0)
-      if (!items.includes(result)) {
-        items.push(result)
-      }
-      config.formModel[param.key] = items.join('\n')
-      return
-    }
-
-    config.formModel[param.key] = result
+    applySelectedPath(param, result)
   }
 
   onMounted(() => {
@@ -306,10 +408,17 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
     exporting,
     downloadingResult,
     exportProgressText,
+    remotePathPickerVisible,
+    remotePathPickerParam,
+    remotePathPickerTarget,
+    remotePathPickerInitialPath,
+    remotePathPickerConnectionId,
     handleExecute,
     handleCancel,
     handleExport,
     handleDownloadResult,
     handleFileDialog,
+    closeRemotePathPicker,
+    handleRemotePathPicked,
   }
 }

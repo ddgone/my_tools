@@ -234,6 +234,22 @@ export interface FileDialogRequest {
   defaultFilename?: string
 }
 
+export interface RemotePathEntry {
+  name: string
+  path: string
+  kind: 'file' | 'directory'
+  isSymlink: boolean
+}
+
+export interface RemotePathBrowseResult {
+  requestedPath: string
+  currentPath: string
+  homePath: string
+  fallback: boolean
+  message?: string
+  entries: RemotePathEntry[]
+}
+
 export interface GoToolchainConfig {
   selectedBinary: string
   knownBinaries: string[]

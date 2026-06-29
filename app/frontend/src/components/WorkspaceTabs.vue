@@ -19,6 +19,7 @@ import BuiltinToolPanel from './BuiltinToolPanel.vue'
 import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
+import RemotePathPickerModal from './RemotePathPickerModal.vue'
 import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
@@ -336,17 +337,30 @@ const {
   exporting,
   downloadingResult,
   exportProgressText,
+    remotePathPickerVisible,
+    remotePathPickerParam,
+    remotePathPickerTarget,
+    remotePathPickerInitialPath,
+    remotePathPickerConnectionId,
   handleExecute,
   handleCancel,
   handleExport,
   handleDownloadResult,
   handleFileDialog,
+    closeRemotePathPicker,
+    handleRemotePathPicked,
 } = useWorkspaceToolActions({
   activeToolId,
   activeTask,
   activeExportTarget,
   activeGoExportMode,
 })
+
+function onRemotePathPickerShowUpdate(value: boolean) {
+  if (!value) {
+    closeRemotePathPicker()
+  }
+}
 
 function onPythonEnvUpdate(value: string) {
   if (workspace.activeTabIndex >= 0) {
@@ -1173,6 +1187,16 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         {{ tooltipText }}
       </div>
     </Teleport>
+
+    <RemotePathPickerModal
+      :show="remotePathPickerVisible"
+      :connection-id="remotePathPickerConnectionId"
+      :param="remotePathPickerParam"
+      :target="remotePathPickerTarget"
+      :initial-path="remotePathPickerInitialPath"
+      @update:show="onRemotePathPickerShowUpdate"
+      @confirm="handleRemotePathPicked"
+    />
   </div>
 </template>
 

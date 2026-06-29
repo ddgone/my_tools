@@ -30,6 +30,7 @@ export interface ToolExecutionConfig {
 
 export interface RemoteExecutionConfig extends ToolExecutionConfig {
   connId: string
+  lastBrowsePath: string
 }
 
 export interface UserSettings {
@@ -232,6 +233,7 @@ function cloneRemoteExecutionConfig(config: RemoteExecutionConfig): RemoteExecut
   return {
     ...cloneExecutionConfig(config),
     connId: config.connId,
+    lastBrowsePath: config.lastBrowsePath,
   }
 }
 
@@ -256,6 +258,7 @@ function createDefaultRemoteExecutionConfig(
   return {
     ...createDefaultExecutionConfig(tool, defaultPythonPath, 'remote'),
     connId: '',
+    lastBrowsePath: '',
   }
 }
 
@@ -286,6 +289,7 @@ function normalizeRemoteExecutionConfig(
   return {
     ...config,
     connId: typeof source?.connId === 'string' ? source.connId : '',
+    lastBrowsePath: typeof source?.lastBrowsePath === 'string' ? source.lastBrowsePath : '',
   }
 }
 
@@ -779,6 +783,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openTabs.value[index].remoteConfig.connId = connId
   }
 
+  function setRemoteBrowsePath(index: number, value: string) {
+    if (index < 0 || index >= openTabs.value.length) {
+      return
+    }
+    openTabs.value[index].remoteConfig.lastBrowsePath = value.trim()
+  }
+
   function setPythonEnv(index: number, value: string) {
     if (index < 0 || index >= openTabs.value.length) {
       return
@@ -1083,6 +1094,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateRawArgs,
     setExecutionTarget,
     setRemoteConnection,
+    setRemoteBrowsePath,
     setPythonEnv,
     setExportTarget,
     setPanelMode,

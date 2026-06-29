@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,22 @@ import (
 
 type RemoteExecutor struct {
 	SSHClient *ssh.Client
+}
+
+type RemotePathEntry struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Kind      string `json:"kind"`
+	IsSymlink bool   `json:"isSymlink"`
+}
+
+type RemotePathBrowseResult struct {
+	RequestedPath string            `json:"requestedPath"`
+	CurrentPath   string            `json:"currentPath"`
+	HomePath      string            `json:"homePath"`
+	Fallback      bool              `json:"fallback"`
+	Message       string            `json:"message,omitempty"`
+	Entries       []RemotePathEntry `json:"entries"`
 }
 
 type countingWriter struct {
@@ -470,6 +487,121 @@ func (r *RemoteExecutor) DetectPathKind(ctx context.Context, remotePath string) 
 	return "", false, nil
 }
 
+func (r *RemoteExecutor) BrowsePath(ctx context.Context, requestedPath string) (*RemotePathBrowseResult, error) {
+	homePath, err := r.HomeDirectory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	currentPath, fallback, err := r.resolveBrowseDirectory(ctx, requestedPath, homePath)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := r.ListDirectory(ctx, currentPath)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &RemotePathBrowseResult{
+		RequestedPath: strings.TrimSpace(requestedPath),
+		CurrentPath:   currentPath,
+		HomePath:      homePath,
+		Fallback:      fallback,
+		Entries:       entries,
+	}
+	if fallback && strings.TrimSpace(requestedPath) != "" {
+		result.Message = fmt.Sprintf("未找到 %q，已回到 ~", strings.TrimSpace(requestedPath))
+	}
+	return result, nil
+}
+
+func (r *RemoteExecutor) HomeDirectory(ctx context.Context) (string, error) {
+	probes := []string{
+		`pwd`,
+		`sh -lc 'cd ~ >/dev/null 2>&1 && pwd'`,
+		`bash -lc 'cd ~ >/dev/null 2>&1 && pwd'`,
+	}
+	failures := make([]string, 0, len(probes))
+	for _, probe := range probes {
+		result, err := r.captureOutput(ctx, probe)
+		if err != nil {
+			failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, err))
+			continue
+		}
+		home := normalizeRemotePath(result.Stdout)
+		if home != "" {
+			return home, nil
+		}
+		failures = append(failures, formatProbeDetail(probe, result.Stdout, result.Stderr, fmt.Errorf("empty home path")))
+	}
+	return "", fmt.Errorf("无法解析远端 home 目录，探测详情: %s", strings.Join(failures, " | "))
+}
+
+func (r *RemoteExecutor) ListDirectory(ctx context.Context, remotePath string) ([]RemotePathEntry, error) {
+	normalizedPath := normalizeRemotePath(remotePath)
+	if normalizedPath == "" {
+		return nil, fmt.Errorf("远端目录不能为空")
+	}
+
+	result, err := r.captureOutput(ctx, fmt.Sprintf(
+		"sh -lc 'dir=$1; "+
+			"for entry in \"$dir\"/.[!.]* \"$dir\"/..?* \"$dir\"/*; do "+
+			"[ -e \"$entry\" ] || [ -L \"$entry\" ] || continue; "+
+			"name=$(basename \"$entry\"); "+
+			"[ \"$name\" = \".\" ] && continue; "+
+			"[ \"$name\" = \"..\" ] && continue; "+
+			"kind=file; "+
+			"[ -d \"$entry\" ] && kind=directory; "+
+			"symlink=false; "+
+			"[ -L \"$entry\" ] && symlink=true; "+
+			"printf \"%%s\\t%%s\\t%%s\\t%%s\\n\" \"$name\" \"$entry\" \"$kind\" \"$symlink\"; "+
+			"done' sh %s",
+		ShellQuote(normalizedPath),
+	))
+	if err != nil {
+		return nil, fmt.Errorf("读取远端目录失败: %w", err)
+	}
+	return parseRemotePathEntries(result.Stdout), nil
+}
+
+func (r *RemoteExecutor) resolveBrowseDirectory(ctx context.Context, requestedPath string, homePath string) (string, bool, error) {
+	trimmedPath := strings.TrimSpace(requestedPath)
+	if trimmedPath == "" {
+		return homePath, false, nil
+	}
+
+	result, err := r.captureOutput(ctx, fmt.Sprintf(
+		"sh -lc 'requested=$1; home=$2; target=$requested; "+
+			"case \"$target\" in "+
+			"\"\") target=$home ;; "+
+			"\"~\") target=$home ;; "+
+			"~/*) target=\"$home/${target#~/}\" ;; "+
+			"esac; "+
+			"if [ \"${target#/}\" = \"$target\" ]; then target=\"$home/$target\"; fi; "+
+			"if [ -d \"$target\" ]; then cd \"$target\" >/dev/null 2>&1 && printf \"resolved\\t%%s\" \"$(pwd)\" && exit 0; fi; "+
+			"if [ -e \"$target\" ]; then parent=$(dirname \"$target\"); cd \"$parent\" >/dev/null 2>&1 && printf \"resolved\\t%%s\" \"$(pwd)\" && exit 0; fi; "+
+			"cd \"$home\" >/dev/null 2>&1 && printf \"fallback\\t%%s\" \"$(pwd)\"' sh %s %s",
+		ShellQuote(trimmedPath),
+		ShellQuote(homePath),
+	))
+	if err != nil {
+		return "", false, fmt.Errorf("解析远端浏览目录失败: %w", err)
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(result.Stdout), "\t", 2)
+	if len(parts) != 2 {
+		return "", false, fmt.Errorf("无法解析远端浏览目录输出: %q", result.Stdout)
+	}
+
+	currentPath := normalizeRemotePath(parts[1])
+	if currentPath == "" {
+		return "", false, fmt.Errorf("远端浏览目录为空")
+	}
+
+	return currentPath, parts[0] == "fallback", nil
+}
+
 func (r *RemoteExecutor) GetFileSize(ctx context.Context, remotePath string) (int64, error) {
 	probes := []string{
 		fmt.Sprintf("wc -c < %s", ShellQuote(remotePath)),
@@ -516,6 +648,42 @@ func formatProbeDetail(probe string, stdout string, stderr string, detail error)
 	return fmt.Sprintf("%s => %s", probe, strings.Join(parts, " | "))
 }
 
+func parseRemotePathEntries(output string) []RemotePathEntry {
+	lines := strings.Split(output, "\n")
+	entries := make([]RemotePathEntry, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		entry := RemotePathEntry{
+			Name:      strings.TrimSpace(parts[0]),
+			Path:      normalizeRemotePath(parts[1]),
+			Kind:      normalizeRemoteEntryKind(parts[2]),
+			IsSymlink: strings.EqualFold(strings.TrimSpace(parts[3]), "true"),
+		}
+		if entry.Name == "" || entry.Path == "" || entry.Kind == "" {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	sortRemotePathEntries(entries)
+	return entries
+}
+
+func sortRemotePathEntries(entries []RemotePathEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Kind != entries[j].Kind {
+			return entries[i].Kind == "directory"
+		}
+		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	})
+}
+
 func parseInt64(value string) (int64, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -536,6 +704,29 @@ func ShellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func normalizeRemotePath(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	cleaned := path.Clean(value)
+	if cleaned == "." {
+		return ""
+	}
+	return cleaned
+}
+
+func normalizeRemoteEntryKind(value string) string {
+	switch strings.TrimSpace(value) {
+	case "directory":
+		return "directory"
+	case "file":
+		return "file"
+	default:
+		return ""
+	}
 }
 
 func normalizeRemoteOS(value string) string {
