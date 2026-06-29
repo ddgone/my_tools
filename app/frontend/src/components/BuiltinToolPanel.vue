@@ -57,7 +57,7 @@ const activePanel = computed(() => {
         </div>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-3">
-            <h2 class="text-lg font-semibold text-slate-100">
+            <h2 class="text-lg font-semibold text-dracula-text">
               {{ builtinTool.name }}
             </h2>
             <NTag
@@ -71,7 +71,7 @@ const activePanel = computed(() => {
               {{ builtinTool.badge }}
             </NTag>
           </div>
-          <p class="mt-2 text-sm leading-6 text-slate-400">
+          <p class="mt-2 text-sm leading-6 text-dracula-soft">
             {{ builtinTool.description }}
           </p>
         </div>
@@ -85,7 +85,7 @@ const activePanel = computed(() => {
 
   <div
     v-else
-    class="flex h-full items-center justify-center text-slate-500"
+    class="flex h-full items-center justify-center text-dracula-soft"
   >
     未找到对应的内置工具
   </div>

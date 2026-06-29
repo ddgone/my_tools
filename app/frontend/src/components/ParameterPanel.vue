@@ -17,7 +17,7 @@ import {
   NTooltip,
   type SelectOption,
 } from 'naive-ui'
-import { FolderOpen, Copy, HelpCircle } from '@vicons/ionicons5'
+import { Copy, DocumentTextOutline, FolderOpen, HelpCircle, SearchOutline } from '@vicons/ionicons5'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useMessage } from 'naive-ui'
 import type { ParameterSpec, ToolManifest } from '@/types/workbench'
@@ -159,27 +159,32 @@ function tabRawArgs(): string {
   return activeConfig.value?.rawArgs ?? ''
 }
 
-function pathDialogButtons(param: ParameterSpec): Array<{ key: string; label: string; target: 'file' | 'directory' | 'fileOrDirectory' }> {
+function pathDialogButtons(param: ParameterSpec): Array<{
+  key: string
+  label: string
+  target: 'file' | 'directory' | 'fileOrDirectory'
+  icon: typeof FolderOpen
+}> {
   const fileLabel = param.repeatable ? '添加文件' : '选择文件'
   const directoryLabel = param.repeatable ? '添加目录' : '选择目录'
   switch (param.pathMode) {
     case 'file':
-      return [{ key: 'file', label: fileLabel, target: 'file' }]
+      return [{ key: 'file', label: fileLabel, target: 'file', icon: DocumentTextOutline }]
     case 'fileOrDirectory':
       if (props.executionTarget === 'remote') {
-        return [{ key: 'fileOrDirectory', label: '浏览路径', target: 'fileOrDirectory' }]
+        return [{ key: 'fileOrDirectory', label: '浏览路径', target: 'fileOrDirectory', icon: SearchOutline }]
       }
       return [
-        { key: 'file', label: fileLabel, target: 'file' },
-        { key: 'directory', label: directoryLabel, target: 'directory' },
+        { key: 'file', label: fileLabel, target: 'file', icon: DocumentTextOutline },
+        { key: 'directory', label: directoryLabel, target: 'directory', icon: FolderOpen },
       ]
     default:
-      return [{ key: 'directory', label: directoryLabel, target: 'directory' }]
+      return [{ key: 'directory', label: directoryLabel, target: 'directory', icon: FolderOpen }]
   }
 }
 const switchThemeOverrides = computed(() => ({
   railColorActive: executionTheme.value.railActive,
-  buttonColor: '#f8f8f2',
+  buttonColor: 'rgb(var(--color-fg-base) / 1)',
 }))
 
 const tabsKey = computed(() => `${activeTab.value?.tabId ?? 'none'}:${props.executionTarget}`)
@@ -248,7 +253,7 @@ async function copyCli() {
             >
               <div
                 v-if="group.name"
-                class="mb-2 text-[11px] uppercase tracking-wider text-slate-400"
+                class="mb-2 text-[11px] uppercase tracking-wider text-dracula-soft"
               >
                 {{ group.name }}
               </div>
@@ -313,15 +318,13 @@ async function copyCli() {
                         :key="button.key"
                         size="small"
                         class="shrink-0"
+                        :title="button.label"
+                        :aria-label="button.label"
                         @click="emit('fileDialog', param, button.target)"
                       >
-                        <template
-                          v-if="button.target === 'directory'"
-                          #icon
-                        >
-                          <NIcon :component="FolderOpen" />
+                        <template #icon>
+                          <NIcon :component="button.icon" />
                         </template>
-                        {{ button.label }}
                       </NButton>
                     </div>
                   </div>
@@ -411,11 +414,11 @@ async function copyCli() {
             </NText>
           </div>
           <template v-if="tool.docs.usage">
-            <pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-slate-300">{{ tool.docs.usage }}</pre>
+            <pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-[rgb(var(--color-fg-secondary)/0.95)]">{{ tool.docs.usage }}</pre>
           </template>
           <div
             v-else
-            class="rounded-md bg-black/20 p-3"
+            class="rounded-md bg-[rgb(var(--color-bg-elevated)/0.9)] p-3"
           >
             <NText
               depth="2"
@@ -561,7 +564,7 @@ async function copyCli() {
   height: 16px;
   align-items: center;
   justify-content: center;
-  color: rgba(160, 166, 186, 0.82);
+  color: rgb(var(--color-fg-muted) / 0.9);
   cursor: pointer;
   transition:
     color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
@@ -589,7 +592,7 @@ async function copyCli() {
 }
 
 .parameter-panel :deep(.n-switch .n-switch__button) {
-  background-color: #f8f8f2;
+  background-color: rgb(var(--color-fg-base) / 1);
 }
 
 .parameter-panel :deep(.n-tabs-tab.n-tabs-tab--active .n-tabs-tab__label),

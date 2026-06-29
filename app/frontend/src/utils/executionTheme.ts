@@ -1,7 +1,8 @@
-export type ExecutionAccentName = 'cyan' | 'green' | 'pink' | 'orange'
+export type ExecutionAccentName = 'local' | 'remote'
+export type ToolKindAccentName = 'go' | 'python' | 'rust'
 
 export interface ExecutionTheme {
-  accentName: ExecutionAccentName
+  accentName: ExecutionAccentName | ToolKindAccentName
   accent: string
   accentRgb: string
   accentHover: string
@@ -15,78 +16,62 @@ export interface ExecutionTheme {
   railActive: string
 }
 
-const THEMES: Record<ExecutionAccentName, ExecutionTheme> = {
-  cyan: {
-    accentName: 'cyan',
-    accent: '#8be9fd',
-    accentRgb: '139, 233, 253',
-    accentHover: '#a4ffff',
-    accentText: '#102433',
-    accentSoftBg: 'rgba(139, 233, 253, 0.10)',
-    accentSoftBorder: 'rgba(139, 233, 253, 0.20)',
-    accentSoftStrongBg: 'rgba(139, 233, 253, 0.16)',
-    accentSoftStrongBorder: 'rgba(139, 233, 253, 0.30)',
-    activeTabBackground: 'rgba(139, 233, 253, 0.10)',
-    dividerGradient: 'linear-gradient(to right, transparent, rgba(139, 233, 253, 0.22), transparent)',
-    railActive: 'rgba(139, 233, 253, 0.55)',
-  },
-  green: {
-    accentName: 'green',
-    accent: '#50fa7b',
-    accentRgb: '80, 250, 123',
-    accentHover: '#7dff9a',
-    accentText: '#082512',
-    accentSoftBg: 'rgba(80, 250, 123, 0.10)',
-    accentSoftBorder: 'rgba(80, 250, 123, 0.20)',
-    accentSoftStrongBg: 'rgba(80, 250, 123, 0.16)',
-    accentSoftStrongBorder: 'rgba(80, 250, 123, 0.30)',
-    activeTabBackground: 'rgba(80, 250, 123, 0.10)',
-    dividerGradient: 'linear-gradient(to right, transparent, rgba(80, 250, 123, 0.22), transparent)',
-    railActive: 'rgba(80, 250, 123, 0.50)',
-  },
-  pink: {
-    accentName: 'pink',
-    accent: '#ff79c6',
-    accentRgb: '255, 121, 198',
-    accentHover: '#ff94d2',
-    accentText: '#2f1026',
-    accentSoftBg: 'rgba(255, 121, 198, 0.10)',
-    accentSoftBorder: 'rgba(255, 121, 198, 0.20)',
-    accentSoftStrongBg: 'rgba(255, 121, 198, 0.16)',
-    accentSoftStrongBorder: 'rgba(255, 121, 198, 0.30)',
-    activeTabBackground: 'rgba(255, 121, 198, 0.12)',
-    dividerGradient: 'linear-gradient(to right, transparent, rgba(255, 121, 198, 0.22), transparent)',
-    railActive: 'rgba(255, 121, 198, 0.50)',
-  },
-  orange: {
-    accentName: 'orange',
-    accent: '#dea584',
-    accentRgb: '222, 165, 132',
-    accentHover: '#e8b495',
-    accentText: '#2a170d',
-    accentSoftBg: 'rgba(222, 165, 132, 0.10)',
-    accentSoftBorder: 'rgba(222, 165, 132, 0.22)',
-    accentSoftStrongBg: 'rgba(222, 165, 132, 0.16)',
-    accentSoftStrongBorder: 'rgba(222, 165, 132, 0.30)',
-    activeTabBackground: 'rgba(222, 165, 132, 0.12)',
-    dividerGradient: 'linear-gradient(to right, transparent, rgba(222, 165, 132, 0.22), transparent)',
-    railActive: 'rgba(222, 165, 132, 0.52)',
-  },
+function cssChannel(token: string) {
+  return `var(${token})`
 }
 
-export function resolveExecutionAccent(kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionAccentName {
-  if (executionTarget === 'remote') {
-    return 'pink'
+function rgb(token: string, alpha = 1) {
+  return `rgb(var(${token}) / ${alpha})`
+}
+
+function buildAccentTheme(accentName: ExecutionAccentName | ToolKindAccentName, tokenPrefix: string, onToken?: string): ExecutionTheme {
+  const token = `--color-${tokenPrefix}`
+  const hoverToken = `--color-${tokenPrefix}-hover`
+  return {
+    accentName,
+    accent: rgb(token),
+    accentRgb: cssChannel(token),
+    accentHover: onToken ? rgb(hoverToken) : rgb(token),
+    accentText: onToken ? rgb(`--color-${onToken}`) : rgb(token),
+    accentSoftBg: rgb(token, 0.10),
+    accentSoftBorder: rgb(token, 0.22),
+    accentSoftStrongBg: rgb(token, 0.16),
+    accentSoftStrongBorder: rgb(token, 0.34),
+    activeTabBackground: rgb(token, 0.10),
+    dividerGradient: `linear-gradient(to right, transparent, ${rgb(token, 0.22)}, transparent)`,
+    railActive: rgb(token, 0.55),
   }
+}
+
+const EXECUTION_THEMES: Record<ExecutionAccentName, ExecutionTheme> = {
+  local: buildAccentTheme('local', 'mode-local', 'mode-local-on'),
+  remote: buildAccentTheme('remote', 'mode-remote', 'mode-remote-on'),
+}
+
+const TOOL_KIND_THEMES: Record<ToolKindAccentName, ExecutionTheme> = {
+  go: buildAccentTheme('go', 'kind-go'),
+  python: buildAccentTheme('python', 'kind-python'),
+  rust: buildAccentTheme('rust', 'kind-rust'),
+}
+
+export function resolveExecutionAccent(_kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionAccentName {
+  return executionTarget === 'remote' ? 'remote' : 'local'
+}
+
+export function resolveToolKindAccent(kind: string | null | undefined): ToolKindAccentName {
   if (kind === 'python') {
-    return 'green'
+    return 'python'
   }
   if (kind === 'rust') {
-    return 'orange'
+    return 'rust'
   }
-  return 'cyan'
+  return 'go'
 }
 
-export function getExecutionTheme(kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionTheme {
-  return THEMES[resolveExecutionAccent(kind, executionTarget)]
+export function getExecutionTheme(_kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionTheme {
+  return EXECUTION_THEMES[resolveExecutionAccent(undefined, executionTarget)]
+}
+
+export function getToolKindTheme(kind: string | null | undefined): ExecutionTheme {
+  return TOOL_KIND_THEMES[resolveToolKindAccent(kind)]
 }

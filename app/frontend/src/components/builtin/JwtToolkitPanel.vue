@@ -89,7 +89,7 @@ const tokenSummary = computed(() => {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
       <div class="flex flex-wrap items-center gap-2">
         <NButton
@@ -111,7 +111,7 @@ const tokenSummary = computed(() => {
       </div>
 
       <div class="mt-4">
-        <div class="mb-2 text-sm font-medium text-slate-200">
+        <div class="mb-2 text-sm font-medium text-dracula-text">
           Token
         </div>
         <NInput
@@ -124,7 +124,7 @@ const tokenSummary = computed(() => {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             Header
           </div>
           <NInput
@@ -135,7 +135,7 @@ const tokenSummary = computed(() => {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             Payload
           </div>
           <NInput
@@ -151,12 +151,12 @@ const tokenSummary = computed(() => {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-slate-200">
+      <div class="text-sm font-medium text-dracula-text">
         快速摘要
       </div>
-      <div class="mt-3 rounded-xl border border-white/10 bg-black/15 px-4 py-3 text-sm leading-6 text-slate-300">
+      <div class="mt-3 rounded-xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-4 py-3 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.95)]">
         {{ tokenSummary }}
       </div>
     </NCard>

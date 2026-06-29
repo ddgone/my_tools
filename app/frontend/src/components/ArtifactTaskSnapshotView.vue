@@ -136,11 +136,11 @@ function openContainingDirectory(path?: string) {
       v-if="task"
       size="small"
       :bordered="false"
-      class="bg-[#151923]/90"
+      class="bg-[rgb(var(--color-bg-panel)/0.88)]"
     >
       <template #header>
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-base font-medium text-slate-100">
+          <span class="text-base font-medium text-dracula-text">
             {{ task.mode === 'build_cache' ? '批量构建缓存快照' : '批量导出快照' }}
           </span>
           <NTag
@@ -163,35 +163,35 @@ function openContainingDirectory(path?: string) {
       </template>
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div class="text-xs text-slate-400">
+        <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+          <div class="text-xs text-dracula-soft">
             启动时间
           </div>
-          <div class="mt-1 text-sm text-slate-100">
+          <div class="mt-1 text-sm text-dracula-text">
             {{ new Date(task.startedAt).toLocaleString() }}
           </div>
         </div>
-        <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div class="text-xs text-slate-400">
+        <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+          <div class="text-xs text-dracula-soft">
             执行汇总
           </div>
-          <div class="mt-1 text-sm text-slate-100">
+          <div class="mt-1 text-sm text-dracula-text">
             成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
           </div>
         </div>
-        <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div class="text-xs text-slate-400">
+        <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+          <div class="text-xs text-dracula-soft">
             任务 ID
           </div>
-          <div class="mt-1 break-all text-sm text-slate-100">
+          <div class="mt-1 break-all text-sm text-dracula-text">
             {{ task.id }}
           </div>
         </div>
-        <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-          <div class="text-xs text-slate-400">
+        <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+          <div class="text-xs text-dracula-soft">
             结果说明
           </div>
-          <div class="mt-1 text-sm text-slate-100">
+          <div class="mt-1 text-sm text-dracula-text">
             {{ task.exitMessage || '无' }}
           </div>
         </div>
@@ -236,13 +236,13 @@ function openContainingDirectory(path?: string) {
         <div
           v-for="item in task.items"
           :key="item.key"
-          class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/8 bg-black/10 px-3 py-2 text-xs"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-2 text-xs"
         >
           <div class="min-w-0">
-            <div class="font-medium text-slate-100">
+            <div class="font-medium text-dracula-text">
               {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
             </div>
-            <div class="mt-1 truncate text-slate-400">
+            <div class="mt-1 truncate text-dracula-soft">
               {{ item.message }}
             </div>
           </div>
@@ -271,7 +271,7 @@ function openContainingDirectory(path?: string) {
       v-else
       size="small"
       :bordered="false"
-      class="bg-[#151923]/90"
+      class="bg-[rgb(var(--color-bg-panel)/0.88)]"
     >
       <div class="py-12">
         <NEmpty description="这条任务记录已不存在或已被清理" />

@@ -182,7 +182,7 @@ onUnmounted(() => {
       class="flex items-center gap-x-3"
       :class="isMac ? 'pl-[68px]' : ''"
     >
-      <div class="wails-no-drag flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-dracula-cyan/10 text-sm font-bold text-dracula-cyan shadow-[0_0_0_1px_rgba(139,233,253,0.08)]">
+      <div class="wails-no-drag flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-dracula-cyan/10 text-sm font-bold text-dracula-cyan shadow-[0_0_0_1px_rgb(var(--color-brand-primary)_/_0.08)]">
         火
       </div>
       <div class="flex items-baseline gap-x-1.5 min-w-0">
@@ -202,7 +202,7 @@ onUnmounted(() => {
           <NIcon :component="Search" />
         </template>
         <template #suffix>
-          <span class="rounded bg-white/8 px-1.5 py-px text-[10px] font-medium text-slate-400">
+          <span class="rounded bg-white/8 px-1.5 py-px text-[10px] font-medium text-dracula-soft">
             Ctrl+P
           </span>
         </template>
@@ -228,11 +228,11 @@ onUnmounted(() => {
                   class="relative z-10"
                   :component="ArrowDownCircleOutline"
                   size="18"
-                  :color="hasDownloadTasks ? '#ff79c6' : undefined"
+                  :color="hasDownloadTasks ? 'rgb(var(--color-mode-remote) / 1)' : undefined"
                 />
                 <span
                   v-if="hasDownloadTasks"
-                  class="absolute -right-1 -top-1 z-20 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-dracula-pink px-[3px] text-[8px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(31,35,49,0.95)]"
+                  class="absolute -right-1 -top-1 z-20 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-dracula-pink px-[3px] text-[8px] font-bold leading-none text-white shadow-[0_0_0_1px_rgb(var(--color-bg-panel)_/_0.95)]"
                 >
                   {{ downloadCount > 9 ? '9+' : downloadCount }}
                 </span>
@@ -272,7 +272,7 @@ onUnmounted(() => {
 
       <template v-if="isWindows">
         <button
-          class="wails-no-drag ui-interactive ml-2 flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
+          class="wails-no-drag ui-interactive ml-2 flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
           type="button"
           aria-label="最小化"
           @click="minimiseWindow"
@@ -283,7 +283,7 @@ onUnmounted(() => {
           />
         </button>
         <button
-          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
+          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
           type="button"
           :aria-label="isMaximised ? '还原窗口' : '最大化窗口'"
           @click="toggleMaximise"
@@ -294,7 +294,7 @@ onUnmounted(() => {
           />
         </button>
         <button
-          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-red-500/90 hover:text-white"
+          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-red-500/90 hover:text-white"
           type="button"
           aria-label="关闭窗口"
           @click="closeWindow"

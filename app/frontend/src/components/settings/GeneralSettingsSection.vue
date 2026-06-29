@@ -61,6 +61,24 @@ refreshCacheInfo()
   <div class="settings-form pt-2">
     <div class="settings-row">
       <div class="settings-label">
+        界面主题
+      </div>
+      <div class="settings-value">
+        <NSelect
+          class="settings-control"
+          :value="workspace.settings.themePreference"
+          :options="[
+            { label: '深色', value: 'dark' },
+            { label: '浅色', value: 'light' },
+            { label: '跟随系统', value: 'system' },
+          ]"
+          @update:value="(v: string) => workspace.settings.themePreference = v === 'light' || v === 'system' ? v : 'dark'"
+        />
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-label">
         最近使用显示数量
       </div>
       <div class="settings-value">
@@ -159,16 +177,28 @@ refreshCacheInfo()
       </div>
       <div class="settings-value">
         <div class="flex flex-col gap-y-2 w-full">
-          <NText v-if="loadingCacheInfo" depth="3" class="text-xs">
+          <NText
+            v-if="loadingCacheInfo"
+            depth="3"
+            class="text-xs"
+          >
             正在计算缓存大小...
           </NText>
-          <NText v-else-if="cacheInfo && cacheInfo.totalBytes > 0" depth="3" class="text-xs">
+          <NText
+            v-else-if="cacheInfo && cacheInfo.totalBytes > 0"
+            depth="3"
+            class="text-xs"
+          >
             当前缓存 {{ formatBytes(cacheInfo.totalBytes) }}
             <template v-if="cacheInfo.orphanedDirs > 0">
               ，其中 {{ cacheInfo.orphanedDirs }} 个无用工具缓存 {{ formatBytes(cacheInfo.orphanedBytes) }}
             </template>
           </NText>
-          <NText v-else depth="3" class="text-xs">
+          <NText
+            v-else
+            depth="3"
+            class="text-xs"
+          >
             暂无构建缓存
           </NText>
 
@@ -185,7 +215,10 @@ refreshCacheInfo()
                   type="warning"
                 >
                   <template #icon>
-                    <NIcon :component="TrashOutline" size="14" />
+                    <NIcon
+                      :component="TrashOutline"
+                      size="14"
+                    />
                   </template>
                   清理无用缓存
                 </NButton>
@@ -200,7 +233,10 @@ refreshCacheInfo()
               @click="doCleanCache('orphaned')"
             >
               <template #icon>
-                <NIcon :component="TrashOutline" size="14" />
+                <NIcon
+                  :component="TrashOutline"
+                  size="14"
+                />
               </template>
               清理无用缓存
             </NButton>
@@ -217,7 +253,10 @@ refreshCacheInfo()
                   type="error"
                 >
                   <template #icon>
-                    <NIcon :component="TrashOutline" size="14" />
+                    <NIcon
+                      :component="TrashOutline"
+                      size="14"
+                    />
                   </template>
                   清理全部缓存
                 </NButton>
@@ -248,7 +287,7 @@ refreshCacheInfo()
 .settings-label {
   min-width: 0;
   white-space: nowrap;
-  color: rgba(248, 248, 242, 0.9);
+  color: rgb(var(--color-fg-base) / 0.9);
   font-size: 14px;
   line-height: 1.4;
 }

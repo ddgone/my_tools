@@ -188,7 +188,7 @@ onMounted(async () => {
                   : 'Python 工具环境已创建，但依赖尚未安装'
         }}
       </div>
-      <div class="mt-2 text-sm text-white/70 leading-6">
+      <div class="mt-2 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
         {{
           !pythonEnv.state?.hasUsableBaseBinary
             ? '请先选择一个本地 Python 3 作为基础解释器。程序会在 toolchains 下自动创建托管虚拟环境。'
@@ -203,7 +203,7 @@ onMounted(async () => {
       </div>
       <div
         v-if="pythonEnv.state?.statusMessage"
-        class="mt-3 text-xs text-white/55"
+        class="mt-3 text-xs text-[rgb(var(--color-fg-muted)/0.95)]"
       >
         {{ pythonEnv.state.statusMessage }}
       </div>
@@ -219,25 +219,25 @@ onMounted(async () => {
 
     <div
       v-if="pythonEnv.task"
-      class="rounded-xl border border-white/10 bg-black/10 px-4 py-4"
+      class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-4 py-4"
     >
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="text-sm font-medium text-dracula-text">
             {{ pythonEnv.task.kind === 'install' ? '依赖安装任务' : '工具环境任务' }}
           </div>
-          <div class="mt-1 text-xs leading-6 text-white/70">
+          <div class="mt-1 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
             {{ pythonEnv.task.message || '正在处理 Python 环境任务' }}
           </div>
           <div
             v-if="pythonEnv.task.currentItem"
-            class="text-[11px] text-white/45 break-all"
+            class="break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             当前项：{{ pythonEnv.task.currentItem }}
           </div>
           <div
             v-if="pythonEnv.task.detail"
-            class="text-[11px] text-white/45 break-all"
+            class="break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             {{ pythonEnv.task.detail }}
           </div>
@@ -261,7 +261,7 @@ onMounted(async () => {
           processing
         />
       </div>
-      <div class="mt-2 text-[11px] text-white/45">
+      <div class="mt-2 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
         状态：{{ pythonEnv.task.status }}
         <span v-if="pythonEnv.task.totalSteps > 0"> · 步骤 {{ pythonEnv.task.step }}/{{ pythonEnv.task.totalSteps }}</span>
       </div>
@@ -312,7 +312,7 @@ onMounted(async () => {
           基础解释器路径
         </div>
         <div class="settings-value">
-          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 break-all">
+          <div class="w-full rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)] break-all">
             {{ pythonEnv.state.activeBaseBinary }}
           </div>
         </div>
@@ -323,7 +323,7 @@ onMounted(async () => {
           工具环境
         </div>
         <div class="settings-value">
-          <div class="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-3 text-xs leading-6 text-white/70">
+          <div class="w-full rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-3 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
             {{
               !pythonEnv.state?.hasUsableBaseBinary
                 ? '尚未选择基础 Python'
@@ -335,7 +335,7 @@ onMounted(async () => {
             }}
             <div
               v-if="pythonEnv.state?.managedEnvDirectory"
-              class="mt-2 break-all text-[11px] text-white/45"
+              class="mt-2 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
             >
               {{ pythonEnv.state.managedEnvDirectory }}
             </div>
@@ -386,9 +386,9 @@ onMounted(async () => {
           动态依赖
         </div>
         <div class="settings-value">
-          <div class="w-full rounded-lg border border-white/10 bg-black/10 px-3 py-3">
+          <div class="w-full rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-3">
             <div class="flex items-center justify-between gap-3">
-              <div class="text-xs text-white/70">
+              <div class="text-xs text-[rgb(var(--color-fg-secondary)/0.9)]">
                 已扫描 {{ pythonEnv.state?.dependencyToolCount || 0 }} 个 Python 工具，共识别 {{ pythonEnv.state?.dependencyTotalCount || 0 }} 个依赖包。
               </div>
               <NButton
@@ -408,13 +408,13 @@ onMounted(async () => {
               <div
                 v-for="dependency in pythonEnv.state?.dependencies"
                 :key="dependency.packageName"
-                class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
+                class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.7)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-2"
               >
                 <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0 text-xs text-white/85 break-all">
+                  <div class="min-w-0 break-all text-xs text-[rgb(var(--color-fg-base)/0.92)]">
                     {{ dependency.packageName }}
-                    <span class="text-white/35"> · </span>
-                    <span class="text-white/55">{{ dependency.moduleName }}</span>
+                    <span class="text-[rgb(var(--color-fg-muted)/0.7)]"> · </span>
+                    <span class="text-[rgb(var(--color-fg-muted)/0.95)]">{{ dependency.moduleName }}</span>
                   </div>
                   <div
                     class="shrink-0 text-[11px]"
@@ -423,7 +423,7 @@ onMounted(async () => {
                     {{ dependency.installed ? (dependency.version || '已安装') : '未安装' }}
                   </div>
                 </div>
-                <div class="mt-1 text-[11px] text-white/45">
+                <div class="mt-1 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                   影响工具：{{ dependency.requiredBy.join('、') || '未知' }}
                 </div>
                 <div
@@ -458,7 +458,7 @@ onMounted(async () => {
 .settings-label {
   min-width: 0;
   white-space: nowrap;
-  color: rgba(248, 248, 242, 0.9);
+  color: rgb(var(--color-fg-base) / 0.9);
   font-size: 14px;
   line-height: 1.4;
 }

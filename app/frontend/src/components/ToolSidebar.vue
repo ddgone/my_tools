@@ -39,7 +39,7 @@ import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import BuiltinSidebarPanel from './BuiltinSidebarPanel.vue'
 import { ANIM } from '@/utils/animation'
-import { getExecutionTheme } from '@/utils/executionTheme'
+import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 
@@ -391,7 +391,7 @@ function kindTag(kind: string) {
 }
 
 function kindIconColor(tool: ToolManifest) {
-  return toolExecutionTheme(tool).accent
+  return getToolKindTheme(tool.kind).accent
 }
 
 function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
@@ -521,7 +521,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
   const tool = option.tool
   if (!tool) {
     return h('span', {
-      class: 'text-sm font-semibold uppercase tracking-wider text-slate-400',
+      class: 'text-sm font-semibold uppercase tracking-wider text-dracula-soft',
     }, option.label as string)
   }
   return h('div', {
@@ -535,7 +535,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     },
   }, [
     h('span', {
-      class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-dracula-green shadow-[0_0_6px_rgba(80,250,123,0.4)]' : 'border border-slate-600'}`,
+      class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-dracula-green' : 'border border-[rgb(var(--color-border-strong)/0.9)]'}`,
     }),
     h('span', {
       class: 'truncate text-sm',
@@ -560,7 +560,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
         ? [h(NIcon, {
             component: StarIcon,
             size: 12,
-            color: '#f1fa8c',
+            color: 'rgb(var(--color-warning) / 1)',
             class: 'shrink-0',
           })]
         : []),
@@ -569,9 +569,9 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
         size: 'tiny',
         class: 'shrink-0',
         style: {
-          color: toolExecutionTheme(tool).accent,
-          backgroundColor: toolExecutionTheme(tool).accentSoftBg,
-          border: `1px solid ${toolExecutionTheme(tool).accentSoftBorder}`,
+          color: getToolKindTheme(tool.kind).accent,
+          backgroundColor: getToolKindTheme(tool.kind).accentSoftBg,
+          border: `1px solid ${getToolKindTheme(tool.kind).accentSoftBorder}`,
         },
       }, {
         icon: () => h(NIcon, {
@@ -754,12 +754,12 @@ defineExpose({
               <NIcon
                 :component="StarIcon"
                 size="32"
-                color="#44475a"
+                color="rgb(var(--color-fg-muted) / 0.72)"
               />
-              <p class="mt-2 text-xs text-slate-500">
+              <p class="mt-2 text-xs text-dracula-soft">
                 暂无收藏的工具
               </p>
-              <p class="mt-1 text-[10px] text-slate-600">
+              <p class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.78)]">
                 使用右键菜单或 Ctrl+F 收藏工具
               </p>
             </div>
@@ -792,7 +792,7 @@ defineExpose({
                     <div class="truncate text-sm">
                       {{ tool.name }}
                     </div>
-                    <div class="truncate text-[10px] text-slate-500">
+                    <div class="truncate text-[10px] text-dracula-soft">
                       {{ categoryPathStr(tool) }} · {{ tool.description }}
                     </div>
                   </div>
@@ -813,12 +813,12 @@ defineExpose({
               <NIcon
                 :component="TimeOutline"
                 size="32"
-                color="#44475a"
+                color="rgb(var(--color-fg-muted) / 0.72)"
               />
-              <p class="mt-2 text-xs text-slate-500">
+              <p class="mt-2 text-xs text-dracula-soft">
                 暂无最近使用
               </p>
-              <p class="mt-1 text-[10px] text-slate-600">
+              <p class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.78)]">
                 打开工具后自动记录
               </p>
             </div>
@@ -851,7 +851,7 @@ defineExpose({
                     <div class="truncate text-sm">
                       {{ entry.tool.name }}
                     </div>
-                    <div class="truncate text-[10px] text-slate-500">
+                    <div class="truncate text-[10px] text-dracula-soft">
                       {{ entry.args || '无参数' }}
                     </div>
                   </div>
@@ -867,7 +867,7 @@ defineExpose({
           >
             <div class="space-y-3">
               <div>
-                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-dracula-soft">
                   产物工作台
                 </div>
                 <NCard
@@ -878,8 +878,8 @@ defineExpose({
                   :content-style="{ padding: '12px' }"
                   :style="isArtifactCenterActive()
                     ? {
-                      borderColor: 'rgba(255, 184, 108, 0.45)',
-                      backgroundColor: 'rgba(255, 184, 108, 0.08)',
+                      borderColor: 'rgb(var(--color-kind-rust) / 0.42)',
+                      backgroundColor: 'rgb(var(--color-kind-rust) / 0.10)',
                     }
                     : {}"
                   @click="openArtifactWorkbench"
@@ -889,7 +889,7 @@ defineExpose({
                     :class="isCompactArtifactSidebar ? 'flex-col' : 'flex items-start'"
                   >
                     <div
-                      class="flex shrink-0 items-center justify-center rounded-lg bg-amber-400/12 text-amber-300"
+                      class="flex shrink-0 items-center justify-center rounded-lg bg-dracula-orange/12 text-dracula-orange"
                       :class="isCompactArtifactSidebar ? 'h-8 w-8' : 'mt-0.5 h-9 w-9'"
                     >
                       <NIcon
@@ -903,7 +903,7 @@ defineExpose({
                         :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
                       >
                         <div
-                          class="text-sm font-medium text-slate-100"
+                          class="text-sm font-medium text-dracula-text"
                           :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
                         >
                           产物工作台
@@ -916,12 +916,12 @@ defineExpose({
                           {{ artifactCenter.mode === 'build_cache' ? '缓存模式' : '导出模式' }}
                         </NTag>
                       </div>
-                      <div class="mt-1 text-[11px] leading-5 text-slate-400">
+                      <div class="mt-1 text-[11px] leading-5 text-[rgb(var(--color-fg-secondary)/0.9)]">
                         {{ isCompactArtifactSidebar
                           ? '打开后可继续配置矩阵、启动批量任务，并查看完整结果。'
                           : '打开工作台后可继续配置平台矩阵、启动批量任务，并查看完整结果列表。' }}
                       </div>
-                      <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-500">
+                      <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-dracula-soft">
                         <span class="rounded border border-white/10 px-2 py-0.5">
                           已选 {{ artifactCenter.selectedKeys.length }} 项
                         </span>
@@ -931,7 +931,7 @@ defineExpose({
                       </div>
                       <div
                         v-if="runningArtifactTask"
-                        class="mt-3 rounded-lg border border-amber-300/15 bg-black/15 px-2.5 py-2"
+                        class="mt-3 rounded-lg border border-dracula-orange/15 bg-dracula-orange/10 px-2.5 py-2"
                       >
                         <div
                           class="gap-1.5 text-[11px]"
@@ -943,7 +943,7 @@ defineExpose({
                           >
                             正在执行 · {{ artifactTaskTitle(runningArtifactTask) }}
                           </span>
-                          <span class="text-slate-400">
+                          <span class="text-dracula-soft">
                             {{ artifactTaskFinishedCount(runningArtifactTask) }}/{{ runningArtifactTask.totalCount }}
                           </span>
                         </div>
@@ -958,7 +958,7 @@ defineExpose({
                         />
                         <div
                           v-if="runningArtifactTask.currentItem"
-                          class="mt-2 truncate text-[10px] text-slate-400"
+                          class="mt-2 truncate text-[10px] text-dracula-soft"
                         >
                           {{ runningArtifactTask.currentItem }}
                         </div>
@@ -970,7 +970,7 @@ defineExpose({
 
               <div>
                 <div class="flex items-center justify-between gap-2 px-1 pb-2">
-                  <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-dracula-soft">
                     任务历史
                   </div>
                   <NButton
@@ -984,7 +984,7 @@ defineExpose({
                 </div>
                 <div
                   v-if="historicalArtifactTasks.length === 0"
-                  class="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs leading-5 text-slate-500"
+                  class="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs leading-5 text-dracula-soft"
                 >
                   暂无历史任务
                 </div>
@@ -1002,8 +1002,8 @@ defineExpose({
                     :content-style="{ padding: '10px 12px' }"
                     :style="isArtifactSnapshotActive(task.id)
                       ? {
-                        borderColor: 'rgba(139, 233, 253, 0.38)',
-                        backgroundColor: 'rgba(139, 233, 253, 0.08)',
+                        borderColor: 'rgb(var(--color-brand-primary) / 0.36)',
+                        backgroundColor: 'rgb(var(--color-brand-primary) / 0.08)',
                       }
                       : {}"
                     @click="openArtifactTaskSnapshot(task)"
@@ -1015,7 +1015,7 @@ defineExpose({
                           :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
                         >
                           <div
-                            class="text-sm font-medium text-slate-100"
+                            class="text-sm font-medium text-dracula-text"
                             :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
                           >
                             {{ artifactTaskTitle(task) }}
@@ -1028,10 +1028,10 @@ defineExpose({
                             {{ task.status }}
                           </NTag>
                         </div>
-                        <div class="mt-1 text-[10px] text-slate-500">
+                        <div class="mt-1 text-[10px] text-dracula-soft">
                           {{ artifactTaskTime(task) }}
                         </div>
-                        <div class="mt-2 text-[11px] leading-5 text-slate-400">
+                        <div class="mt-2 text-[11px] leading-5 text-[rgb(var(--color-fg-secondary)/0.9)]">
                           成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
                         </div>
                       </div>
@@ -1048,7 +1048,7 @@ defineExpose({
             class="flex h-full flex-col"
           >
             <div class="flex items-center justify-between px-3 py-2">
-              <span class="text-xs font-medium text-slate-300">SSH 连接</span>
+              <span class="text-xs font-medium text-dracula-text">SSH 连接</span>
               <NButton
                 text
                 size="tiny"
@@ -1070,9 +1070,9 @@ defineExpose({
                 <NIcon
                   :component="ServerOutline"
                   size="28"
-                  color="#44475a"
+                  color="rgb(var(--color-fg-muted) / 0.72)"
                 />
-                <p class="mt-2 text-xs text-slate-500">
+                <p class="mt-2 text-xs text-dracula-soft">
                   暂无 SSH 连接
                 </p>
                 <NButton
@@ -1100,17 +1100,17 @@ defineExpose({
                 @click="selectConnection(conn)"
                 @contextmenu="openSSHContextMenu($event, conn)"
               >
-                <div class="flex items-center gap-x-2 text-left text-slate-300">
+                <div class="flex items-center gap-x-2 text-left text-[rgb(var(--color-fg-secondary)/0.92)]">
                   <NIcon
                     :component="ServerOutline"
                     size="16"
-                    color="#8be9fd"
+                    color="rgb(var(--color-brand-primary) / 1)"
                   />
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-sm font-medium text-slate-200">
+                    <div class="truncate text-sm font-medium text-dracula-text">
                       {{ conn.name }}
                     </div>
-                    <div class="truncate text-[10px] text-slate-500">
+                    <div class="truncate text-[10px] text-dracula-soft">
                       {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
                     </div>
                   </div>
@@ -1176,7 +1176,7 @@ defineExpose({
 <style>
 .category-tree {
   --n-node-color-active: v-bind(sidebarAccentSoftBg);
-  --n-line-color: rgba(255,255,255,0.10);
+  --n-line-color: rgb(var(--color-border-subtle) / 0.78);
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
 }
@@ -1204,13 +1204,13 @@ defineExpose({
 }
 .category-tree .n-tree-node-switcher svg {
   fill: none !important;
-  stroke: rgba(255,255,255,0.4);
+  stroke: rgb(var(--color-fg-muted) / 0.78);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .category-tree .n-tree-node-switcher:hover svg {
-  stroke: rgba(255,255,255,0.7);
+  stroke: rgb(var(--color-fg-secondary) / 0.94);
 }
 .category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
   stroke: v-bind(sidebarAccentSoftStrongBorder);
@@ -1224,28 +1224,22 @@ defineExpose({
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
   stroke: v-bind(sidebarAccentSoftStrongBorder) !important;
 }
-.category-tree .tool-tree-node.tool-theme-cyan:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(139, 233, 253, 0.06) !important;
+.category-tree .tool-tree-node.tool-theme-local:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgb(var(--color-mode-local) / 0.06) !important;
 }
-.category-tree .tool-tree-node.tool-theme-cyan.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(139, 233, 253, 0.09) !important;
+.category-tree .tool-tree-node.tool-theme-local.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgb(var(--color-mode-local) / 0.09) !important;
 }
-.category-tree .tool-tree-node.tool-theme-green:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(80, 250, 123, 0.06) !important;
+.category-tree .tool-tree-node.tool-theme-remote:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgb(var(--color-mode-remote) / 0.06) !important;
 }
-.category-tree .tool-tree-node.tool-theme-green.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(80, 250, 123, 0.09) !important;
-}
-.category-tree .tool-tree-node.tool-theme-pink:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(255, 121, 198, 0.06) !important;
-}
-.category-tree .tool-tree-node.tool-theme-pink.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(255, 121, 198, 0.09) !important;
+.category-tree .tool-tree-node.tool-theme-remote.n-tree-node--selectable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
+  background: rgb(var(--color-mode-remote) / 0.09) !important;
 }
 .category-tree .category-tree-node:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(255, 255, 255, 0.05) !important;
+  background: rgb(var(--color-fg-base) / 0.05) !important;
 }
 .category-tree .category-tree-node.n-tree-node--clickable:active:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgb(var(--color-fg-base) / 0.08) !important;
 }
 </style>

@@ -7,7 +7,7 @@ import { useGoEnvStore } from '@/stores/goenv'
 import { useRustEnvStore } from '@/stores/rustenv'
 import { usePythonEnvStore } from '@/stores/pythonenv'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { getExecutionTheme } from '@/utils/executionTheme'
+import { getToolKindTheme } from '@/utils/executionTheme'
 
 const execution = useExecutionStore()
 const goEnv = useGoEnvStore()
@@ -86,9 +86,9 @@ const pythonReady = computed(() =>
   && pythonEnv.state?.pipAvailable === true
   && pythonEnv.state?.dependenciesReady === true,
 )
-const goReadyTheme = getExecutionTheme('go', 'local')
-const rustReadyTheme = getExecutionTheme('rust', 'local')
-const pythonReadyTheme = getExecutionTheme('python', 'local')
+const goReadyTheme = getToolKindTheme('go')
+const rustReadyTheme = getToolKindTheme('rust')
+const pythonReadyTheme = getToolKindTheme('python')
 const goTagClass = computed(() =>
   goReady.value
     ? 'statusbar-env-tag--ready'
@@ -323,7 +323,7 @@ function hideTooltip() {
       <NIcon
         :component="CheckmarkCircle"
         size="12"
-        color="#50fa7b"
+        color="rgb(var(--color-success) / 1)"
       />
       <NText
         depth="3"

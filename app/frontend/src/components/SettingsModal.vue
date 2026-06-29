@@ -170,7 +170,7 @@ function resetAll() {
 .settings-label {
   min-width: 0;
   white-space: nowrap;
-  color: rgba(248, 248, 242, 0.9);
+  color: rgb(var(--color-fg-base) / 0.9);
   font-size: 14px;
   line-height: 1.4;
 }

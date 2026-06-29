@@ -1,3 +1,12 @@
+function withOpacity(cssVariable) {
+  return ({ opacityValue }) => {
+    if (opacityValue === undefined) {
+      return `rgb(var(${cssVariable}) / 1)`
+    }
+    return `rgb(var(${cssVariable}) / ${opacityValue})`
+  }
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -7,19 +16,20 @@ export default {
   theme: {
     extend: {
       colors: {
+        white: withOpacity('--color-fg-base'),
         dracula: {
-          bg: '#282a36',
-          panel: '#1e1f29',
-          soft: '#44475a',
-          text: '#f8f8f2',
-          cyan: '#8be9fd',
-          green: '#50fa7b',
-          pink: '#ff79c6',
-          yellow: '#f1fa8c',
-          orange: '#ffb86c',
-          red: '#ff5555'
-        }
-      }
+          bg: withOpacity('--color-bg-app'),
+          panel: withOpacity('--color-bg-panel'),
+          soft: withOpacity('--color-fg-muted'),
+          text: withOpacity('--color-fg-base'),
+          cyan: withOpacity('--color-brand-primary'),
+          green: withOpacity('--color-success'),
+          pink: withOpacity('--color-mode-remote'),
+          yellow: withOpacity('--color-warning'),
+          orange: withOpacity('--color-kind-rust'),
+          red: withOpacity('--color-error'),
+        },
+      },
     },
   },
   plugins: [],

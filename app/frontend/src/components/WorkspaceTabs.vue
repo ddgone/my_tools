@@ -20,7 +20,7 @@ import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import RemotePathPickerModal from './RemotePathPickerModal.vue'
-import { getExecutionTheme } from '@/utils/executionTheme'
+import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
 const emit = defineEmits<{
@@ -397,7 +397,7 @@ function toolExecutionThemeForTool(id: string) {
 }
 
 function toolKindTagStyleForTool(id: string): CSSProperties {
-  const theme = toolExecutionThemeForTool(id)
+  const theme = getToolKindTheme(toolById(id)?.kind)
   return {
     color: theme.accent,
     backgroundColor: theme.accentSoftBg,
@@ -406,27 +406,34 @@ function toolKindTagStyleForTool(id: string): CSSProperties {
 }
 
 function toolKindIconColorForTool(id: string) {
-  return toolExecutionThemeForTool(id).accent
+  return getToolKindTheme(toolById(id)?.kind).accent
 }
 
 function toolNameStyleForTool(id: string): CSSProperties {
   return {
-    color: toolExecutionThemeForTool(id).accent,
+    color: getToolKindTheme(toolById(id)?.kind).accent,
   }
 }
 
 function builtinTagStyleForTool(id: string): CSSProperties {
   const tool = builtinToolById(id)
+  if (!tool) {
+    return {
+      color: 'rgb(var(--color-brand-primary) / 1)',
+      backgroundColor: 'rgb(var(--color-brand-primary) / 0.08)',
+      border: '1px solid rgb(var(--color-brand-primary) / 0.20)',
+    }
+  }
   return {
-    color: tool?.accent ?? '#8be9fd',
-    backgroundColor: `${tool?.accent ?? '#8be9fd'}14`,
-    border: `1px solid ${(tool?.accent ?? '#8be9fd')}30`,
+    color: tool.accent,
+    backgroundColor: `${tool.accent}14`,
+    border: `1px solid ${tool.accent}30`,
   }
 }
 
 function builtinNameStyleForTool(id: string): CSSProperties {
   return {
-    color: builtinToolById(id)?.accent ?? '#8be9fd',
+    color: builtinToolById(id)?.accent ?? 'rgb(var(--color-brand-primary) / 1)',
   }
 }
 
@@ -833,7 +840,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
   >
     <div
       ref="tabBarRef"
-      class="relative flex shrink-0 items-end border-b border-white/15 bg-[#1a1b26]"
+      class="relative flex shrink-0 items-end border-b border-white/15 bg-dracula-panel"
     >
       <div class="flex flex-1 items-end overflow-hidden">
         <button
@@ -844,7 +851,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           :class="
             isUnifiedTabActive(item)
               ? 'workspace-tab-active text-dracula-text'
-              : 'bg-[#1a1b26] text-slate-500 hover:bg-dracula-bg/50 hover:text-slate-300'
+              : 'bg-dracula-panel text-dracula-soft hover:bg-[rgb(var(--color-fg-base)/0.05)] hover:text-dracula-text'
           "
           :style="tabButtonStyle(item)"
           @click="handleTabClick(item)"
@@ -855,21 +862,21 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             v-if="item.pinned"
             :component="BookmarkSharp"
             size="14"
-            color="#ffb86c"
+            color="rgb(var(--color-kind-rust) / 1)"
             class="shrink-0 opacity-90"
           />
           <NIcon
             v-if="item.type === 'ssh'"
             :component="ServerOutline"
             size="12"
-            color="#8be9fd"
+            color="rgb(var(--color-brand-primary) / 1)"
             class="shrink-0"
           />
           <NIcon
             v-if="item.type === 'artifact'"
             :component="CloudUploadOutline"
             size="12"
-            color="#ffb86c"
+            color="rgb(var(--color-kind-rust) / 1)"
             class="shrink-0"
           />
           <NTag
@@ -908,7 +915,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
             :component="Star"
             size="11"
-            color="#f1fa8c"
+            color="rgb(var(--color-warning) / 1)"
             class="shrink-0"
           />
           <NIcon
@@ -933,7 +940,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           </span>
           <span
             data-tab-close="true"
-            class="ui-interactive absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-dracula-soft hover:text-white"
+            class="ui-interactive absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-[rgb(var(--color-fg-base)/0.08)] hover:text-dracula-text"
             @pointerdown.stop
             @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
@@ -988,7 +995,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         <template v-if="isTerminalVisible">
           <div
             v-bind="hDividerProps"
-            class="group relative shrink-0 bg-white/10"
+            class="group relative shrink-0 bg-[rgb(var(--color-border-subtle)/0.82)]"
             style="height: 1px; width: 100%"
           >
             <div
@@ -1044,10 +1051,10 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         >
           火
         </NText>
-        <p class="mt-4 text-base text-slate-500">
+        <p class="mt-4 text-base text-dracula-soft">
           火蜥蜴工具箱
         </p>
-        <p class="mt-2 text-sm text-slate-600">
+        <p class="mt-2 text-sm text-[rgb(var(--color-fg-muted)/0.82)]">
           从左侧选择工具开始使用
         </p>
         <div class="mt-6 flex items-center justify-center gap-x-4">
@@ -1141,7 +1148,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
                     <NIcon
                       :component="kindIcon(tool.kind)"
                       size="18"
-                      :color="tool.kind === 'python' ? '#f1fa8c' : tool.kind === 'rust' ? '#ffb86c' : '#8be9fd'"
+                      :color="getToolKindTheme(tool.kind).accent"
                     />
                   </template>
                   <div class="min-w-0 flex-1">
@@ -1169,7 +1176,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
                 </NText>
               </div>
             </NScrollbar>
-            <div class="border-t border-white/10 px-4 py-2 text-[11px] text-slate-500">
+            <div class="border-t border-white/10 px-4 py-2 text-[11px] text-dracula-soft">
               ↑↓ 切换 · Enter 打开 · Esc 关闭
             </div>
           </div>

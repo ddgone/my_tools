@@ -366,78 +366,78 @@ function openContainingDirectory(path?: string) {
         title="产物中心"
         size="small"
         :bordered="false"
-        class="bg-[#151923]/90"
+        class="bg-[rgb(var(--color-bg-panel)/0.88)]"
       >
         <div class="grid gap-3 sm:grid-cols-6">
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               Go 工具
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ filteredGoTools.length }}
             </div>
           </div>
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               Rust 工具
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ filteredRustTools.length }}
             </div>
           </div>
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               Python 工具
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ filteredPythonTools.length }}
             </div>
           </div>
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               已选目标
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ selectedCount }}
             </div>
           </div>
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               预计命中缓存
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ artifactCenter.estimating ? '计算中' : estimatedCachedCount }}
             </div>
           </div>
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <div class="text-xs text-slate-400">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
+            <div class="text-xs text-dracula-soft">
               预计重新构建
             </div>
-            <div class="mt-1 text-lg font-semibold text-slate-100">
+            <div class="mt-1 text-lg font-semibold text-dracula-text">
               {{ artifactCenter.estimating ? '计算中' : estimatedBuildCount }}
             </div>
           </div>
         </div>
         <div class="mt-3 grid gap-3 lg:grid-cols-2">
-          <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs leading-6 text-slate-300">
-            <div class="font-medium text-slate-100">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-3 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.92)]">
+            <div class="font-medium text-dracula-text">
               任务中心说明
             </div>
             <div class="mt-2">
               这里用于集中准备常用平台产物，适合在批量导出、远程执行之前，先把经常用到的平台缓存准备好。
             </div>
-            <div class="mt-2 text-slate-400">
+            <div class="mt-2 text-dracula-soft">
               下方任务结果会持续保留最近记录，方便回看哪些平台已成功、命中缓存或执行失败。
             </div>
           </div>
-          <div class="rounded-lg border border-dashed border-cyan-400/20 bg-cyan-500/5 px-3 py-3 text-xs leading-6 text-slate-300">
-            <div class="font-medium text-cyan-100">
+          <div class="rounded-lg border border-dashed border-dracula-cyan/20 bg-dracula-cyan/10 px-3 py-3 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.92)]">
+            <div class="font-medium text-dracula-cyan">
               使用说明
             </div>
             <div class="mt-2">
               先用筛选按钮缩小范围，再在矩阵里勾选工具和平台，然后选择“批量构建缓存”或“批量导出”。
             </div>
-            <div class="mt-2 text-slate-400">
+            <div class="mt-2 text-dracula-soft">
               启动后会自动滚动到任务结果区；如果有失败项，可以直接重试，也可以导出摘要留档。
             </div>
           </div>
@@ -448,7 +448,7 @@ function openContainingDirectory(path?: string) {
         title="批量配置"
         size="small"
         :bordered="false"
-        class="bg-[#151923]/90"
+        class="bg-[rgb(var(--color-bg-panel)/0.88)]"
       >
         <div class="space-y-3 text-sm">
           <div class="flex flex-wrap gap-2">
@@ -476,7 +476,7 @@ function openContainingDirectory(path?: string) {
 
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="space-y-1">
-              <span class="text-xs text-slate-400">并发数</span>
+              <span class="text-xs text-dracula-soft">并发数</span>
               <NInputNumber
                 v-model:value="artifactCenter.concurrency"
                 :min="1"
@@ -485,7 +485,7 @@ function openContainingDirectory(path?: string) {
               />
             </label>
             <div class="space-y-1">
-              <span class="text-xs text-slate-400">导出根目录</span>
+              <span class="text-xs text-dracula-soft">导出根目录</span>
               <div class="flex gap-2">
                 <NInput
                   v-model:value="artifactCenter.exportRootDir"
@@ -609,7 +609,7 @@ function openContainingDirectory(path?: string) {
     <NCard
       size="small"
       :bordered="false"
-      class="bg-[#151923]/90"
+      class="bg-[rgb(var(--color-bg-panel)/0.88)]"
     >
       <template #header>
         <div class="flex w-full flex-wrap items-center justify-between gap-3">
@@ -660,14 +660,14 @@ function openContainingDirectory(path?: string) {
       <div class="space-y-4">
         <div
           v-if="filteredGoTools.length > 0"
-          class="rounded-xl border border-cyan-400/15 bg-cyan-500/[0.04] p-3"
+          class="rounded-xl border border-dracula-cyan/15 bg-dracula-cyan/10 p-3"
         >
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div class="text-sm font-semibold text-cyan-100">
+              <div class="text-sm font-semibold text-dracula-cyan">
                 Go 原生矩阵
               </div>
-              <div class="text-xs text-cyan-100/70">
+              <div class="text-xs text-[rgb(var(--color-brand-primary)/0.75)]">
                 Go 工具可视为原生能力，适合优先准备宿主平台和常用远程平台产物。
               </div>
             </div>
@@ -682,8 +682,8 @@ function openContainingDirectory(path?: string) {
           <div class="overflow-x-auto rounded-lg">
             <table class="min-w-full border-collapse text-sm">
               <thead>
-                <tr class="border-b border-white/10 text-slate-300">
-                  <th class="sticky left-0 z-10 min-w-[260px] bg-cyan-500/[0.04] px-3 py-3 text-left">
+                <tr class="border-b border-[rgb(var(--color-border-subtle)/0.82)] text-[rgb(var(--color-fg-secondary)/0.92)]">
+                  <th class="sticky left-0 z-10 min-w-[260px] bg-dracula-cyan/10 px-3 py-3 text-left">
                     工具
                   </th>
                   <th
@@ -706,15 +706,15 @@ function openContainingDirectory(path?: string) {
                 <tr
                   v-for="tool in filteredGoTools"
                   :key="tool.id"
-                  class="border-b border-white/5"
+                  class="border-b border-[rgb(var(--color-border-subtle)/0.46)]"
                 >
-                  <td class="sticky left-0 z-10 bg-cyan-500/[0.04] px-3 py-3">
+                  <td class="sticky left-0 z-10 bg-dracula-cyan/10 px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
                       <div>
-                        <div class="font-medium text-slate-100">
+                        <div class="font-medium text-dracula-text">
                           {{ tool.name }}
                         </div>
-                        <div class="text-xs text-slate-400">
+                        <div class="text-xs text-dracula-soft">
                           {{ tool.id }}
                         </div>
                       </div>
@@ -743,21 +743,21 @@ function openContainingDirectory(path?: string) {
 
         <div
           v-if="filteredRustTools.length > 0"
-          class="rounded-xl border border-[rgb(245,126,62)]/20 bg-[rgba(245,126,62,0.06)] p-3"
+          class="rounded-xl border border-dracula-orange/20 bg-dracula-orange/10 p-3"
         >
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div class="text-sm font-semibold text-[rgb(255,184,108)]">
+              <div class="text-sm font-semibold text-dracula-orange">
                 Rust 交叉编译矩阵
               </div>
-              <div class="text-xs text-[rgba(255,184,108,0.72)]">
+              <div class="text-xs text-[rgb(var(--color-kind-rust)/0.78)]">
                 Rust 工具本地运行走宿主内置二进制，这里主要准备导出、远程执行和缓存所需的交叉编译产物。
               </div>
             </div>
             <NTag
               size="small"
               :bordered="false"
-              :color="{ color: 'rgba(245,126,62,0.14)', textColor: 'rgb(255,184,108)', borderColor: 'rgba(245,126,62,0.28)' }"
+              :color="{ color: 'rgb(var(--color-kind-rust)/0.14)', textColor: 'rgb(var(--color-kind-rust)/1)', borderColor: 'rgb(var(--color-kind-rust)/0.28)' }"
             >
               {{ filteredRustTools.length }} 个 Rust 工具
             </NTag>
@@ -765,8 +765,8 @@ function openContainingDirectory(path?: string) {
           <div class="overflow-x-auto rounded-lg">
             <table class="min-w-full border-collapse text-sm">
               <thead>
-                <tr class="border-b border-white/10 text-slate-300">
-                  <th class="sticky left-0 z-10 min-w-[260px] bg-[rgba(245,126,62,0.06)] px-3 py-3 text-left">
+                <tr class="border-b border-[rgb(var(--color-border-subtle)/0.82)] text-[rgb(var(--color-fg-secondary)/0.92)]">
+                  <th class="sticky left-0 z-10 min-w-[260px] bg-dracula-orange/10 px-3 py-3 text-left">
                     工具
                   </th>
                   <th
@@ -789,15 +789,15 @@ function openContainingDirectory(path?: string) {
                 <tr
                   v-for="tool in filteredRustTools"
                   :key="tool.id"
-                  class="border-b border-white/5"
+                  class="border-b border-[rgb(var(--color-border-subtle)/0.46)]"
                 >
-                  <td class="sticky left-0 z-10 bg-[rgba(245,126,62,0.06)] px-3 py-3">
+                  <td class="sticky left-0 z-10 bg-dracula-orange/10 px-3 py-3">
                     <div class="flex items-center justify-between gap-3">
                       <div>
-                        <div class="font-medium text-slate-100">
+                        <div class="font-medium text-dracula-text">
                           {{ tool.name }}
                         </div>
-                        <div class="text-xs text-slate-400">
+                        <div class="text-xs text-dracula-soft">
                           {{ tool.id }}
                         </div>
                       </div>
@@ -839,15 +839,15 @@ function openContainingDirectory(path?: string) {
               <tr
                 v-for="tool in filteredPythonTools"
                 :key="tool.id"
-                class="border-b border-white/5"
+                class="border-b border-[rgb(var(--color-border-subtle)/0.46)]"
               >
-                <td class="sticky left-0 z-10 bg-[#151923] px-3 py-3">
+                <td class="sticky left-0 z-10 bg-[rgb(var(--color-bg-panel)/0.88)] px-3 py-3">
                   <div class="flex items-center gap-2">
                     <div>
-                      <div class="font-medium text-slate-100">
+                      <div class="font-medium text-dracula-text">
                         {{ tool.name }}
                       </div>
-                      <div class="text-xs text-slate-400">
+                      <div class="text-xs text-dracula-soft">
                         {{ tool.id }}
                       </div>
                     </div>
@@ -862,7 +862,7 @@ function openContainingDirectory(path?: string) {
                 </td>
                 <td
                   :colspan="artifactPlatforms.length"
-                  class="px-3 py-3 text-left text-xs text-slate-500"
+                  class="px-3 py-3 text-left text-xs text-dracula-soft"
                 >
                   当前产物中心只为 Go / Rust 提供跨平台二进制矩阵；Python 工具保留单工具脚本导出能力。
                 </td>
@@ -877,7 +877,7 @@ function openContainingDirectory(path?: string) {
       <NCard
         size="small"
         :bordered="false"
-        class="bg-[#151923]/90"
+        class="bg-[rgb(var(--color-bg-panel)/0.88)]"
       >
         <template #header>
           <div class="flex items-center gap-1.5">
@@ -927,7 +927,7 @@ function openContainingDirectory(path?: string) {
           <div
             v-for="task in artifactCenter.recentTasks"
             :key="task.id"
-            class="rounded-lg border border-white/10 bg-white/5 p-3"
+            class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-3"
           >
             <div
               role="button"
@@ -942,9 +942,9 @@ function openContainingDirectory(path?: string) {
                   <NIcon
                     :component="isTaskExpanded(task.id) ? CaretDownOutline : CaretForwardOutline"
                     size="14"
-                    class="text-slate-400"
+                    class="text-dracula-soft"
                   />
-                  <span class="font-medium text-slate-100">
+                  <span class="font-medium text-dracula-text">
                     {{ task.mode === 'build_cache' ? '批量构建缓存' : '批量导出' }}
                   </span>
                   <NTag
@@ -955,12 +955,12 @@ function openContainingDirectory(path?: string) {
                     {{ task.status }}
                   </NTag>
                 </div>
-                <div class="mt-1 text-xs text-slate-400">
+                <div class="mt-1 text-xs text-dracula-soft">
                   成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
                 </div>
                 <div
                   v-if="task.exitMessage"
-                  class="mt-1 text-xs text-slate-500"
+                  class="mt-1 text-xs text-[rgb(var(--color-fg-muted)/0.82)]"
                 >
                   {{ task.exitMessage }}
                 </div>
@@ -1008,13 +1008,13 @@ function openContainingDirectory(path?: string) {
               <div
                 v-for="item in task.items"
                 :key="item.key"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/8 bg-black/10 px-3 py-2 text-xs"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-2 text-xs"
               >
                 <div class="min-w-0">
-                  <div class="font-medium text-slate-100">
+                  <div class="font-medium text-dracula-text">
                     {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
                   </div>
-                  <div class="mt-1 truncate text-slate-400">
+                  <div class="mt-1 truncate text-dracula-soft">
                     {{ item.message }}
                   </div>
                 </div>
@@ -1082,7 +1082,7 @@ function openContainingDirectory(path?: string) {
   height: 16px;
   align-items: center;
   justify-content: center;
-  color: rgba(160, 166, 186, 0.82);
+  color: rgb(var(--color-fg-muted) / 0.9);
   cursor: pointer;
   transition:
     color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
@@ -1091,7 +1091,7 @@ function openContainingDirectory(path?: string) {
 
 .help-trigger:hover,
 .help-trigger:focus-visible {
-  color: rgb(34 211 238 / 0.95);
+  color: rgb(var(--color-brand-primary) / 0.95);
   opacity: 1;
 }
 </style>

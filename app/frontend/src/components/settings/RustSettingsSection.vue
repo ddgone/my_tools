@@ -435,9 +435,9 @@ onMounted(async () => {
     <div
       class="rounded-xl border px-4 py-4"
       :class="rustEnv.state?.config.disabled
-        ? 'border-white/10 bg-white/[0.03]'
+        ? 'border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-panel)/0.72)]'
         : rustEnv.hasUsableEnvironment
-          ? 'border-[rgb(222,165,132)]/25 bg-[rgba(222,165,132,0.08)]'
+          ? 'border-dracula-orange/25 bg-dracula-orange/10'
           : 'border-amber-400/20 bg-amber-500/5'"
     >
       <div class="text-base font-semibold text-dracula-text">
@@ -453,7 +453,7 @@ onMounted(async () => {
                   : 'Rust 交叉编译环境已就绪'
         }}
       </div>
-      <div class="mt-2 text-sm text-white/70 leading-6">
+      <div class="mt-2 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
         {{
           rustEnv.state?.config.disabled
             ? '当前进入无 SDK 模式：Rust/Zig 自动探测已关闭，远程执行、导出和交叉编译缓存都会停用。'
@@ -468,7 +468,7 @@ onMounted(async () => {
       </div>
       <div
         v-if="rustEnv.state?.statusMessage"
-        class="mt-3 text-xs text-white/55"
+        class="mt-3 text-xs text-[rgb(var(--color-fg-muted)/0.95)]"
       >
         {{ rustEnv.state.statusMessage }}
       </div>
@@ -484,37 +484,37 @@ onMounted(async () => {
 
     <div
       v-if="rustEnv.task"
-      class="rounded-xl border border-[rgb(245,126,62)]/20 bg-[rgba(245,126,62,0.06)] px-4 py-4"
+      class="rounded-xl border border-dracula-orange/20 bg-dracula-orange/10 px-4 py-4"
     >
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-sm font-medium text-dracula-text">
             Rust 环境任务
           </div>
-          <div class="mt-1 text-xs text-white/70">
+          <div class="mt-1 text-xs text-[rgb(var(--color-fg-secondary)/0.9)]">
             {{ rustEnv.task.message || '正在处理 Rust 环境任务' }}
           </div>
           <div
             v-if="rustEnv.task.currentItem"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             当前项：{{ rustEnv.task.currentItem }}
           </div>
           <div
             v-if="rustEnv.task.detail && !formatRustTransferSummary()"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             {{ rustEnv.task.detail }}
           </div>
           <div
             v-if="formatRustTransferSummary()"
-            class="mt-1 text-[11px] text-[rgb(255,196,164)]/85"
+            class="mt-1 text-[11px] text-dracula-orange/90"
           >
             {{ formatRustTransferSummary() }}
           </div>
           <div
             v-if="rustEnv.task.currentSource"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             下载源：{{ rustEnv.task.currentSource }}
           </div>
@@ -546,7 +546,7 @@ onMounted(async () => {
           processing
         />
       </div>
-      <div class="mt-2 text-[11px] text-white/45">
+      <div class="mt-2 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
         状态：{{ rustEnv.task.status }}
         <span v-if="rustEnv.task.totalSteps > 0"> · 步骤 {{ rustEnv.task.step }}/{{ rustEnv.task.totalSteps }}</span>
       </div>
@@ -558,7 +558,7 @@ onMounted(async () => {
       </div>
       <div
         v-if="rustEnv.task.status === 'failed' || rustEnv.task.status === 'canceled'"
-        class="mt-3 text-[11px] text-white/55 leading-6"
+        class="mt-3 text-[11px] leading-6 text-[rgb(var(--color-fg-muted)/0.95)]"
       >
         自动安装不通时，可参考官方页面手动处理：
         <a
@@ -567,7 +567,7 @@ onMounted(async () => {
           :href="link.href"
           target="_blank"
           rel="noreferrer"
-          class="ml-2 text-[rgb(255,196,164)] hover:text-[rgb(255,220,200)] underline underline-offset-2"
+          class="ml-2 text-dracula-orange hover:text-[rgb(var(--color-kind-rust)/0.82)] underline underline-offset-2"
         >
           {{ link.label }}
         </a>
@@ -650,47 +650,47 @@ onMounted(async () => {
         </div>
         <div class="settings-value">
           <div class="grid w-full gap-2 md:grid-cols-2">
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 SDK
               </div>
               <div class="break-all">
                 {{ rustEnv.state?.activeRustVersion || '未就绪' }}
               </div>
-              <div class="mt-1 break-all text-[11px] text-white/45">
+              <div class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.activeRustRoot || '未检测到可用目录' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 Zig
               </div>
               <div class="break-all">
                 {{ rustEnv.state?.activeZigVersion || '未就绪' }}
               </div>
-              <div class="mt-1 break-all text-[11px] text-white/45">
+              <div class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.activeZigBinary || '未检测到可用路径' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 cargo-zigbuild
               </div>
               <div class="break-all">
                 {{ rustEnv.state?.activeCargoZigbuildVersion || '未就绪' }}
               </div>
-              <div class="mt-1 break-all text-[11px] text-white/45">
+              <div class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.cargoZigbuildStatusMessage || '尚未检测' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 rustup / targets
               </div>
               <div class="break-all">
                 {{ rustEnv.state?.activeRustupVersion || '未就绪' }}
               </div>
-              <div class="mt-1 break-all text-[11px] text-white/45">
+              <div class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.targetStatusMessage || '尚未检测' }}
               </div>
             </div>
@@ -704,7 +704,7 @@ onMounted(async () => {
         </div>
         <div class="settings-value">
           <div class="w-full space-y-3">
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-3 text-xs leading-6 text-white/70">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-3 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   cargo-zigbuild：{{ rustEnv.state?.hasUsableCargoZigbuild ? '已安装' : '缺失' }}
@@ -719,11 +719,11 @@ onMounted(async () => {
                   补齐 cargo-zigbuild
                 </NButton>
               </div>
-              <div class="mt-1 text-[11px] text-white/45">
+              <div class="mt-1 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.cargoZigbuildStatusMessage || '当前 Rust 环境已检测' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-3 text-xs leading-6 text-white/70">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-3 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   常用 targets：已安装 {{ rustInstalledCrossTargetCount }} / {{ rustCrossTargetCount }}
@@ -738,7 +738,7 @@ onMounted(async () => {
                   补齐 targets
                 </NButton>
               </div>
-              <div class="mt-1 text-[11px] text-white/45">
+              <div class="mt-1 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
                 {{ rustEnv.state?.targetStatusMessage || '尚未读取 target 状态' }}
               </div>
             </div>
@@ -755,7 +755,7 @@ onMounted(async () => {
                   : 'border-amber-400/15 bg-amber-500/[0.05] text-white/75'"
               >
                 <div class="flex items-center justify-between gap-3">
-                  <div class="font-medium text-white/85">
+                  <div class="font-medium text-[rgb(var(--color-fg-base)/0.92)]">
                     {{ target.platformLabel }}
                   </div>
                   <div
@@ -765,12 +765,12 @@ onMounted(async () => {
                     {{ target.native ? '原生构建' : (target.installed ? '已安装' : '未安装') }}
                   </div>
                 </div>
-                <div class="mt-1 break-all text-[11px] text-white/50">
+                <div class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.92)]">
                   {{ target.targetTriple }}
                 </div>
                 <div
                   v-if="target.note"
-                  class="mt-1 text-[11px] text-white/45"
+                  class="mt-1 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
                 >
                   {{ target.note }}
                 </div>
@@ -809,7 +809,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="rounded-xl border border-white/10 bg-black/10 p-4 space-y-4">
+    <div class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4 space-y-4">
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium text-dracula-text">
           {{ installPanelTitle }}
@@ -848,7 +848,7 @@ onMounted(async () => {
               :href="link.href"
               target="_blank"
               rel="noreferrer"
-              class="text-[rgb(255,196,164)] hover:text-[rgb(255,220,200)] underline underline-offset-2"
+              class="text-dracula-orange hover:text-[rgb(var(--color-kind-rust)/0.82)] underline underline-offset-2"
             >
               {{ link.label }}
             </a>
@@ -931,7 +931,7 @@ onMounted(async () => {
           </div>
           <div
             v-if="resolvedRustInstallDirectory"
-            class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/55"
+            class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             Rust 将安装到：{{ resolvedRustInstallDirectory }}/rust/{{ rustDownloadVersionModel || '...' }}；Zig 将安装到：{{ resolvedRustInstallDirectory }}/zig/{{ zigDownloadVersionModel || '...' }}
           </div>
@@ -969,7 +969,7 @@ onMounted(async () => {
 .settings-label {
   min-width: 0;
   white-space: nowrap;
-  color: rgba(248, 248, 242, 0.9);
+  color: rgb(var(--color-fg-base) / 0.9);
   font-size: 14px;
   line-height: 1.4;
 }

@@ -71,7 +71,7 @@ function handleCopy() {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
       <div class="flex flex-wrap items-center gap-2">
         <NButton
@@ -110,7 +110,7 @@ function handleCopy() {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             输入
           </div>
           <NInput
@@ -121,7 +121,7 @@ function handleCopy() {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             输出
           </div>
           <NInput
@@ -137,16 +137,16 @@ function handleCopy() {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-slate-200">
+      <div class="text-sm font-medium text-dracula-text">
         结果说明
       </div>
       <div
         class="mt-3 rounded-xl border px-4 py-3 text-sm leading-6"
         :class="errorText
           ? 'border-rose-400/25 bg-rose-400/10 text-rose-100'
-          : 'border-white/10 bg-black/15 text-slate-300'"
+          : 'border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] text-[rgb(var(--color-fg-secondary)/0.95)]'"
       >
         {{ errorText || '支持 Unicode 文本。编码和解码都在当前桌面宿主前端本地完成，不影响现有工具执行链路。' }}
       </div>

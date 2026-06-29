@@ -20,6 +20,7 @@ export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
 export type SettingsTab = 'general' | 'export' | 'go' | 'rust' | 'python'
 export type GoExportMode = 'binary' | 'source'
+export type ThemePreference = 'dark' | 'light' | 'system'
 
 export interface ToolExecutionConfig {
   panelMode: ToolPanelMode
@@ -45,6 +46,7 @@ export interface UserSettings {
   bgmEnabled: boolean
   autoOpenExportDir: boolean
   goExportMode: GoExportMode
+  themePreference: ThemePreference
   lastSettingsTab: SettingsTab
 }
 
@@ -84,6 +86,7 @@ const defaultSettings: UserSettings = {
   bgmEnabled: false,
   autoOpenExportDir: true,
   goExportMode: 'binary',
+  themePreference: 'dark',
   lastSettingsTab: 'general',
 }
 
@@ -115,12 +118,17 @@ function normalizeGoExportMode(value: unknown): GoExportMode {
   return value === 'source' ? 'source' : 'binary'
 }
 
+function normalizeThemePreference(value: unknown): ThemePreference {
+  return value === 'light' || value === 'system' ? value : 'dark'
+}
+
 function normalizeUserSettings(source?: Partial<UserSettings>): UserSettings {
   return {
     ...defaultSettings,
     ...source,
     autoOpenExportDir: source?.autoOpenExportDir !== false,
     goExportMode: normalizeGoExportMode(source?.goExportMode),
+    themePreference: normalizeThemePreference(source?.themePreference),
     lastSettingsTab: normalizeSettingsTab(source?.lastSettingsTab),
   }
 }

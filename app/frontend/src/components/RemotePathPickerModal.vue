@@ -35,6 +35,7 @@ const listRef = ref<HTMLElement | null>(null)
 const pathInputWrapRef = ref<HTMLElement | null>(null)
 const searchInputWrapRef = ref<HTMLElement | null>(null)
 const pathOverflow = ref(false)
+const activeBrowseRequestId = ref(0)
 const entryMenuShow = ref(false)
 const entryMenuX = ref(0)
 const entryMenuY = ref(0)
@@ -173,6 +174,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 function resetState() {
+  activeBrowseRequestId.value += 1
   loading.value = false
   errorText.value = ''
   browseInput.value = ''
@@ -219,11 +221,16 @@ async function loadDirectory(requestedPath: string, options?: { preserveHistory?
     return
   }
 
+  const requestId = activeBrowseRequestId.value + 1
+  activeBrowseRequestId.value = requestId
   loading.value = true
   errorText.value = ''
   selectedEntryPaths.value = []
   try {
     const result = await browseRemotePath(props.connectionId, requestedPath.trim())
+    if (requestId !== activeBrowseRequestId.value || !props.show) {
+      return
+    }
     browseResult.value = result
     browseInput.value = result.currentPath
     if (!options?.preserveHistory) {
@@ -231,9 +238,14 @@ async function loadDirectory(requestedPath: string, options?: { preserveHistory?
     }
     updatePathInputViewport()
   } catch (error) {
+    if (requestId !== activeBrowseRequestId.value || !props.show) {
+      return
+    }
     errorText.value = error instanceof Error ? error.message : String(error)
   } finally {
-    loading.value = false
+    if (requestId === activeBrowseRequestId.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -491,7 +503,7 @@ onUnmounted(() => {
               <div class="text-sm font-semibold text-dracula-text">
                 远程路径选择器
               </div>
-              <div class="mt-1 text-xs text-slate-400">
+              <div class="mt-1 text-xs text-dracula-soft">
                 {{ connectionDisplay }}
               </div>
             </div>
@@ -605,8 +617,8 @@ onUnmounted(() => {
               </NAlert>
             </div>
 
-            <div class="remote-path-picker-list-shell rounded-xl border border-white/10 bg-black/20">
-              <div class="remote-path-picker-list-header border-b border-white/8 px-3 py-2 text-[11px] text-slate-400">
+            <div class="remote-path-picker-list-shell rounded-xl border border-white/10 bg-[rgb(var(--color-bg-elevated)/0.88)]">
+              <div class="remote-path-picker-list-header border-b border-white/8 px-3 py-2 text-[11px] text-dracula-soft">
                 <span>名称</span>
                 <span class="text-right">类型</span>
               </div>
@@ -626,7 +638,7 @@ onUnmounted(() => {
                   type="button"
                   :data-entry-path="entry.path"
                   class="remote-path-entry grid w-full grid-cols-[minmax(0,1fr)_52px] items-center gap-3 px-3 py-1 text-left"
-                  :class="selectedEntryPaths.includes(entry.path) ? 'remote-path-entry-active' : 'hover:bg-white/5'"
+                  :class="selectedEntryPaths.includes(entry.path) ? 'remote-path-entry-active' : 'hover:bg-[rgb(var(--color-fg-base)/0.05)]'"
                   @click="handleEntryClick($event, entry)"
                   @dblclick="handleEntryOpen(entry)"
                   @contextmenu="openEntryContextMenu($event, entry)"
@@ -634,16 +646,16 @@ onUnmounted(() => {
                   <div class="flex min-w-0 items-center gap-3">
                     <NIcon
                       :component="entry.kind === 'directory' ? FolderOpenOutline : DocumentTextOutline"
-                      :color="entry.kind === 'directory' ? '#8be9fd' : '#f8f8f2'"
+                      :color="entry.kind === 'directory' ? 'rgb(var(--color-brand-primary) / 1)' : 'rgb(var(--color-fg-base) / 1)'"
                       size="16"
                       class="shrink-0"
                     />
-                    <div class="truncate text-sm text-slate-100">
+                    <div class="truncate text-sm text-dracula-text">
                       {{ entry.name }}
                     </div>
                   </div>
                   <div class="flex items-center justify-end">
-                    <span class="text-xs text-slate-400">
+                    <span class="text-xs text-dracula-soft">
                       {{ entry.kind === 'directory' ? '目录' : '文件' }}
                     </span>
                   </div>
@@ -750,7 +762,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(17, 22, 40, 0.42);
+  background: rgb(var(--color-overlay-rgb) / 0.28);
   pointer-events: none;
 }
 
@@ -763,14 +775,14 @@ onUnmounted(() => {
 }
 
 .remote-path-entry-active {
-  background-color: rgba(139, 233, 253, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(139, 233, 253, 0.32);
+  background-color: rgb(var(--color-brand-primary) / 0.12);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-brand-primary) / 0.32);
 }
 
 .remote-path-picker-selection-rect {
   position: absolute;
-  border: 1px solid rgba(139, 233, 253, 0.72);
-  background: rgba(139, 233, 253, 0.14);
+  border: 1px solid rgb(var(--color-brand-primary) / 0.72);
+  background: rgb(var(--color-brand-primary) / 0.14);
   pointer-events: none;
 }
 

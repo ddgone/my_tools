@@ -358,7 +358,7 @@ onMounted(async () => {
       <div class="text-base font-semibold text-dracula-text">
         {{ goEnv.hasUsableBinary ? 'Go 环境已就绪' : '当前未检测到可用的 Go 环境' }}
       </div>
-      <div class="mt-2 text-sm text-white/70 leading-6">
+      <div class="mt-2 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
         {{
           goEnv.hasUsableBinary
             ? `当前使用 ${goEnv.state?.activeVersion || 'Go'}，整个桌面宿主共用这一份 Go 环境。`
@@ -367,7 +367,7 @@ onMounted(async () => {
       </div>
       <div
         v-if="goEnv.state?.statusMessage"
-        class="mt-3 text-xs text-white/55"
+        class="mt-3 text-xs text-[rgb(var(--color-fg-muted)/0.95)]"
       >
         {{ goEnv.state.statusMessage }}
       </div>
@@ -390,30 +390,30 @@ onMounted(async () => {
           <div class="text-sm font-medium text-dracula-text">
             Go SDK 下载任务
           </div>
-          <div class="mt-1 text-xs text-white/70">
+          <div class="mt-1 text-xs text-[rgb(var(--color-fg-secondary)/0.9)]">
             {{ goEnv.task.message || '正在处理 Go SDK 下载任务' }}
           </div>
           <div
             v-if="goEnv.task.currentItem"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             当前项：{{ goEnv.task.currentItem }}
           </div>
           <div
             v-if="goEnv.task.detail && !formatTransferSummary()"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             {{ goEnv.task.detail }}
           </div>
           <div
             v-if="formatTransferSummary()"
-            class="mt-1 text-[11px] text-cyan-200/80"
+            class="mt-1 text-[11px] text-dracula-cyan/90"
           >
             {{ formatTransferSummary() }}
           </div>
           <div
             v-if="goEnv.task.currentSource"
-            class="mt-1 text-[11px] text-white/45 break-all"
+            class="mt-1 break-all text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]"
           >
             下载源：{{ goEnv.task.currentSource }}
           </div>
@@ -445,7 +445,7 @@ onMounted(async () => {
           processing
         />
       </div>
-      <div class="mt-2 text-[11px] text-white/45">
+      <div class="mt-2 text-[11px] text-[rgb(var(--color-fg-muted)/0.95)]">
         状态：{{ goEnv.task.status }}
         <span v-if="goEnv.task.totalSteps > 0"> · 步骤 {{ goEnv.task.step }}/{{ goEnv.task.totalSteps }}</span>
       </div>
@@ -457,7 +457,7 @@ onMounted(async () => {
       </div>
       <div
         v-if="goEnv.task.kind === 'install' && (goEnv.task.error || goEnv.task.status === 'failed' || goEnv.task.status === 'canceled')"
-        class="mt-3 text-[11px] text-white/55 leading-6"
+        class="mt-3 text-[11px] leading-6 text-[rgb(var(--color-fg-muted)/0.95)]"
       >
         自动安装不通时，可手动下载后通过“本地”选择 go.exe：
         <a
@@ -466,7 +466,7 @@ onMounted(async () => {
           :href="link.href"
           target="_blank"
           rel="noreferrer"
-          class="ml-2 text-cyan-200 hover:text-cyan-100 underline underline-offset-2"
+          class="ml-2 text-dracula-cyan hover:text-[rgb(var(--color-brand-hover)/1)] underline underline-offset-2"
         >
           {{ link.label }}
         </a>
@@ -517,7 +517,7 @@ onMounted(async () => {
           当前路径
         </div>
         <div class="settings-value">
-          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 break-all">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)] break-all">
             {{ goEnv.state.activeBinary }}
           </div>
         </div>
@@ -531,7 +531,7 @@ onMounted(async () => {
           来源类型
         </div>
         <div class="settings-value">
-          <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
+          <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
             {{ describeGoSource(goEnv.state.activeSource) }}
           </div>
         </div>
@@ -546,32 +546,32 @@ onMounted(async () => {
         </div>
         <div class="settings-value">
           <div class="grid gap-2 md:grid-cols-2">
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 GOVERSION
               </div>
               <div class="break-all">
                 {{ goEnv.state?.runtimeDetails?.goversion || goEnv.state?.activeVersion || '未知' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 GOOS / GOARCH
               </div>
               <div class="break-all">
                 {{ [goEnv.state?.runtimeDetails?.goos, goEnv.state?.runtimeDetails?.goarch].filter(Boolean).join(' / ') || '未知' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 md:col-span-2">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)] md:col-span-2">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 GOROOT
               </div>
               <div class="break-all">
                 {{ goEnv.state?.runtimeDetails?.goroot || '未知' }}
               </div>
             </div>
-            <div class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/70 md:col-span-2">
-              <div class="text-[11px] uppercase tracking-wide text-white/45">
+            <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)] md:col-span-2">
+              <div class="text-[11px] uppercase tracking-wide text-[rgb(var(--color-fg-muted)/0.95)]">
                 GOPATH
               </div>
               <div class="break-all">
@@ -613,7 +613,7 @@ onMounted(async () => {
 
     <div
       v-if="showDownloadPanelModel"
-      class="rounded-xl border border-white/10 bg-black/10 p-4 space-y-4"
+      class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4 space-y-4"
     >
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium text-dracula-text">
@@ -649,7 +649,7 @@ onMounted(async () => {
             :href="link.href"
             target="_blank"
             rel="noreferrer"
-            class="text-cyan-200 hover:text-cyan-100 underline underline-offset-2"
+            class="text-dracula-cyan hover:text-[rgb(var(--color-brand-hover)/1)] underline underline-offset-2"
           >
             {{ link.label }}
           </a>
@@ -699,7 +699,7 @@ onMounted(async () => {
         </div>
         <div
           v-if="resolvedGoInstallDirectory"
-          class="rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs leading-6 text-white/55"
+          class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2 text-xs leading-6 text-[rgb(var(--color-fg-muted)/0.95)]"
         >
           将安装到：{{ resolvedGoInstallDirectory }}
         </div>
@@ -736,7 +736,7 @@ onMounted(async () => {
 .settings-label {
   min-width: 0;
   white-space: nowrap;
-  color: rgba(248, 248, 242, 0.9);
+  color: rgb(var(--color-fg-base) / 0.9);
   font-size: 14px;
   line-height: 1.4;
 }

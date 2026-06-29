@@ -22,7 +22,7 @@ function isBuiltinToolActive(toolId: string) {
 function builtinCardStyle(tool: BuiltinToolDefinition) {
   if (!isBuiltinToolActive(tool.id)) {
     return {
-      borderColor: 'rgba(255, 255, 255, 0.08)',
+      borderColor: 'rgb(var(--color-border-subtle) / 0.82)',
     }
   }
 
@@ -75,7 +75,7 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between gap-2">
-              <div class="truncate text-sm font-medium text-slate-100">
+              <div class="truncate text-sm font-medium text-dracula-text">
                 {{ tool.name }}
               </div>
               <NTag
@@ -89,10 +89,10 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
                 {{ tool.badge }}
               </NTag>
             </div>
-            <div class="mt-1 text-xs text-slate-400">
+            <div class="mt-1 text-xs text-dracula-soft">
               {{ tool.group }}
             </div>
-            <div class="mt-2 text-[12px] leading-5 text-slate-400">
+            <div class="mt-2 text-[12px] leading-5 text-[rgb(var(--color-fg-secondary)/0.9)]">
               {{ tool.description }}
             </div>
           </div>
@@ -101,7 +101,7 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
 
       <div
         v-if="filteredTools.length === 0"
-        class="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-slate-500"
+        class="rounded-xl border border-dashed border-[rgb(var(--color-border-subtle)/0.82)] px-4 py-8 text-center text-sm text-dracula-soft"
       >
         没有找到匹配的内置工具
       </div>

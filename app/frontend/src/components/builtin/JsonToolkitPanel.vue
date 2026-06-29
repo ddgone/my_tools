@@ -118,7 +118,7 @@ const validationState = computed(() => {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
       <div class="flex flex-wrap items-center gap-2">
         <NButton
@@ -176,7 +176,7 @@ const validationState = computed(() => {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             输入
           </div>
           <NInput
@@ -187,7 +187,7 @@ const validationState = computed(() => {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-slate-200">
+          <div class="mb-2 text-sm font-medium text-dracula-text">
             输出
           </div>
           <NInput
@@ -203,9 +203,9 @@ const validationState = computed(() => {
     <NCard
       size="small"
       :bordered="true"
-      class="bg-white/5"
+      class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-slate-200">
+      <div class="text-sm font-medium text-dracula-text">
         校验状态
       </div>
       <div
