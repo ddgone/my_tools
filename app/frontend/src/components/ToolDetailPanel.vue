@@ -90,11 +90,13 @@ const switchLocalPanelStyle = computed(() => ({
   color: localTheme.value.accentText,
   backgroundColor: localTheme.value.accent,
   backgroundImage: 'linear-gradient(180deg, rgb(var(--color-fg-base) / 0.04) 0%, transparent 55%, rgb(var(--color-overlay-rgb) / 0.05) 100%)',
+  boxShadow: 'inset 0 1px 0 rgb(var(--color-fg-base) / 0.04)',
 }))
 const switchRemotePanelStyle = computed(() => ({
   color: remoteTheme.value.accentText,
   backgroundColor: remoteTheme.value.accent,
   backgroundImage: 'linear-gradient(180deg, rgb(var(--color-fg-base) / 0.04) 0%, transparent 55%, rgb(var(--color-overlay-rgb) / 0.05) 100%)',
+  boxShadow: 'inset 0 1px 0 rgb(var(--color-fg-base) / 0.04)',
 }))
 const switchThumbStyle = computed(() => ({
   borderColor: 'rgb(var(--color-border-strong) / 0.72)',
@@ -294,7 +296,7 @@ onBeforeUnmount(() => {
           >
             <div
               ref="switchLocalPanelRef"
-              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
+              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-r-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
               :style="switchLocalPanelStyle"
             >
               <NIcon
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
             </div>
             <div
               ref="switchRemotePanelRef"
-              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
+              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-l-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
               :style="switchRemotePanelStyle"
             >
               <NIcon
