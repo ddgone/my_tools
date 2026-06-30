@@ -35,6 +35,7 @@ import type { ArtifactBatchTask, SSHConnection, ToolManifest } from '@/types/wor
 import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import BuiltinSidebarPanel from './BuiltinSidebarPanel.vue'
+import ToolKindDevIcon from './ToolKindDevIcon.vue'
 import { ANIM } from '@/utils/animation'
 import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
@@ -524,6 +525,13 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
   }, [
     h('span', {
       class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-[rgb(var(--color-success)/0.92)]' : 'border border-[rgb(var(--color-border-strong)/0.9)]'}`,
+    }),
+    h(ToolKindDevIcon, {
+      kind: tool.kind,
+      size: 14,
+      variant: 'framed',
+      opacity: isToolActive(tool.id) ? 0.98 : 0.9,
+      title: '语言标志',
     }),
     h('span', {
       class: 'truncate text-sm',

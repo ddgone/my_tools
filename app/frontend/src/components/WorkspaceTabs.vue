@@ -20,6 +20,7 @@ import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import RemotePathPickerModal from './RemotePathPickerModal.vue'
+import ToolKindDevIcon from './ToolKindDevIcon.vue'
 import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
@@ -874,6 +875,13 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             </template>
             内置
           </NTag>
+          <ToolKindDevIcon
+            v-if="item.type === 'tool'"
+            :kind="toolById(item.label)?.kind"
+            :size="13"
+            :opacity="isUnifiedTabActive(item) ? 0.98 : 0.84"
+            title="语言标志"
+          />
           <NIcon
             v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
             :component="Star"
