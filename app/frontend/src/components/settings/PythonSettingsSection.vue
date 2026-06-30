@@ -175,7 +175,7 @@ onMounted(async () => {
         ? 'border-emerald-400/20 bg-emerald-500/5'
         : 'border-amber-400/20 bg-amber-500/5'"
     >
-      <div class="text-base font-semibold text-dracula-text">
+      <div class="text-base font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
         {{
           !pythonEnv.state?.hasUsableBaseBinary
             ? '当前未检测到可用的基础 Python'
@@ -223,7 +223,7 @@ onMounted(async () => {
     >
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0">
-          <div class="text-sm font-medium text-dracula-text">
+          <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             {{ pythonEnv.task.kind === 'install' ? '依赖安装任务' : '工具环境任务' }}
           </div>
           <div class="mt-1 text-xs leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">

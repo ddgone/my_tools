@@ -1,13 +1,21 @@
 import type { GlobalThemeOverrides } from 'naive-ui'
-import { themeTokensByName, type ResolvedThemeName } from './tokens'
+import {
+  defaultThemeCustomization,
+  resolveThemeTokens,
+  type ResolvedThemeName,
+  type ThemeCustomizationSettings,
+} from './tokens'
 
-export function buildThemeOverrides(name: ResolvedThemeName): GlobalThemeOverrides {
-  const tokens = themeTokensByName[name]
-  const borderColor = name === 'dark' ? 'rgba(229, 231, 235, 0.16)' : 'rgba(15, 23, 42, 0.12)'
-  const dividerColor = name === 'dark' ? 'rgba(229, 231, 235, 0.12)' : 'rgba(15, 23, 42, 0.10)'
+export function buildThemeOverrides(
+  name: ResolvedThemeName,
+  customization: ThemeCustomizationSettings = defaultThemeCustomization,
+): GlobalThemeOverrides {
+  const tokens = resolveThemeTokens(name, customization)
+  const borderColor = name === 'dark' ? 'rgba(231, 234, 240, 0.12)' : 'rgba(31, 35, 41, 0.10)'
+  const dividerColor = name === 'dark' ? 'rgba(231, 234, 240, 0.08)' : 'rgba(31, 35, 41, 0.08)'
   const focusShadow = name === 'dark'
-    ? '0 0 0 2px rgba(56, 189, 248, 0.16)'
-    : '0 0 0 2px rgba(2, 132, 199, 0.14)'
+    ? '0 0 0 2px rgba(83, 177, 253, 0.18)'
+    : '0 0 0 2px rgba(47, 155, 255, 0.16)'
 
   return {
     common: {
@@ -66,6 +74,21 @@ export function buildThemeOverrides(name: ResolvedThemeName): GlobalThemeOverrid
       borderRadius: '6px',
       boxShadow: tokens.shadowTooltip,
       padding: '6px 10px',
+    },
+    Dropdown: {
+      color: tokens.bgPanel,
+      optionColorHover: name === 'dark' ? 'rgba(83, 177, 253, 0.08)' : 'rgba(47, 155, 255, 0.08)',
+      optionTextColor: tokens.fgBase,
+      optionTextColorHover: tokens.fgBase,
+      optionTextColorActive: tokens.fgBase,
+      optionColorActive: name === 'dark' ? 'rgba(83, 177, 253, 0.12)' : 'rgba(47, 155, 255, 0.12)',
+    },
+    Select: {
+      peers: {
+        InternalSelection: {
+          color: tokens.bgPanel,
+        },
+      },
     },
     Form: {
       blankHeightSmall: '14px',

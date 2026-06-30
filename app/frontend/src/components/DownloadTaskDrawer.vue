@@ -27,11 +27,11 @@ const tasks = computed(() => downloads.activeTasks)
         <div
           v-for="task in tasks"
           :key="task.id"
-          class="rounded-xl border border-white/10 bg-white/5 p-3"
+          class="surface-panel rounded-xl p-3"
         >
           <div class="flex items-center justify-between gap-x-3">
             <div class="min-w-0">
-              <div class="truncate text-sm font-semibold text-dracula-text">
+              <div class="truncate text-sm font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
                 {{ task.toolName || task.toolId }}
               </div>
               <NText

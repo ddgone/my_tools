@@ -143,7 +143,7 @@ async function handleDelete() {
     v-if="!loading"
     class="flex flex-1 flex-col overflow-hidden"
   >
-    <div class="shrink-0 border-b border-white/15 px-4 py-3">
+    <div class="surface-divider shrink-0 border-b px-4 py-3">
       <div class="mx-auto flex max-w-xl flex-wrap items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-x-2">
@@ -153,7 +153,7 @@ async function handleDelete() {
             >
               SSH 连接
             </NText>
-            <span class="h-1 w-1 rounded-full bg-dracula-cyan" />
+            <span class="h-1 w-1 rounded-full bg-[rgb(var(--color-brand-primary)/1)]" />
             <NText
               depth="3"
               class="text-xs"
@@ -161,7 +161,7 @@ async function handleDelete() {
               {{ isNew ? '新建' : '编辑' }}
             </NText>
           </div>
-          <h2 class="m-0 mt-1 text-lg font-semibold text-dracula-text">
+          <h2 class="m-0 mt-1 text-lg font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
             {{ title }}
           </h2>
           <NText
@@ -324,7 +324,7 @@ async function handleDelete() {
       </div>
     </div>
 
-    <div class="shrink-0 border-t border-white/15 py-3">
+    <div class="surface-divider shrink-0 border-t py-3">
       <div class="text-center">
         <NText
           depth="3"

@@ -111,17 +111,17 @@ onUnmounted(() => {
       >
         <div
           v-if="title || subtitle"
-          class="border-b border-black/10 px-3 py-2.5"
+          class="border-b border-[rgb(var(--color-border-subtle)/0.35)] px-3 py-2.5"
         >
           <div
             v-if="title"
-            class="truncate text-[12px] font-semibold text-[var(--workbench-tooltip-text)]"
+            class="truncate text-[12px] font-semibold text-[rgb(var(--color-tooltip-text)/1)]"
           >
             {{ title }}
           </div>
           <div
             v-if="subtitle"
-            class="mt-0.5 truncate text-[11px] text-[color:rgba(26,26,46,0.6)]"
+            class="mt-0.5 truncate text-[11px] text-[rgb(var(--color-tooltip-text)/0.62)]"
           >
             {{ subtitle }}
           </div>
@@ -143,7 +143,7 @@ onUnmounted(() => {
               class="workbench-menu-item flex w-full items-center gap-x-2 rounded-md px-2.5 py-2 text-left text-[12px]"
               :class="[
                 item.disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer',
-                item.danger ? 'text-rose-700' : 'text-[var(--workbench-tooltip-text)]',
+                item.danger ? 'text-[rgb(var(--color-error)/0.92)]' : 'text-[rgb(var(--color-tooltip-text)/1)]',
               ]"
               :disabled="item.disabled"
               @click="handleItemSelect(item)"
@@ -162,7 +162,7 @@ onUnmounted(() => {
 
               <span
                 v-if="item.hint"
-                class="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[color:rgba(26,26,46,0.5)]"
+                class="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[rgb(var(--color-tooltip-text)/0.52)]"
               >
                 {{ item.hint }}
               </span>

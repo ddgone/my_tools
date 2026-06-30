@@ -61,24 +61,6 @@ refreshCacheInfo()
   <div class="settings-form pt-2">
     <div class="settings-row">
       <div class="settings-label">
-        界面主题
-      </div>
-      <div class="settings-value">
-        <NSelect
-          class="settings-control"
-          :value="workspace.settings.themePreference"
-          :options="[
-            { label: '深色', value: 'dark' },
-            { label: '浅色', value: 'light' },
-            { label: '跟随系统', value: 'system' },
-          ]"
-          @update:value="(v: string) => workspace.settings.themePreference = v === 'light' || v === 'system' ? v : 'dark'"
-        />
-      </div>
-    </div>
-
-    <div class="settings-row">
-      <div class="settings-label">
         最近使用显示数量
       </div>
       <div class="settings-value">

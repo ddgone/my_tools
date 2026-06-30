@@ -109,8 +109,8 @@ export function useResizable(options: ResizableOptions): {
   })
 
   const dividerClass = options.axis === 'x'
-    ? 'w-1 cursor-col-resize hover:bg-dracula-cyan/30 active:bg-dracula-cyan/50 shrink-0 transition-colors'
-    : 'h-1 cursor-row-resize hover:bg-dracula-cyan/30 active:bg-dracula-cyan/50 shrink-0 transition-colors'
+    ? 'w-1 cursor-col-resize hover:bg-[rgb(var(--color-brand-primary)/0.18)] active:bg-[rgb(var(--color-brand-primary)/0.26)] shrink-0 transition-colors'
+    : 'h-1 cursor-row-resize hover:bg-[rgb(var(--color-brand-primary)/0.18)] active:bg-[rgb(var(--color-brand-primary)/0.26)] shrink-0 transition-colors'
 
   const dividerStyle: Record<string, string> = options.axis === 'x'
     ? { width: '4px' }

@@ -75,7 +75,7 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center justify-between gap-2">
-              <div class="truncate text-sm font-medium text-dracula-text">
+              <div class="truncate text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
                 {{ tool.name }}
               </div>
               <NTag
@@ -89,7 +89,7 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
                 {{ tool.badge }}
               </NTag>
             </div>
-            <div class="mt-1 text-xs text-dracula-soft">
+            <div class="mt-1 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
               {{ tool.group }}
             </div>
             <div class="mt-2 text-[12px] leading-5 text-[rgb(var(--color-fg-secondary)/0.9)]">
@@ -101,7 +101,7 @@ function builtinCardStyle(tool: BuiltinToolDefinition) {
 
       <div
         v-if="filteredTools.length === 0"
-        class="rounded-xl border border-dashed border-[rgb(var(--color-border-subtle)/0.82)] px-4 py-8 text-center text-sm text-dracula-soft"
+        class="rounded-xl border border-dashed border-[rgb(var(--color-border-subtle)/0.82)] px-4 py-8 text-center text-sm text-[rgb(var(--color-fg-muted)/0.92)]"
       >
         没有找到匹配的内置工具
       </div>

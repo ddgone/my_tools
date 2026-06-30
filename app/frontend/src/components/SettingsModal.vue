@@ -16,6 +16,7 @@ import GeneralSettingsSection from './settings/GeneralSettingsSection.vue'
 import GoSettingsSection from './settings/GoSettingsSection.vue'
 import PythonSettingsSection from './settings/PythonSettingsSection.vue'
 import RustSettingsSection from './settings/RustSettingsSection.vue'
+import ThemeSettingsSection from './settings/ThemeSettingsSection.vue'
 
 const workspace = useWorkspaceStore()
 const message = useMessage()
@@ -39,7 +40,7 @@ function resetAll() {
     <Transition name="fade">
       <div
         v-if="workspace.showSettings"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        class="fixed inset-0 z-50 bg-[rgb(var(--color-overlay-rgb)/0.42)] backdrop-blur-sm"
         @click="workspace.showSettings = false"
       />
     </Transition>
@@ -52,34 +53,47 @@ function resetAll() {
         class="fixed inset-0 z-50 flex items-start justify-center px-4 py-[4vh] pointer-events-none"
       >
         <div
-          class="pointer-events-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-white/15 bg-dracula-panel shadow-2xl max-h-[92vh]"
+          class="surface-dialog pointer-events-auto flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-white/15 px-5 py-3">
-            <NText class="text-sm font-semibold">
-              系统首选项
-            </NText>
+          <div class="surface-divider flex items-start justify-between border-b px-6 py-4">
+            <div class="min-w-0">
+              <NText class="text-base font-semibold">
+                系统首选项
+              </NText>
+              <div class="mt-1 text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.88)]">
+                调整工作台主题、导出行为与运行环境。主题页可分别配置深浅模式的主背景、面板和点缀蓝。
+              </div>
+            </div>
             <NButton
               text
               size="tiny"
+              class="mt-0.5"
               @click="workspace.showSettings = false"
             >
               ESC 关闭
             </NButton>
           </div>
 
-          <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <NTabs
               type="line"
               animated
               :value="workspace.settings.lastSettingsTab"
-              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'export' || v === 'go' || v === 'rust' || v === 'python' ? v : 'general'"
+              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'theme' || v === 'export' || v === 'go' || v === 'rust' || v === 'python' ? v : 'general'"
             >
               <NTabPane
                 name="general"
                 tab="通用"
               >
                 <GeneralSettingsSection />
+              </NTabPane>
+
+              <NTabPane
+                name="theme"
+                tab="主题"
+              >
+                <ThemeSettingsSection />
               </NTabPane>
 
               <NTabPane
@@ -120,18 +134,18 @@ function resetAll() {
             </NTabs>
           </div>
 
-          <div class="flex items-center justify-between border-t border-white/15 px-5 py-3">
+          <div class="surface-muted-divider flex items-center justify-between border-t px-6 py-4">
             <NPopconfirm @positive-click="resetAll">
               <template #trigger>
                 <NButton
-                  type="error"
                   size="small"
-                  secondary
+                  quaternary
+                  class="text-[rgb(var(--color-error)/0.92)]"
                 >
                   <template #icon>
                     <NIcon :component="Trash" />
                   </template>
-                  初始化应用
+                  恢复出厂设置
                 </NButton>
               </template>
               确定要清除所有数据并恢复出厂设置吗？此操作不可撤销。

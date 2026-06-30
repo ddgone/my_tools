@@ -19,7 +19,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '时间与日期',
     badge: '聚合工具',
     icon: 'time',
-    accent: '#8be9fd',
+    accent: 'rgb(var(--color-brand-primary) / 1)',
   },
   {
     id: 'json_toolkit',
@@ -29,7 +29,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '文本处理',
     badge: '结构化数据',
     icon: 'json',
-    accent: '#bd93f9',
+    accent: 'rgb(var(--color-mode-remote) / 1)',
   },
   {
     id: 'base64_toolkit',
@@ -39,7 +39,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '文本处理',
     badge: '编解码',
     icon: 'base64',
-    accent: '#ffb86c',
+    accent: 'rgb(var(--color-kind-rust) / 1)',
   },
   {
     id: 'url_toolkit',
@@ -49,7 +49,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '网络与协议',
     badge: '编解码',
     icon: 'url',
-    accent: '#50fa7b',
+    accent: 'rgb(var(--color-success) / 1)',
   },
   {
     id: 'hash_toolkit',
@@ -59,7 +59,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '安全与校验',
     badge: '摘要',
     icon: 'hash',
-    accent: '#ff79c6',
+    accent: 'rgb(var(--color-mode-remote) / 1)',
   },
   {
     id: 'jwt_toolkit',
@@ -69,7 +69,7 @@ export const builtinTools: BuiltinToolDefinition[] = [
     group: '安全与校验',
     badge: '鉴权调试',
     icon: 'jwt',
-    accent: '#f1fa8c',
+    accent: 'rgb(var(--color-warning) / 1)',
   },
 ]
 

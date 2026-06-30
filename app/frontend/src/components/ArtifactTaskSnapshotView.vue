@@ -140,7 +140,7 @@ function openContainingDirectory(path?: string) {
     >
       <template #header>
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-base font-medium text-dracula-text">
+          <span class="text-base font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             {{ task.mode === 'build_cache' ? '批量构建缓存快照' : '批量导出快照' }}
           </span>
           <NTag
@@ -164,34 +164,34 @@ function openContainingDirectory(path?: string) {
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
-          <div class="text-xs text-dracula-soft">
+          <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
             启动时间
           </div>
-          <div class="mt-1 text-sm text-dracula-text">
+          <div class="mt-1 text-sm text-[rgb(var(--color-fg-base)/0.98)]">
             {{ new Date(task.startedAt).toLocaleString() }}
           </div>
         </div>
         <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
-          <div class="text-xs text-dracula-soft">
+          <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
             执行汇总
           </div>
-          <div class="mt-1 text-sm text-dracula-text">
+          <div class="mt-1 text-sm text-[rgb(var(--color-fg-base)/0.98)]">
             成功 {{ task.successCount }} / 缓存 {{ task.cachedCount }} / 跳过 {{ task.skippedCount }} / 失败 {{ task.errorCount }}
           </div>
         </div>
         <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
-          <div class="text-xs text-dracula-soft">
+          <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
             任务 ID
           </div>
-          <div class="mt-1 break-all text-sm text-dracula-text">
+          <div class="mt-1 break-all text-sm text-[rgb(var(--color-fg-base)/0.98)]">
             {{ task.id }}
           </div>
         </div>
         <div class="rounded-lg border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-3 py-2">
-          <div class="text-xs text-dracula-soft">
+          <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
             结果说明
           </div>
-          <div class="mt-1 text-sm text-dracula-text">
+          <div class="mt-1 text-sm text-[rgb(var(--color-fg-base)/0.98)]">
             {{ task.exitMessage || '无' }}
           </div>
         </div>
@@ -239,10 +239,10 @@ function openContainingDirectory(path?: string) {
           class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-2 text-xs"
         >
           <div class="min-w-0">
-            <div class="font-medium text-dracula-text">
+            <div class="font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
             </div>
-            <div class="mt-1 truncate text-dracula-soft">
+            <div class="mt-1 truncate text-[rgb(var(--color-fg-muted)/0.92)]">
               {{ item.message }}
             </div>
           </div>

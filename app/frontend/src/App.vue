@@ -14,8 +14,11 @@ let mediaQuery: MediaQueryList | null = null
 const resolvedTheme = computed(() =>
   resolveThemePreference(workspace.settings.themePreference, systemPrefersDark.value),
 )
+const themeCustomization = computed(() => workspace.settings.themeCustomization)
 
-const themeOverrides = computed(() => buildThemeOverrides(resolvedTheme.value))
+const themeOverrides = computed(() =>
+  buildThemeOverrides(resolvedTheme.value, themeCustomization.value),
+)
 const naiveTheme = computed(() => (resolvedTheme.value === 'dark' ? darkTheme : null))
 
 function syncSystemThemeState() {
@@ -32,9 +35,9 @@ function handleSystemThemeChange(event: MediaQueryListEvent) {
 }
 
 watch(
-  resolvedTheme,
-  (themeName) => {
-    applyResolvedTheme(themeName)
+  [resolvedTheme, themeCustomization],
+  ([themeName, customization]) => {
+    applyResolvedTheme(themeName, customization)
   },
   { immediate: true },
 )

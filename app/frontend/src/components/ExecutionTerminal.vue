@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { NButton, NIcon, NScrollbar, NText, NTooltip, useMessage } from 'naive-ui'
-import { Trash, Copy, Download } from '@vicons/ionicons5'
+import { computed, nextTick, ref, watch, type CSSProperties } from 'vue'
+import { NButton, NIcon, NScrollbar, NTag, NText, NTooltip, useMessage } from 'naive-ui'
+import { Trash, Copy, Download, GlobeOutline, LaptopOutline } from '@vicons/ionicons5'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { OpenSaveFileDialog, SaveTextFile } from '../../wailsjs/go/main/App'
@@ -22,7 +22,16 @@ let autoScrollResetFrame: number | null = null
 let isProgrammaticScroll = false
 const terminalTheme = computed(() => getExecutionTheme(props.toolKind, props.executionTarget))
 const terminalAccent = computed(() => terminalTheme.value.accent)
-const followButtonColor = computed(() => (autoScroll.value ? terminalTheme.value.accent : '#94a3b8'))
+const followButtonColor = computed(() =>
+  autoScroll.value ? terminalTheme.value.accent : 'rgb(var(--color-fg-muted) / 1)',
+)
+const terminalModeTagStyle = computed<CSSProperties>(() => ({
+  color: terminalTheme.value.accent,
+  backgroundColor: terminalTheme.value.accentSoftBg,
+  border: `1px solid ${terminalTheme.value.accentSoftBorder}`,
+}))
+const terminalModeLabel = computed(() => (props.executionTarget === 'remote' ? '远程' : '本地'))
+const terminalModeIcon = computed(() => (props.executionTarget === 'remote' ? GlobeOutline : LaptopOutline))
 
 const logs = computed(() => execution.logsForTask(props.taskId))
 
@@ -45,6 +54,17 @@ interface LogSegment {
   color?: string
 }
 
+const ansiColors: Record<number, string | undefined> = {
+  0: undefined,
+  31: 'rgb(var(--color-error) / 1)',
+  32: 'rgb(var(--color-success) / 1)',
+  33: 'rgb(var(--color-warning) / 1)',
+  34: 'rgb(var(--color-brand-primary) / 1)',
+  35: 'rgb(var(--color-mode-remote) / 1)',
+  36: 'rgb(var(--color-mode-local) / 1)',
+  37: 'rgb(var(--color-fg-base) / 1)',
+}
+
 function parseAnsi(text: string): LogSegment[] {
   const segments: LogSegment[] = []
   let lastIndex = 0
@@ -58,16 +78,8 @@ function parseAnsi(text: string): LogSegment[] {
       segments.push({ text: text.slice(lastIndex, m.index!), color: currentColor })
     }
     const code = parseInt(m[1], 10)
-    switch (code) {
-      case 0: currentColor = undefined; break
-      case 31: currentColor = '#ff5555'; break
-      case 32: currentColor = '#50fa7b'; break
-      case 33: currentColor = '#f1fa8c'; break
-      case 34: currentColor = '#8be9fd'; break
-      case 35: currentColor = '#ff79c6'; break
-      case 36: currentColor = '#8be9fd'; break
-      case 37: currentColor = '#f8f8f2'; break
-      default: break
+    if (code in ansiColors) {
+      currentColor = ansiColors[code]
     }
     lastIndex = m.index! + m[0].length
   }
@@ -189,21 +201,35 @@ watch(() => props.taskId, async () => {
 
 <template>
   <div
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-lg border-t border-white/15 shell-bg"
+    class="surface-muted-divider flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-lg border-t shell-bg"
   >
-    <div class="flex shrink-0 items-center justify-between bg-dracula-panel/30 px-3 py-1.5">
+    <div class="flex shrink-0 items-center justify-between border-b border-[rgb(var(--color-border-subtle)/0.42)] bg-[rgb(var(--color-bg-panel)/0.26)] px-3 py-1.5 backdrop-blur-sm">
       <div class="flex items-center gap-x-1.5">
-        <span class="h-2.5 w-2.5 rounded-full bg-red-500/70" />
-        <span class="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
-        <span class="h-2.5 w-2.5 rounded-full bg-green-500/70" />
+        <span class="h-2.5 w-2.5 rounded-full bg-[rgb(var(--color-error)/0.78)]" />
+        <span class="h-2.5 w-2.5 rounded-full bg-[rgb(var(--color-warning)/0.78)]" />
+        <span class="h-2.5 w-2.5 rounded-full bg-[rgb(var(--color-success)/0.78)]" />
         <NText
           depth="3"
           class="ml-3 text-[11px]"
         >
           TERMINAL
         </NText>
+        <NTag
+          :bordered="false"
+          size="tiny"
+          :style="terminalModeTagStyle"
+        >
+          <template #icon>
+            <NIcon
+              :component="terminalModeIcon"
+              size="10"
+              :color="terminalTheme.accent"
+            />
+          </template>
+          {{ terminalModeLabel }}
+        </NTag>
         <template v-if="activeTask">
-          <span class="text-[10px] text-slate-600">·</span>
+          <span class="text-[10px] text-[rgb(var(--color-fg-muted)/0.72)]">·</span>
           <NText
             :depth="3"
             class="text-[11px]"
@@ -213,7 +239,7 @@ watch(() => props.taskId, async () => {
         </template>
         <span
           v-if="logs.length > 0"
-          class="text-[10px] text-slate-600"
+          class="text-[10px] text-[rgb(var(--color-fg-muted)/0.72)]"
         >
           · {{ logs.length }} 行
         </span>
@@ -312,7 +338,7 @@ watch(() => props.taskId, async () => {
           class="flex"
           :class="autoScroll ? '' : ''"
         >
-          <span class="mr-3 w-10 shrink-0 select-none text-right text-dracula-soft/30">
+          <span class="mr-3 w-10 shrink-0 select-none text-right text-[rgb(var(--color-fg-muted)/0.34)]">
             {{ String(line.lineNumber).padStart(3, '0') }}
           </span>
           <span

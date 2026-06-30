@@ -176,7 +176,7 @@ const validationState = computed(() => {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输入
           </div>
           <NInput
@@ -187,7 +187,7 @@ const validationState = computed(() => {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输出
           </div>
           <NInput
@@ -205,7 +205,7 @@ const validationState = computed(() => {
       :bordered="true"
       class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-dracula-text">
+      <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
         校验状态
       </div>
       <div

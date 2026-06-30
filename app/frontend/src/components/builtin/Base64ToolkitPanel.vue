@@ -110,7 +110,7 @@ function handleCopy() {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输入
           </div>
           <NInput
@@ -121,7 +121,7 @@ function handleCopy() {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输出
           </div>
           <NInput
@@ -139,7 +139,7 @@ function handleCopy() {
       :bordered="true"
       class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-dracula-text">
+      <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
         结果说明
       </div>
       <div

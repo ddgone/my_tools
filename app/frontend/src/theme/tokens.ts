@@ -2,6 +2,14 @@ export type ThemePreference = 'dark' | 'light' | 'system'
 export type ResolvedThemeName = 'dark' | 'light'
 export type ModeAccentName = 'local' | 'remote'
 export type ToolKindAccentName = 'go' | 'python' | 'rust'
+export interface ThemeCustomizationSettings {
+  darkAccent: string
+  lightAccent: string
+  darkBackground: string
+  darkPanel: string
+  lightBackground: string
+  lightPanel: string
+}
 
 interface ThemeTokens {
   bgApp: string
@@ -40,73 +48,73 @@ interface ThemeTokens {
 }
 
 const darkThemeTokens: ThemeTokens = {
-  bgApp: '#0f172a',
-  bgPanel: '#111827',
-  bgElevated: '#1f2937',
-  bgShell: '#020617',
-  fgBase: '#e5e7eb',
-  fgSecondary: '#cbd5e1',
-  fgMuted: '#94a3b8',
-  borderSubtle: '#334155',
-  borderStrong: '#475569',
-  brandPrimary: '#38bdf8',
-  brandHover: '#67d3fb',
-  brandPressed: '#0ea5e9',
+  bgApp: '#1b1d21',
+  bgPanel: '#23262c',
+  bgElevated: '#2a2d33',
+  bgShell: '#16181c',
+  fgBase: '#e7eaf0',
+  fgSecondary: '#c6ccd6',
+  fgMuted: '#9198a6',
+  borderSubtle: '#363a43',
+  borderStrong: '#474d59',
+  brandPrimary: '#58a9ff',
+  brandHover: '#7abcff',
+  brandPressed: '#338ee6',
   success: '#22c55e',
   warning: '#f59e0b',
   error: '#ef4444',
-  titlebarFrom: '#111827',
-  titlebarTo: '#0f172a',
-  scrollbarThumb: '#475569',
-  scrollbarThumbHover: '#64748b',
-  tooltipBg: '#f8fafc',
-  tooltipText: '#0f172a',
-  shellText: '#cbd5e1',
-  overlayRgb: '2 6 23',
-  shadowTooltip: '0 12px 28px rgba(2, 6, 23, 0.28)',
-  modeLocal: '#38bdf8',
-  modeLocalHover: '#67d3fb',
-  modeLocalOn: '#082f49',
-  modeRemote: '#a78bfa',
-  modeRemoteHover: '#c4b5fd',
-  modeRemoteOn: '#2e1065',
-  kindGo: '#38bdf8',
+  titlebarFrom: '#272a31',
+  titlebarTo: '#1b1d21',
+  scrollbarThumb: '#49505d',
+  scrollbarThumbHover: '#616a7b',
+  tooltipBg: '#2b2f36',
+  tooltipText: '#f3f5f8',
+  shellText: '#cfd5df',
+  overlayRgb: '12 14 18',
+  shadowTooltip: '0 14px 34px rgba(12, 14, 18, 0.34)',
+  modeLocal: '#58a9ff',
+  modeLocalHover: '#7abcff',
+  modeLocalOn: '#0e2940',
+  modeRemote: '#7e88b2',
+  modeRemoteHover: '#939dc5',
+  modeRemoteOn: '#f6f8fb',
+  kindGo: '#58a9ff',
   kindPython: '#22c55e',
   kindRust: '#f59e0b',
 }
 
 const lightThemeTokens: ThemeTokens = {
-  bgApp: '#f8fafc',
-  bgPanel: '#ffffff',
-  bgElevated: '#f1f5f9',
-  bgShell: '#e2e8f0',
-  fgBase: '#0f172a',
-  fgSecondary: '#334155',
-  fgMuted: '#64748b',
-  borderSubtle: '#cbd5e1',
-  borderStrong: '#94a3b8',
-  brandPrimary: '#0284c7',
-  brandHover: '#0369a1',
-  brandPressed: '#075985',
+  bgApp: '#f2f3f5',
+  bgPanel: '#fafafc',
+  bgElevated: '#eceff2',
+  bgShell: '#e6e8ec',
+  fgBase: '#1f2329',
+  fgSecondary: '#3d444d',
+  fgMuted: '#6e7581',
+  borderSubtle: '#d7dce4',
+  borderStrong: '#bfc7d1',
+  brandPrimary: '#308fe8',
+  brandHover: '#57a9f6',
+  brandPressed: '#167ed6',
   success: '#16a34a',
   warning: '#d97706',
   error: '#dc2626',
-  titlebarFrom: '#ffffff',
-  titlebarTo: '#f8fafc',
-  scrollbarThumb: '#cbd5e1',
-  scrollbarThumbHover: '#94a3b8',
-  tooltipBg: '#0f172a',
-  tooltipText: '#f8fafc',
-  shellText: '#0f172a',
-  overlayRgb: '15 23 42',
-  shadowTooltip: '0 12px 28px rgba(15, 23, 42, 0.18)',
-  modeLocal: '#0284c7',
-  modeLocalHover: '#0369a1',
-  modeLocalOn: '#f8fafc',
-  modeRemote: '#7c3aed',
-  modeRemoteHover: '#6d28d9',
-  modeRemoteOn: '#f8fafc',
-  kindGo: '#0284c7',
+  titlebarFrom: '#fbfbfc',
+  titlebarTo: '#eef1f4',
+  scrollbarThumb: '#c5cbd4',
+  scrollbarThumbHover: '#adb5c1',
+  tooltipBg: '#262a31',
+  tooltipText: '#f5f7fa',
+  shellText: '#1f2329',
+  overlayRgb: '31 35 41',
+  shadowTooltip: '0 14px 32px rgba(31, 35, 41, 0.16)',
+  modeLocal: '#308fe8',
+  modeLocalHover: '#57a9f6',
+  modeLocalOn: '#f7fbff',
+  modeRemote: '#7b86b0',
+  modeRemoteHover: '#6d789e',
+  modeRemoteOn: '#f8f7ff',
+  kindGo: '#308fe8',
   kindPython: '#16a34a',
   kindRust: '#d97706',
 }
@@ -114,6 +122,15 @@ const lightThemeTokens: ThemeTokens = {
 export const themeTokensByName: Record<ResolvedThemeName, ThemeTokens> = {
   dark: darkThemeTokens,
   light: lightThemeTokens,
+}
+
+export const defaultThemeCustomization: ThemeCustomizationSettings = {
+  darkAccent: '#63b4ff',
+  lightAccent: '#2f8ee7',
+  darkBackground: darkThemeTokens.bgApp,
+  darkPanel: darkThemeTokens.bgPanel,
+  lightBackground: lightThemeTokens.bgApp,
+  lightPanel: lightThemeTokens.bgPanel,
 }
 
 export function resolveThemePreference(preference: ThemePreference, systemPrefersDark: boolean): ResolvedThemeName {
@@ -138,8 +155,144 @@ function hexToRgbChannels(hex: string): string {
   return `${r} ${g} ${b}`
 }
 
-export function buildThemeCssVariables(name: ResolvedThemeName): Record<string, string> {
-  const tokens = themeTokensByName[name]
+function clampChannel(value: number) {
+  return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+function parseHexColor(hex: string) {
+  const normalized = normalizeHexColor(hex)
+  const value = Number.parseInt(normalized.slice(1), 16)
+  return {
+    r: (value >> 16) & 0xff,
+    g: (value >> 8) & 0xff,
+    b: value & 0xff,
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  const toHex = (channel: number) => clampChannel(channel).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+function rgbChannelsToCommaSeparated(hex: string) {
+  return hexToRgbChannels(hex).split(' ').join(', ')
+}
+
+function mixHexColors(colorA: string, colorB: string, ratio: number) {
+  const a = parseHexColor(colorA)
+  const b = parseHexColor(colorB)
+  return rgbToHex(
+    a.r + (b.r - a.r) * ratio,
+    a.g + (b.g - a.g) * ratio,
+    a.b + (b.b - a.b) * ratio,
+  )
+}
+
+function luminance(hex: string) {
+  const { r, g, b } = parseHexColor(hex)
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+}
+
+function readableTextColor(hex: string, dark = '#102132', light = '#f8fbff') {
+  return luminance(hex) > 0.62 ? dark : light
+}
+
+export function normalizeHexColor(value: unknown, fallback = '#4da2ff') {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  const match = raw.match(/^#?([0-9a-fA-F]{6})$/)
+  if (!match) {
+    return fallback
+  }
+  return `#${match[1].toLowerCase()}`
+}
+
+export function normalizeThemeCustomization(source?: Partial<ThemeCustomizationSettings>): ThemeCustomizationSettings {
+  const legacyAccent = normalizeHexColor((source as { brandAccent?: unknown } | undefined)?.brandAccent, defaultThemeCustomization.darkAccent)
+  return {
+    darkAccent: normalizeHexColor(source?.darkAccent, legacyAccent),
+    lightAccent: normalizeHexColor(source?.lightAccent, (source as { brandAccent?: unknown } | undefined)?.brandAccent ? legacyAccent : defaultThemeCustomization.lightAccent),
+    darkBackground: normalizeHexColor(source?.darkBackground, defaultThemeCustomization.darkBackground),
+    darkPanel: normalizeHexColor(source?.darkPanel, defaultThemeCustomization.darkPanel),
+    lightBackground: normalizeHexColor(source?.lightBackground, defaultThemeCustomization.lightBackground),
+    lightPanel: normalizeHexColor(source?.lightPanel, defaultThemeCustomization.lightPanel),
+  }
+}
+
+export function resolveThemeTokens(
+  name: ResolvedThemeName,
+  customization = defaultThemeCustomization,
+): ThemeTokens {
+  const base = themeTokensByName[name]
+  const normalized = normalizeThemeCustomization(customization)
+  const brandAccent = name === 'dark' ? normalized.darkAccent : normalized.lightAccent
+  const brandHover = mixHexColors(brandAccent, '#ffffff', name === 'dark' ? 0.18 : 0.12)
+  const brandPressed = mixHexColors(brandAccent, '#0f172a', name === 'dark' ? 0.16 : 0.14)
+  const modeLocalOn = readableTextColor(brandAccent)
+
+  if (name === 'dark') {
+    const bgApp = normalized.darkBackground
+    const bgPanel = normalized.darkPanel
+    return {
+      ...base,
+      bgApp,
+      bgPanel,
+      bgElevated: mixHexColors(bgPanel, '#ffffff', 0.05),
+      bgShell: mixHexColors(bgApp, '#000000', 0.18),
+      borderSubtle: mixHexColors(bgPanel, '#ffffff', 0.10),
+      borderStrong: mixHexColors(bgPanel, '#ffffff', 0.17),
+      brandPrimary: brandAccent,
+      brandHover,
+      brandPressed,
+      titlebarFrom: mixHexColors(bgPanel, '#ffffff', 0.02),
+      titlebarTo: bgApp,
+      scrollbarThumb: mixHexColors(bgPanel, '#ffffff', 0.18),
+      scrollbarThumbHover: mixHexColors(bgPanel, '#ffffff', 0.28),
+      tooltipBg: mixHexColors(bgPanel, '#ffffff', 0.04),
+      tooltipText: '#f3f5f8',
+      shellText: '#cfd5df',
+      overlayRgb: hexToRgbChannels(mixHexColors(bgApp, '#000000', 0.35)),
+      shadowTooltip: `0 14px 34px rgba(${rgbChannelsToCommaSeparated(mixHexColors(bgApp, '#000000', 0.5))}, 0.34)`,
+      modeLocal: brandAccent,
+      modeLocalHover: brandHover,
+      modeLocalOn,
+      kindGo: brandAccent,
+    }
+  }
+
+  const bgApp = normalized.lightBackground
+  const bgPanel = normalized.lightPanel
+  return {
+    ...base,
+    bgApp,
+    bgPanel,
+    bgElevated: mixHexColors(bgApp, '#000000', 0.03),
+    bgShell: mixHexColors(bgApp, '#000000', 0.06),
+    borderSubtle: mixHexColors(bgApp, '#000000', 0.11),
+    borderStrong: mixHexColors(bgApp, '#000000', 0.18),
+    brandPrimary: brandAccent,
+    brandHover,
+    brandPressed,
+    titlebarFrom: mixHexColors(bgPanel, '#ffffff', 0.45),
+    titlebarTo: mixHexColors(bgApp, '#000000', 0.02),
+    scrollbarThumb: mixHexColors(bgApp, '#000000', 0.17),
+    scrollbarThumbHover: mixHexColors(bgApp, '#000000', 0.25),
+    tooltipBg: '#262a31',
+    tooltipText: '#f5f7fa',
+    shellText: '#1f2329',
+    overlayRgb: hexToRgbChannels(mixHexColors(bgApp, '#000000', 0.62)),
+    shadowTooltip: `0 14px 32px rgba(${rgbChannelsToCommaSeparated(mixHexColors(bgApp, '#000000', 0.62))}, 0.16)`,
+    modeLocal: brandAccent,
+    modeLocalHover: brandHover,
+    modeLocalOn,
+    kindGo: brandAccent,
+  }
+}
+
+export function buildThemeCssVariables(
+  name: ResolvedThemeName,
+  customization = defaultThemeCustomization,
+): Record<string, string> {
+  const tokens = resolveThemeTokens(name, customization)
   return {
     '--color-bg-app': hexToRgbChannels(tokens.bgApp),
     '--color-bg-panel': hexToRgbChannels(tokens.bgPanel),

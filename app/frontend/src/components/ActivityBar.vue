@@ -50,7 +50,7 @@ function isItemActive(key: ActivityBarView | 'tasks') {
 </script>
 
 <template>
-  <div class="flex w-12 shrink-0 flex-col border-r border-white/15 bg-dracula-panel">
+  <div class="surface-divider flex w-12 shrink-0 flex-col border-r bg-[rgb(var(--color-bg-panel)/0.96)]">
     <div class="flex flex-1 flex-col gap-y-0.5 py-2">
       <NTooltip
         v-for="item in topItems"
@@ -61,7 +61,7 @@ function isItemActive(key: ActivityBarView | 'tasks') {
           <div class="relative flex justify-center">
             <div
               v-if="isItemActive(item.key)"
-              class="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r-sm bg-dracula-cyan"
+              class="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r-sm bg-[rgb(var(--color-brand-primary)/1)]"
             />
             <NButton
               quaternary
@@ -69,8 +69,8 @@ function isItemActive(key: ActivityBarView | 'tasks') {
               class="h-10 w-10"
               :disabled="isComingSoon(item.key)"
               :class="[
-                isItemActive(item.key) ? 'text-dracula-cyan' : 'text-dracula-soft hover:text-dracula-text',
-                isComingSoon(item.key) ? 'cursor-not-allowed opacity-35 hover:text-dracula-soft' : '',
+                isItemActive(item.key) ? 'text-[rgb(var(--color-brand-primary)/1)]' : 'text-[rgb(var(--color-fg-muted)/0.88)] hover:text-[rgb(var(--color-fg-base)/0.98)]',
+                isComingSoon(item.key) ? 'cursor-not-allowed opacity-35 hover:text-[rgb(var(--color-fg-muted)/0.88)]' : '',
               ]"
               @click="handleItemClick(item.key)"
             >
@@ -92,7 +92,7 @@ function isItemActive(key: ActivityBarView | 'tasks') {
           <NButton
             quaternary
             size="small"
-            class="h-10 w-10 text-dracula-soft hover:text-dracula-text"
+            class="h-10 w-10 text-[rgb(var(--color-fg-muted)/0.88)] hover:text-[rgb(var(--color-fg-base)/0.98)]"
             @click="openSettings"
           >
             <template #icon>

@@ -437,10 +437,10 @@ onMounted(async () => {
       :class="rustEnv.state?.config.disabled
         ? 'border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-panel)/0.72)]'
         : rustEnv.hasUsableEnvironment
-          ? 'border-dracula-orange/25 bg-dracula-orange/10'
+          ? 'border-[rgb(var(--color-kind-rust)/0.24)] bg-[rgb(var(--color-kind-rust)/0.10)]'
           : 'border-amber-400/20 bg-amber-500/5'"
     >
-      <div class="text-base font-semibold text-dracula-text">
+      <div class="text-base font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
         {{
           rustEnv.state?.config.disabled
             ? 'Rust SDK 已关闭'
@@ -484,11 +484,11 @@ onMounted(async () => {
 
     <div
       v-if="rustEnv.task"
-      class="rounded-xl border border-dracula-orange/20 bg-dracula-orange/10 px-4 py-4"
+      class="rounded-xl border border-[rgb(var(--color-kind-rust)/0.20)] bg-[rgb(var(--color-kind-rust)/0.10)] px-4 py-4"
     >
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-sm font-medium text-dracula-text">
+          <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             Rust 环境任务
           </div>
           <div class="mt-1 text-xs text-[rgb(var(--color-fg-secondary)/0.9)]">
@@ -508,7 +508,7 @@ onMounted(async () => {
           </div>
           <div
             v-if="formatRustTransferSummary()"
-            class="mt-1 text-[11px] text-dracula-orange/90"
+            class="mt-1 text-[11px] text-[rgb(var(--color-kind-rust)/0.9)]"
           >
             {{ formatRustTransferSummary() }}
           </div>
@@ -567,7 +567,7 @@ onMounted(async () => {
           :href="link.href"
           target="_blank"
           rel="noreferrer"
-          class="ml-2 text-dracula-orange hover:text-[rgb(var(--color-kind-rust)/0.82)] underline underline-offset-2"
+          class="ml-2 text-[rgb(var(--color-kind-rust)/0.96)] underline underline-offset-2 hover:text-[rgb(var(--color-kind-rust)/0.82)]"
         >
           {{ link.label }}
         </a>
@@ -811,7 +811,7 @@ onMounted(async () => {
 
     <div class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4 space-y-4">
       <div class="flex items-center justify-between">
-        <div class="text-sm font-medium text-dracula-text">
+        <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
           {{ installPanelTitle }}
         </div>
         <div class="flex items-center gap-2">
@@ -848,7 +848,7 @@ onMounted(async () => {
               :href="link.href"
               target="_blank"
               rel="noreferrer"
-              class="text-dracula-orange hover:text-[rgb(var(--color-kind-rust)/0.82)] underline underline-offset-2"
+              class="text-[rgb(var(--color-kind-rust)/0.96)] underline underline-offset-2 hover:text-[rgb(var(--color-kind-rust)/0.82)]"
             >
               {{ link.label }}
             </a>

@@ -318,7 +318,7 @@ function hideTooltip() {
 </script>
 
 <template>
-  <footer class="flex h-7 shrink-0 items-center justify-between border-t border-white/15 bg-dracula-panel/50 px-3 backdrop-blur-sm">
+  <footer class="surface-divider flex h-7 shrink-0 items-center justify-between border-t bg-[rgb(var(--color-bg-panel)/0.72)] px-3 backdrop-blur-sm">
     <div class="flex items-center gap-x-1.5">
       <NIcon
         :component="CheckmarkCircle"

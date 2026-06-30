@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, nextTick, type CSSProperties } from 'vue'
 import { NInput, NIcon, NList, NListItem, NScrollbar, NText, NTag } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { Search, ServerOutline, CodeSlash, LogoPython, Star, GlobeOutline, BookmarkSharp, CloudUploadOutline, BuildOutline } from '@vicons/ionicons5'
+import { Search, ServerOutline, Star, BookmarkSharp, CloudUploadOutline, GlobeOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -20,7 +20,7 @@ import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import RemotePathPickerModal from './RemotePathPickerModal.vue'
-import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
 const emit = defineEmits<{
@@ -167,7 +167,7 @@ function applyTabDragPreview() {
     x: dragCurrentX.value,
     zIndex: 30,
     scale: 1.02,
-    boxShadow: '0 12px 28px rgba(0, 0, 0, 0.35)',
+    boxShadow: '0 12px 28px rgb(var(--color-overlay-rgb) / 0.35)',
   })
 
   for (const element of tabButtonElements()) {
@@ -217,15 +217,6 @@ const { size: terminalHeight, dividerProps: hDividerProps } = useResizable({
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
 const isTerminalVisible = computed(() => workspace.activeToolTerminalVisible)
 const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
-const activeToolKind = computed(() => toolById(activeToolId.value)?.kind ?? '')
-const activeExecutionTheme = computed(() =>
-  getExecutionTheme(activeToolKind.value, activeTargetIsRemote.value ? 'remote' : 'local'),
-)
-const workspaceAccent = computed(() => activeExecutionTheme.value.accent)
-const workspaceAccentSoftBg = computed(() => activeExecutionTheme.value.accentSoftBg)
-const workspaceAccentSoftStrongBg = computed(() => activeExecutionTheme.value.accentSoftStrongBg)
-const workspaceActiveTabBackground = computed(() => activeExecutionTheme.value.activeTabBackground)
-const workspaceDividerGradient = computed(() => activeExecutionTheme.value.dividerGradient)
 const activeToolTerminalHeight = computed(() =>
   workspace.activeToolTerminalHeight ?? initialTerminalHeight,
 )
@@ -384,37 +375,6 @@ function onExportTargetUpdate(value: string) {
   activeExportTarget.value = value
 }
 
-function toolTabStateByToolId(id: string) {
-  return workspace.openTabs.find((tab) => tab.toolId === id)
-}
-
-function isToolTabRemote(id: string) {
-  return toolTabStateByToolId(id)?.executionTarget === 'remote'
-}
-
-function toolExecutionThemeForTool(id: string) {
-  return getExecutionTheme(toolById(id)?.kind, isToolTabRemote(id) ? 'remote' : 'local')
-}
-
-function toolKindTagStyleForTool(id: string): CSSProperties {
-  const theme = getToolKindTheme(toolById(id)?.kind)
-  return {
-    color: theme.accent,
-    backgroundColor: theme.accentSoftBg,
-    border: `1px solid ${theme.accentSoftBorder}`,
-  }
-}
-
-function toolKindIconColorForTool(id: string) {
-  return getToolKindTheme(toolById(id)?.kind).accent
-}
-
-function toolNameStyleForTool(id: string): CSSProperties {
-  return {
-    color: getToolKindTheme(toolById(id)?.kind).accent,
-  }
-}
-
 function builtinTagStyleForTool(id: string): CSSProperties {
   const tool = builtinToolById(id)
   if (!tool) {
@@ -434,6 +394,37 @@ function builtinTagStyleForTool(id: string): CSSProperties {
 function builtinNameStyleForTool(id: string): CSSProperties {
   return {
     color: builtinToolById(id)?.accent ?? 'rgb(var(--color-brand-primary) / 1)',
+  }
+}
+
+function unifiedToolExecutionTarget(item: UnifiedTabItem): 'local' | 'remote' {
+  return item.type === 'tool' && workspace.openTabs[item.arrayIndex]?.executionTarget === 'remote'
+    ? 'remote'
+    : 'local'
+}
+
+function isUnifiedToolRemote(item: UnifiedTabItem) {
+  return item.type === 'tool' && unifiedToolExecutionTarget(item) === 'remote'
+}
+
+function activeIndicatorStyle(item: UnifiedTabItem): CSSProperties | undefined {
+  if (item.type !== 'tool') {
+    return undefined
+  }
+  const theme = getExecutionTheme(toolById(item.label)?.kind, unifiedToolExecutionTarget(item))
+  return {
+    background: theme.accent,
+    boxShadow: `0 0 10px ${theme.accentSoftBorder}`,
+  }
+}
+
+function remoteIndicatorStyle(item: UnifiedTabItem): CSSProperties | undefined {
+  if (!isUnifiedToolRemote(item)) {
+    return undefined
+  }
+  const theme = getExecutionTheme(toolById(item.label)?.kind, 'remote')
+  return {
+    color: theme.accent,
   }
 }
 
@@ -731,18 +722,6 @@ function handleSSHClose() {
   }
 }
 
-function kindIcon(kind: string) {
-  if (kind === 'python') return LogoPython
-  if (kind === 'rust') return BuildOutline
-  return CodeSlash
-}
-
-function toolKindTag(kind: string) {
-  if (kind === 'python') return 'py'
-  if (kind === 'rust') return 'rs'
-  return 'go'
-}
-
 function onKeydown(e: KeyboardEvent) {
   if (showSearchModal.value) {
     if (e.key === 'ArrowDown') {
@@ -840,18 +819,18 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
   >
     <div
       ref="tabBarRef"
-      class="relative flex shrink-0 items-end border-b border-white/15 bg-dracula-panel"
+      class="surface-divider relative flex shrink-0 items-end border-b bg-[rgb(var(--color-bg-panel)/0.94)]"
     >
       <div class="flex flex-1 items-end overflow-hidden">
         <button
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
           :data-tab-key="item.key"
-          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1 overflow-hidden border-r border-white/15 px-3 py-1.5 pr-8"
+          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1 overflow-hidden border-r border-[rgb(var(--color-border-subtle)/0.64)] px-3 py-1.5 pr-8"
           :class="
             isUnifiedTabActive(item)
-              ? 'workspace-tab-active text-dracula-text'
-              : 'bg-dracula-panel text-dracula-soft hover:bg-[rgb(var(--color-fg-base)/0.05)] hover:text-dracula-text'
+              ? 'workspace-tab-active text-[rgb(var(--color-fg-base)/0.98)]'
+              : 'bg-[rgb(var(--color-bg-panel)/0.82)] text-[rgb(var(--color-fg-muted)/0.92)] hover:bg-[rgb(var(--color-bg-elevated)/0.72)] hover:text-[rgb(var(--color-fg-base)/0.96)]'
           "
           :style="tabButtonStyle(item)"
           @click="handleTabClick(item)"
@@ -880,22 +859,6 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             class="shrink-0"
           />
           <NTag
-            v-if="item.type === 'tool'"
-            :bordered="false"
-            size="tiny"
-            class="shrink-0"
-            :style="toolKindTagStyleForTool(item.label)"
-          >
-            <template #icon>
-              <NIcon
-                :component="kindIcon(toolById(item.label)?.kind ?? '')"
-                size="10"
-                :color="toolKindIconColorForTool(item.label)"
-              />
-            </template>
-            {{ toolKindTag(toolById(item.label)?.kind ?? '') }}
-          </NTag>
-          <NTag
             v-if="item.type === 'builtin'"
             :bordered="false"
             size="tiny"
@@ -918,20 +881,20 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             color="rgb(var(--color-warning) / 1)"
             class="shrink-0"
           />
-          <NIcon
-            v-if="item.type === 'tool' && isToolTabRemote(item.label)"
-            :component="GlobeOutline"
-            size="11"
-            :color="toolExecutionThemeForTool(item.label).accent"
-            class="shrink-0"
-          />
           <span
             v-if="item.type === 'tool' && isTabRunning(item.label)"
-            class="h-1.5 w-1.5 shrink-0 rounded-full bg-dracula-green"
+            class="h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--color-success)/0.92)]"
+          />
+          <NIcon
+            v-if="isUnifiedToolRemote(item)"
+            :component="GlobeOutline"
+            size="11"
+            class="shrink-0 opacity-90"
+            :style="remoteIndicatorStyle(item)"
           />
           <span
             class="min-w-0 truncate text-xs"
-            :style="item.type === 'tool' ? toolNameStyleForTool(item.label) : item.type === 'builtin' ? builtinNameStyleForTool(item.label) : undefined"
+            :style="item.type === 'builtin' ? builtinNameStyleForTool(item.label) : undefined"
             :data-fullname="unifiedTabDisplayName(item)"
             @mouseenter="handleTabLabelMouseEnter($event, item)"
             @mouseleave="onTooltipLeave"
@@ -940,13 +903,14 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           </span>
           <span
             data-tab-close="true"
-            class="ui-interactive absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-[rgb(var(--color-fg-base)/0.08)] hover:text-dracula-text"
+            class="ui-interactive absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-[rgb(var(--color-fg-base)/0.08)] hover:text-[rgb(var(--color-fg-base)/0.96)]"
             @pointerdown.stop
             @click.stop="workspace.closeUnifiedTab(item)"
           >×</span>
           <span
             v-if="isUnifiedTabActive(item)"
             class="workspace-tabs-active-indicator pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-t-sm"
+            :style="activeIndicatorStyle(item)"
           />
         </button>
       </div>
@@ -956,7 +920,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
       <div class="flex flex-1 flex-col overflow-hidden">
         <div
           class="overflow-y-auto p-4"
-          :class="isTerminalVisible ? 'min-h-0 flex-1 border-b border-white/15' : 'min-h-0 flex-1'"
+          :class="isTerminalVisible ? 'surface-muted-divider min-h-0 flex-1 border-b' : 'min-h-0 flex-1'"
         >
           <ToolDetailPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
@@ -1042,7 +1006,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
 
     <div
       v-else
-      class="flex flex-1 items-center justify-center bg-dracula-bg"
+      class="flex flex-1 items-center justify-center bg-[rgb(var(--color-bg-app)/1)]"
     >
       <div class="text-center">
         <NText
@@ -1051,7 +1015,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
         >
           火
         </NText>
-        <p class="mt-4 text-base text-dracula-soft">
+        <p class="mt-4 text-base text-[rgb(var(--color-fg-muted)/0.92)]">
           火蜥蜴工具箱
         </p>
         <p class="mt-2 text-sm text-[rgb(var(--color-fg-muted)/0.82)]">
@@ -1100,7 +1064,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
       <Transition name="fade">
         <div
           v-if="showSearchModal"
-          class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+          class="fixed inset-0 z-50 bg-[rgb(var(--color-overlay-rgb)/0.38)] backdrop-blur-sm"
           @click="closeSearch"
         />
       </Transition>
@@ -1113,7 +1077,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] pointer-events-none"
         >
           <div
-            class="pointer-events-auto w-full max-w-lg rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
+            class="surface-dialog pointer-events-auto w-full max-w-lg rounded-2xl"
             @click.stop
           >
             <div class="p-4">
@@ -1140,17 +1104,10 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
                   :key="tool.id"
                   v-press
                   class="ui-interactive"
-                  :class="index === activeSearchIndex ? 'bg-dracula-cyan/10' : ''"
+                  :class="index === activeSearchIndex ? 'bg-[rgb(var(--color-brand-primary)/0.08)]' : ''"
                   @mouseenter="activeSearchIndex = index"
                   @click="selectSearchResult(tool.id)"
                 >
-                  <template #prefix>
-                    <NIcon
-                      :component="kindIcon(tool.kind)"
-                      size="18"
-                      :color="getToolKindTheme(tool.kind).accent"
-                    />
-                  </template>
                   <div class="min-w-0 flex-1">
                     <NText class="text-sm">
                       {{ tool.name }}
@@ -1176,7 +1133,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
                 </NText>
               </div>
             </NScrollbar>
-            <div class="border-t border-white/10 px-4 py-2 text-[11px] text-dracula-soft">
+            <div class="surface-muted-divider border-t px-4 py-2 text-[11px] text-[rgb(var(--color-fg-muted)/0.9)]">
               ↑↓ 切换 · Enter 打开 · Esc 关闭
             </div>
           </div>
@@ -1209,26 +1166,14 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
 
 <style scoped>
 .workspace-tab-active {
-  background-color: v-bind(workspaceActiveTabBackground);
+  background-color: rgb(var(--color-bg-elevated) / 0.88);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--color-fg-base) / 0.03),
+    inset 0 -1px 0 rgb(var(--color-border-strong) / 0.64);
 }
 
 .workspace-tabs-active-indicator {
-  background-color: v-bind(workspaceAccent);
-}
-
-.workspace-tabs-divider-line {
-  background: v-bind(workspaceDividerGradient);
-}
-
-.workspace-tabs-divider-glow {
-  transition: background-color 0.16s var(--ease-out-soft);
-}
-
-.group:hover .workspace-tabs-divider-glow {
-  background-color: v-bind(workspaceAccentSoftBg);
-}
-
-.group:active .workspace-tabs-divider-glow {
-  background-color: v-bind(workspaceAccentSoftStrongBg);
+  background: rgb(var(--color-brand-primary) / 0.96);
+  box-shadow: 0 0 10px rgb(var(--color-brand-primary) / 0.22);
 }
 </style>

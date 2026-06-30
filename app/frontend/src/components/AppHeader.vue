@@ -174,20 +174,20 @@ onUnmounted(() => {
 
 <template>
   <header
-    class="titlebar-surface wails-drag relative flex shrink-0 items-center justify-between border-b border-white/15 px-4"
+    class="titlebar-surface wails-drag relative flex shrink-0 items-center justify-between px-3"
     :class="isMac ? 'h-14 pt-1' : 'h-12'"
     @dblclick="handleTitlebarDoubleClick"
   >
     <div
-      class="flex items-center gap-x-3"
+      class="flex min-w-0 items-center gap-x-3"
       :class="isMac ? 'pl-[68px]' : ''"
     >
-      <div class="wails-no-drag flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-dracula-cyan/10 text-sm font-bold text-dracula-cyan shadow-[0_0_0_1px_rgb(var(--color-brand-primary)_/_0.08)]">
+      <div class="wails-no-drag flex h-7 w-7 items-center justify-center rounded-md border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-brand-primary)/0.10)] text-sm font-bold text-[rgb(var(--color-brand-primary)/0.94)]">
         火
       </div>
-      <div class="flex items-baseline gap-x-1.5 min-w-0">
-        <span class="truncate text-sm font-semibold tracking-wide text-dracula-text">{{ brandTitle }}</span>
-        <span class="shrink-0 text-[10px] uppercase tracking-[0.24em] text-dracula-soft/60">Desktop</span>
+      <div class="flex min-w-0 items-baseline gap-x-1.5">
+        <span class="truncate text-sm font-semibold tracking-[0.02em] text-[rgb(var(--color-fg-base)/0.96)]">{{ brandTitle }}</span>
+        <span class="shrink-0 text-[10px] uppercase tracking-[0.22em] text-[rgb(var(--color-fg-muted)/0.72)]">Desktop</span>
       </div>
     </div>
 
@@ -195,14 +195,14 @@ onUnmounted(() => {
       <NInput
         placeholder="搜索工具..."
         size="small"
-        class="w-[min(42vw,24rem)]"
+        class="app-header-search w-[min(38vw,22rem)]"
         @focus="openSearch"
       >
         <template #prefix>
           <NIcon :component="Search" />
         </template>
         <template #suffix>
-          <span class="rounded bg-white/8 px-1.5 py-px text-[10px] font-medium text-dracula-soft">
+          <span class="rounded-md border border-[rgb(var(--color-border-subtle)/0.56)] bg-[rgb(var(--color-bg-elevated)/0.84)] px-1.5 py-px text-[10px] font-medium text-[rgb(var(--color-fg-muted)/0.88)]">
             Ctrl+P
           </span>
         </template>
@@ -219,7 +219,7 @@ onUnmounted(() => {
             quaternary
             circle
             size="small"
-            class="wails-no-drag relative text-dracula-soft hover:text-dracula-text"
+            class="app-header-icon-button wails-no-drag relative"
             @click="openDownloadDrawer"
           >
             <template #icon>
@@ -232,7 +232,7 @@ onUnmounted(() => {
                 />
                 <span
                   v-if="hasDownloadTasks"
-                  class="absolute -right-1 -top-1 z-20 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-dracula-pink px-[3px] text-[8px] font-bold leading-none text-white shadow-[0_0_0_1px_rgb(var(--color-bg-panel)_/_0.95)]"
+                  class="absolute -right-1 -top-1 z-20 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-[rgb(var(--color-bg-panel)/0.96)] bg-[rgb(var(--color-mode-remote)/0.92)] px-[3px] text-[8px] font-bold leading-none text-[rgb(var(--color-mode-remote-on)/1)] shadow-[0_0_0_1px_rgb(var(--color-bg-panel)_/_0.95)]"
                 >
                   {{ downloadCount > 9 ? '9+' : downloadCount }}
                 </span>
@@ -249,7 +249,7 @@ onUnmounted(() => {
             quaternary
             circle
             size="small"
-            class="wails-no-drag text-dracula-soft hover:text-dracula-text"
+            class="app-header-icon-button wails-no-drag"
             @click="openHotkeyHelp"
           >
             <template #icon>
@@ -265,14 +265,14 @@ onUnmounted(() => {
 
       <span
         v-if="runningCount > 0"
-        class="wails-no-drag ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-dracula-red px-1.5 text-[10px] font-bold text-white"
+        class="wails-no-drag ml-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-[rgb(var(--color-brand-primary)/0.24)] bg-[rgb(var(--color-brand-primary)/0.10)] px-1.5 text-[10px] font-semibold text-[rgb(var(--color-brand-primary)/0.96)]"
       >
         {{ runningCount }}
       </span>
 
       <template v-if="isWindows">
         <button
-          class="wails-no-drag ui-interactive ml-2 flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
+          class="window-action-button wails-no-drag ui-interactive ml-2"
           type="button"
           aria-label="最小化"
           @click="minimiseWindow"
@@ -283,7 +283,7 @@ onUnmounted(() => {
           />
         </button>
         <button
-          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-dracula-cyan/10 hover:text-dracula-cyan active:bg-dracula-cyan/15"
+          class="window-action-button wails-no-drag ui-interactive"
           type="button"
           :aria-label="isMaximised ? '还原窗口' : '最大化窗口'"
           @click="toggleMaximise"
@@ -294,7 +294,7 @@ onUnmounted(() => {
           />
         </button>
         <button
-          class="wails-no-drag ui-interactive flex h-8 w-10 items-center justify-center rounded-md text-dracula-soft hover:bg-red-500/90 hover:text-white"
+          class="window-action-button window-action-button-danger wails-no-drag ui-interactive"
           type="button"
           aria-label="关闭窗口"
           @click="closeWindow"
@@ -308,3 +308,48 @@ onUnmounted(() => {
     </div>
   </header>
 </template>
+
+<style scoped>
+.app-header-search :deep(.n-input) {
+  background: rgb(var(--color-bg-elevated) / 0.78);
+  border-color: rgb(var(--color-border-subtle) / 0.62);
+  box-shadow: inset 0 1px 0 rgb(var(--color-fg-base) / 0.03);
+}
+
+.app-header-search :deep(.n-input:hover) {
+  border-color: rgb(var(--color-border-strong) / 0.78);
+}
+
+.app-header-icon-button {
+  color: rgb(var(--color-fg-muted) / 0.86) !important;
+}
+
+.app-header-icon-button:hover {
+  color: rgb(var(--color-fg-base) / 0.96) !important;
+  background: rgb(var(--color-bg-elevated) / 0.76);
+}
+
+.window-action-button {
+  display: flex;
+  height: 32px;
+  width: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: rgb(var(--color-fg-muted) / 0.88);
+}
+
+.window-action-button:hover {
+  background: rgb(var(--color-bg-elevated) / 0.86);
+  color: rgb(var(--color-fg-base) / 0.98);
+}
+
+.window-action-button:active {
+  background: rgb(var(--color-bg-elevated) / 0.96);
+}
+
+.window-action-button-danger:hover {
+  background: rgb(var(--color-error) / 0.88);
+  color: rgb(var(--color-mode-remote-on) / 1);
+}
+</style>

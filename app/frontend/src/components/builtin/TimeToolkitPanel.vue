@@ -310,7 +310,7 @@ function loadExample() {
       <div class="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div class="space-y-4">
           <div class="rounded-2xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4">
-            <div class="text-sm font-medium text-dracula-text">
+            <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               源格式
             </div>
             <div class="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
@@ -324,7 +324,7 @@ function loadExample() {
                 :options="timezoneOptions"
               />
             </div>
-            <div class="mt-3 text-xs leading-5 text-dracula-soft">
+            <div class="mt-3 text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.92)]">
               {{ sourceFormatMeta?.help }}
             </div>
             <div class="mt-3">
@@ -338,7 +338,7 @@ function loadExample() {
           </div>
 
           <div class="rounded-2xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4">
-            <div class="text-sm font-medium text-dracula-text">
+            <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               目标格式
             </div>
             <div class="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
@@ -352,12 +352,12 @@ function loadExample() {
                 :options="timezoneOptions"
               />
             </div>
-            <div class="mt-3 text-xs leading-5 text-dracula-soft">
+            <div class="mt-3 text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.92)]">
               {{ targetFormatMeta?.help }}
             </div>
             <div class="mt-3 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3">
               <div class="flex items-center justify-between gap-3">
-                <div class="text-xs uppercase tracking-[0.18em] text-dracula-soft">
+                <div class="text-xs uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.88)]">
                   转换结果
                 </div>
                 <NButton
@@ -377,13 +377,13 @@ function loadExample() {
               </div>
               <div
                 v-else-if="conversionState.output"
-                class="mt-2 break-all font-mono text-[14px] leading-7 text-dracula-text"
+                class="mt-2 break-all font-mono text-[14px] leading-7 text-[rgb(var(--color-fg-base)/0.98)]"
               >
                 {{ conversionState.output }}
               </div>
               <div
                 v-else
-                class="mt-2 text-sm leading-6 text-dracula-soft"
+                class="mt-2 text-sm leading-6 text-[rgb(var(--color-fg-muted)/0.92)]"
               >
                 选择源格式与目标格式后开始转换。
               </div>
@@ -393,10 +393,10 @@ function loadExample() {
 
         <div class="space-y-4">
           <div class="rounded-2xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4">
-            <div class="text-sm font-medium text-dracula-text">
+            <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               标准时间点
             </div>
-            <div class="mt-2 text-xs leading-5 text-dracula-soft">
+            <div class="mt-2 text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.92)]">
               任何源格式都会先解析成统一时间点，再渲染为目标格式。
             </div>
             <div
@@ -409,32 +409,32 @@ function loadExample() {
               v-else-if="conversionState.source"
               class="mt-4 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3"
             >
-              <div class="text-xs uppercase tracking-[0.18em] text-dracula-soft">
+              <div class="text-xs uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.88)]">
                 解析后
               </div>
-              <div class="mt-2 break-all font-mono text-[14px] leading-7 text-dracula-text">
+              <div class="mt-2 break-all font-mono text-[14px] leading-7 text-[rgb(var(--color-fg-base)/0.98)]">
                 {{ conversionState.source }}
               </div>
             </div>
             <div
               v-else
-              class="mt-4 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3 text-sm leading-6 text-dracula-soft"
+              class="mt-4 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3 text-sm leading-6 text-[rgb(var(--color-fg-muted)/0.92)]"
             >
               输入一个时间值后，这里会展示它标准化后的样子。
             </div>
           </div>
 
           <div class="rounded-2xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4">
-            <div class="text-sm font-medium text-dracula-text">
+            <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               派生格式总览
             </div>
-            <div class="mt-2 text-xs leading-5 text-dracula-soft">
+            <div class="mt-2 text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.92)]">
               方便你一次看到同一个时间点在常见格式下的表达。
             </div>
 
             <div
               v-if="conversionState.rows.length === 0"
-              class="mt-4 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3 text-sm leading-6 text-dracula-soft"
+              class="mt-4 rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-4 py-3 text-sm leading-6 text-[rgb(var(--color-fg-muted)/0.92)]"
             >
               转换成功后，这里会展示所有常见衍生格式。
             </div>
@@ -449,7 +449,7 @@ function loadExample() {
                 class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-3"
               >
                 <div class="flex items-center justify-between gap-3">
-                  <div class="text-xs text-dracula-soft">
+                  <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
                     {{ row.label }}
                   </div>
                   <NButton
@@ -460,7 +460,7 @@ function loadExample() {
                     复制
                   </NButton>
                 </div>
-                <div class="mt-2 break-all font-mono text-[13px] leading-6 text-dracula-text">
+                <div class="mt-2 break-all font-mono text-[13px] leading-6 text-[rgb(var(--color-fg-base)/0.98)]">
                   {{ row.value }}
                 </div>
               </div>

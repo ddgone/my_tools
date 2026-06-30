@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SSHConnection, ToolManifest } from '@/types/workbench'
 import type { BuiltinToolDefinition, BuiltinToolTabState } from '@/types/builtin'
+import {
+  defaultThemeCustomization,
+  normalizeThemeCustomization,
+  type ThemeCustomizationSettings,
+} from '@/theme/tokens'
 import { buildRawArgs } from '@/utils/cliArgs'
 
 export interface ToolTabState {
@@ -18,7 +23,7 @@ export interface ToolTabState {
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
-export type SettingsTab = 'general' | 'export' | 'go' | 'rust' | 'python'
+export type SettingsTab = 'general' | 'theme' | 'export' | 'go' | 'rust' | 'python'
 export type GoExportMode = 'binary' | 'source'
 export type ThemePreference = 'dark' | 'light' | 'system'
 
@@ -47,6 +52,7 @@ export interface UserSettings {
   autoOpenExportDir: boolean
   goExportMode: GoExportMode
   themePreference: ThemePreference
+  themeCustomization: ThemeCustomizationSettings
   lastSettingsTab: SettingsTab
 }
 
@@ -87,6 +93,7 @@ const defaultSettings: UserSettings = {
   autoOpenExportDir: true,
   goExportMode: 'binary',
   themePreference: 'dark',
+  themeCustomization: defaultThemeCustomization,
   lastSettingsTab: 'general',
 }
 
@@ -108,7 +115,7 @@ interface PersistedToolState {
 }
 
 function normalizeSettingsTab(value: unknown): SettingsTab {
-  if (value === 'export' || value === 'go' || value === 'rust' || value === 'python') {
+  if (value === 'theme' || value === 'export' || value === 'go' || value === 'rust' || value === 'python') {
     return value
   }
   return 'general'
@@ -129,6 +136,7 @@ function normalizeUserSettings(source?: Partial<UserSettings>): UserSettings {
     autoOpenExportDir: source?.autoOpenExportDir !== false,
     goExportMode: normalizeGoExportMode(source?.goExportMode),
     themePreference: normalizeThemePreference(source?.themePreference),
+    themeCustomization: normalizeThemeCustomization(source?.themeCustomization),
     lastSettingsTab: normalizeSettingsTab(source?.lastSettingsTab),
   }
 }

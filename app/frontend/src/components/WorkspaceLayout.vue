@@ -96,7 +96,7 @@ function onSidebarLeave(el: Element, done: () => void) {
 <template>
   <div
     ref="rootRef"
-    class="flex h-screen flex-col overflow-hidden bg-dracula-bg text-dracula-text"
+    class="flex h-screen flex-col overflow-hidden bg-[rgb(var(--color-bg-app)/1)] text-[rgb(var(--color-fg-base)/1)]"
   >
     <AppHeader />
     <div class="flex flex-1 overflow-hidden">
@@ -123,10 +123,10 @@ function onSidebarLeave(el: Element, done: () => void) {
           />
           <div
             v-bind="dividerProps"
-            class="group relative shrink-0 bg-white/10"
+            class="group relative shrink-0 bg-[rgb(var(--color-border-subtle)/0.72)]"
             style="width: 1px"
           >
-            <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-dracula-cyan/10 group-active:bg-dracula-cyan/20" />
+            <div class="absolute inset-y-0 -left-1 -right-1 group-hover:bg-[rgb(var(--color-brand-primary)/0.12)] group-active:bg-[rgb(var(--color-brand-primary)/0.18)]" />
           </div>
         </div>
       </Transition>

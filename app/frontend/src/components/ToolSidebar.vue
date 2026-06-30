@@ -20,9 +20,6 @@ import {
   EllipsisHorizontal,
   Star as StarIcon,
   TimeOutline,
-  CodeSlash,
-  LogoPython,
-  BuildOutline,
   GlobeOutline,
   Play,
   LaptopOutline,
@@ -123,17 +120,24 @@ watch(() => props.activeView, (view) => {
 }, { immediate: true })
 
 const allTools = computed(() => workbench.bootstrap?.tools ?? [])
-const activeSidebarTheme = computed(() =>
+const activeSidebarModeTheme = computed(() =>
   getExecutionTheme(
     workspace.activeTabType === 'tool' ? workspace.activeToolTab?.toolId ? allTools.value.find((tool) => tool.id === workspace.activeToolTab?.toolId)?.kind : undefined : undefined,
     workspace.activeTabType === 'tool' ? workspace.activeToolTab?.executionTarget ?? 'local' : 'local',
   ),
 )
-const sidebarAccent = computed(() => activeSidebarTheme.value.accent)
-const sidebarAccentSoftBg = computed(() => activeSidebarTheme.value.accentSoftBg)
-const sidebarAccentSoftStrongBorder = computed(() => activeSidebarTheme.value.accentSoftStrongBorder)
+const activeSidebarKindTheme = computed(() =>
+  getToolKindTheme(
+    workspace.activeTabType === 'tool'
+      ? allTools.value.find((tool) => tool.id === workspace.activeToolTab?.toolId)?.kind
+      : undefined,
+  ),
+)
+const sidebarModeAccentSoftBg = computed(() => activeSidebarModeTheme.value.accentSoftBg)
+const sidebarModeAccentSoftStrongBorder = computed(() => activeSidebarModeTheme.value.accentSoftStrongBorder)
+const sidebarKindAccent = computed(() => activeSidebarKindTheme.value.accent)
 const treeThemeOverrides = computed(() => ({
-  nodeColorActive: activeSidebarTheme.value.accentSoftBg,
+  nodeColorActive: activeSidebarModeTheme.value.accentSoftBg,
   nodeColorHover: 'transparent',
   nodeColorPressed: 'transparent',
 }))
@@ -378,22 +382,6 @@ function toolThemeClass(tool: ToolManifest) {
   return `tool-theme-${toolExecutionTheme(tool).accentName}`
 }
 
-function kindIcon(kind: string) {
-  if (kind === 'python') return LogoPython
-  if (kind === 'rust') return BuildOutline
-  return CodeSlash
-}
-
-function kindTag(kind: string) {
-  if (kind === 'python') return 'py'
-  if (kind === 'rust') return 'rs'
-  return 'go'
-}
-
-function kindIconColor(tool: ToolManifest) {
-  return getToolKindTheme(tool.kind).accent
-}
-
 function handleNodeClickBehavior({ option }: { option: TreeOption & { tool?: ToolManifest } }) {
   return option.tool ? 'toggleSelect' : 'toggleExpand'
 }
@@ -521,7 +509,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
   const tool = option.tool
   if (!tool) {
     return h('span', {
-      class: 'text-sm font-semibold uppercase tracking-wider text-dracula-soft',
+      class: 'text-sm font-semibold uppercase tracking-wider text-[rgb(var(--color-fg-muted)/0.92)]',
     }, option.label as string)
   }
   return h('div', {
@@ -535,12 +523,12 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     },
   }, [
     h('span', {
-      class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-dracula-green' : 'border border-[rgb(var(--color-border-strong)/0.9)]'}`,
+      class: `h-2 w-2 shrink-0 rounded-full transition-colors duration-150 ${isToolRunning(tool.id) ? 'bg-[rgb(var(--color-success)/0.92)]' : 'border border-[rgb(var(--color-border-strong)/0.9)]'}`,
     }),
     h('span', {
       class: 'truncate text-sm',
       style: {
-        color: toolExecutionTheme(tool).accent,
+        color: isToolActive(tool.id) ? 'rgb(var(--color-fg-base) / 0.98)' : 'rgb(var(--color-fg-base) / 0.94)',
       },
       onMouseenter: (e: MouseEvent) => onTooltipEnter(e, tool.name),
       onMouseleave: onTooltipLeave,
@@ -564,23 +552,6 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
             class: 'shrink-0',
           })]
         : []),
-      h(NTag, {
-        bordered: false,
-        size: 'tiny',
-        class: 'shrink-0',
-        style: {
-          color: getToolKindTheme(tool.kind).accent,
-          backgroundColor: getToolKindTheme(tool.kind).accentSoftBg,
-          border: `1px solid ${getToolKindTheme(tool.kind).accentSoftBorder}`,
-        },
-      }, {
-        icon: () => h(NIcon, {
-          component: kindIcon(tool.kind),
-          size: 10,
-          color: kindIconColor(tool),
-        }),
-        default: () => kindTag(tool.kind),
-      }),
     ]),
   ])
 }
@@ -686,7 +657,7 @@ defineExpose({
 <template>
   <div class="contents">
     <aside
-      class="flex shrink-0 flex-col border-r border-white/15 bg-dracula-panel"
+      class="surface-divider flex shrink-0 flex-col border-r bg-[rgb(var(--color-bg-panel)/0.96)]"
       :style="{ width: props.width + 'px' }"
     >
       <NScrollbar
@@ -756,7 +727,7 @@ defineExpose({
                 size="32"
                 color="rgb(var(--color-fg-muted) / 0.72)"
               />
-              <p class="mt-2 text-xs text-dracula-soft">
+              <p class="mt-2 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
                 暂无收藏的工具
               </p>
               <p class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.78)]">
@@ -783,16 +754,11 @@ defineExpose({
                   class="sidebar-collection-card-content flex items-center gap-x-2 text-left"
                   :class="{ 'sidebar-collection-card-content-active': isToolActive(tool.id) }"
                 >
-                  <NIcon
-                    :component="kindIcon(tool.kind)"
-                    size="16"
-                    :color="kindIconColor(tool)"
-                  />
                   <div class="min-w-0 flex-1">
                     <div class="truncate text-sm">
                       {{ tool.name }}
                     </div>
-                    <div class="truncate text-[10px] text-dracula-soft">
+                    <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]">
                       {{ categoryPathStr(tool) }} · {{ tool.description }}
                     </div>
                   </div>
@@ -815,7 +781,7 @@ defineExpose({
                 size="32"
                 color="rgb(var(--color-fg-muted) / 0.72)"
               />
-              <p class="mt-2 text-xs text-dracula-soft">
+              <p class="mt-2 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
                 暂无最近使用
               </p>
               <p class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.78)]">
@@ -842,16 +808,11 @@ defineExpose({
                   class="sidebar-collection-card-content flex items-center gap-x-2 text-left"
                   :class="{ 'sidebar-collection-card-content-active': isToolActive(entry.tool.id) }"
                 >
-                  <NIcon
-                    :component="kindIcon(entry.tool.kind)"
-                    size="16"
-                    :color="kindIconColor(entry.tool)"
-                  />
                   <div class="min-w-0 flex-1">
                     <div class="truncate text-sm">
                       {{ entry.tool.name }}
                     </div>
-                    <div class="truncate text-[10px] text-dracula-soft">
+                    <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]">
                       {{ entry.args || '无参数' }}
                     </div>
                   </div>
@@ -867,7 +828,7 @@ defineExpose({
           >
             <div class="space-y-3">
               <div>
-                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-dracula-soft">
+                <div class="px-1 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.92)]">
                   产物工作台
                 </div>
                 <NCard
@@ -889,7 +850,7 @@ defineExpose({
                     :class="isCompactArtifactSidebar ? 'flex-col' : 'flex items-start'"
                   >
                     <div
-                      class="flex shrink-0 items-center justify-center rounded-lg bg-dracula-orange/12 text-dracula-orange"
+                      class="flex shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--color-kind-rust)/0.12)] text-[rgb(var(--color-kind-rust)/0.96)]"
                       :class="isCompactArtifactSidebar ? 'h-8 w-8' : 'mt-0.5 h-9 w-9'"
                     >
                       <NIcon
@@ -903,7 +864,7 @@ defineExpose({
                         :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
                       >
                         <div
-                          class="text-sm font-medium text-dracula-text"
+                          class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]"
                           :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
                         >
                           产物工作台
@@ -921,29 +882,29 @@ defineExpose({
                           ? '打开后可继续配置矩阵、启动批量任务，并查看完整结果。'
                           : '打开工作台后可继续配置平台矩阵、启动批量任务，并查看完整结果列表。' }}
                       </div>
-                      <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-dracula-soft">
-                        <span class="rounded border border-white/10 px-2 py-0.5">
+                      <div class="mt-3 flex flex-wrap gap-2 text-[10px] text-[rgb(var(--color-fg-muted)/0.92)]">
+                        <span class="rounded border border-[rgb(var(--color-border-subtle)/0.54)] px-2 py-0.5">
                           已选 {{ artifactCenter.selectedKeys.length }} 项
                         </span>
-                        <span class="rounded border border-white/10 px-2 py-0.5">
+                        <span class="rounded border border-[rgb(var(--color-border-subtle)/0.54)] px-2 py-0.5">
                           历史 {{ artifactCenter.recentTasks.length }} 条
                         </span>
                       </div>
                       <div
                         v-if="runningArtifactTask"
-                        class="mt-3 rounded-lg border border-dracula-orange/15 bg-dracula-orange/10 px-2.5 py-2"
+                        class="mt-3 rounded-lg border border-[rgb(var(--color-kind-rust)/0.18)] bg-[rgb(var(--color-kind-rust)/0.10)] px-2.5 py-2"
                       >
                         <div
                           class="gap-1.5 text-[11px]"
                           :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
                         >
                           <span
-                            class="text-amber-200"
+                            class="text-[rgb(var(--color-warning)/0.98)]"
                             :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
                           >
                             正在执行 · {{ artifactTaskTitle(runningArtifactTask) }}
                           </span>
-                          <span class="text-dracula-soft">
+                          <span class="text-[rgb(var(--color-fg-muted)/0.92)]">
                             {{ artifactTaskFinishedCount(runningArtifactTask) }}/{{ runningArtifactTask.totalCount }}
                           </span>
                         </div>
@@ -958,7 +919,7 @@ defineExpose({
                         />
                         <div
                           v-if="runningArtifactTask.currentItem"
-                          class="mt-2 truncate text-[10px] text-dracula-soft"
+                          class="mt-2 truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]"
                         >
                           {{ runningArtifactTask.currentItem }}
                         </div>
@@ -970,7 +931,7 @@ defineExpose({
 
               <div>
                 <div class="flex items-center justify-between gap-2 px-1 pb-2">
-                  <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-dracula-soft">
+                  <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.92)]">
                     任务历史
                   </div>
                   <NButton
@@ -984,7 +945,7 @@ defineExpose({
                 </div>
                 <div
                   v-if="historicalArtifactTasks.length === 0"
-                  class="rounded-lg border border-dashed border-white/10 px-3 py-5 text-center text-xs leading-5 text-dracula-soft"
+                  class="rounded-lg border border-dashed border-[rgb(var(--color-border-subtle)/0.52)] px-3 py-5 text-center text-xs leading-5 text-[rgb(var(--color-fg-muted)/0.92)]"
                 >
                   暂无历史任务
                 </div>
@@ -1015,7 +976,7 @@ defineExpose({
                           :class="isCompactArtifactSidebar ? 'flex-col items-start' : 'flex items-center justify-between'"
                         >
                           <div
-                            class="text-sm font-medium text-dracula-text"
+                            class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]"
                             :class="isCompactArtifactSidebar ? 'leading-5' : 'truncate'"
                           >
                             {{ artifactTaskTitle(task) }}
@@ -1028,7 +989,7 @@ defineExpose({
                             {{ task.status }}
                           </NTag>
                         </div>
-                        <div class="mt-1 text-[10px] text-dracula-soft">
+                        <div class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]">
                           {{ artifactTaskTime(task) }}
                         </div>
                         <div class="mt-2 text-[11px] leading-5 text-[rgb(var(--color-fg-secondary)/0.9)]">
@@ -1048,7 +1009,7 @@ defineExpose({
             class="flex h-full flex-col"
           >
             <div class="flex items-center justify-between px-3 py-2">
-              <span class="text-xs font-medium text-dracula-text">SSH 连接</span>
+              <span class="text-xs font-medium text-[rgb(var(--color-fg-base)/0.98)]">SSH 连接</span>
               <NButton
                 text
                 size="tiny"
@@ -1072,7 +1033,7 @@ defineExpose({
                   size="28"
                   color="rgb(var(--color-fg-muted) / 0.72)"
                 />
-                <p class="mt-2 text-xs text-dracula-soft">
+                <p class="mt-2 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
                   暂无 SSH 连接
                 </p>
                 <NButton
@@ -1107,10 +1068,10 @@ defineExpose({
                     color="rgb(var(--color-brand-primary) / 1)"
                   />
                   <div class="min-w-0 flex-1">
-                    <div class="truncate text-sm font-medium text-dracula-text">
+                    <div class="truncate text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
                       {{ conn.name }}
                     </div>
-                    <div class="truncate text-[10px] text-dracula-soft">
+                    <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]">
                       {{ conn.user }}@{{ conn.host }}:{{ conn.port }}
                     </div>
                   </div>
@@ -1175,19 +1136,19 @@ defineExpose({
 
 <style>
 .category-tree {
-  --n-node-color-active: v-bind(sidebarAccentSoftBg);
+  --n-node-color-active: v-bind(sidebarModeAccentSoftBg);
   --n-line-color: rgb(var(--color-border-subtle) / 0.78);
   --n-line-offset-top: 4px;
   --n-line-offset-bottom: 4px;
 }
 
 .sidebar-collection-card-active {
-  border-color: v-bind(sidebarAccentSoftStrongBorder) !important;
-  background-color: v-bind(sidebarAccentSoftBg) !important;
+  border-color: v-bind(sidebarModeAccentSoftStrongBorder) !important;
+  background-color: v-bind(sidebarModeAccentSoftBg) !important;
 }
 
 .sidebar-collection-card-content-active {
-  color: v-bind(sidebarAccent);
+  color: v-bind(sidebarKindAccent);
 }
 .category-tree .n-tree-node-content {
   padding-top: 2px;
@@ -1213,7 +1174,7 @@ defineExpose({
   stroke: rgb(var(--color-fg-secondary) / 0.94);
 }
 .category-tree .n-tree-node--expanded > .n-tree-node-switcher svg {
-  stroke: v-bind(sidebarAccentSoftStrongBorder);
+  stroke: v-bind(sidebarModeAccentSoftStrongBorder);
 }
 .category-tree .n-tree-node--selected .n-tree-node-indent {
   opacity: 0.3;
@@ -1222,7 +1183,7 @@ defineExpose({
   opacity: 1;
 }
 .category-tree .n-tree-node--selected > .n-tree-node-indent:last-of-type svg line {
-  stroke: v-bind(sidebarAccentSoftStrongBorder) !important;
+  stroke: v-bind(sidebarModeAccentSoftStrongBorder) !important;
 }
 .category-tree .tool-tree-node.tool-theme-local:hover:not(.n-tree-node--selected):not(.n-tree-node--disabled) {
   background: rgb(var(--color-mode-local) / 0.06) !important;

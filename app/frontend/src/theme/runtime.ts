@@ -1,7 +1,16 @@
-import { buildThemeCssVariables, type ResolvedThemeName } from './tokens'
+import {
+  buildThemeCssVariables,
+  defaultThemeCustomization,
+  type ResolvedThemeName,
+  type ThemeCustomizationSettings,
+} from './tokens'
 
-export function applyResolvedTheme(name: ResolvedThemeName, root: HTMLElement = document.documentElement) {
-  const variables = buildThemeCssVariables(name)
+export function applyResolvedTheme(
+  name: ResolvedThemeName,
+  customization: ThemeCustomizationSettings = defaultThemeCustomization,
+  root: HTMLElement = document.documentElement,
+) {
+  const variables = buildThemeCssVariables(name, customization)
   root.dataset.theme = name
   root.style.colorScheme = name
   for (const [key, value] of Object.entries(variables)) {

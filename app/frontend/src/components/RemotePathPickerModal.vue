@@ -482,7 +482,7 @@ onUnmounted(() => {
     <Transition name="fade">
       <div
         v-if="show"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        class="fixed inset-0 z-50 bg-[rgb(var(--color-overlay-rgb)/0.42)] backdrop-blur-sm"
         @click="closeModal"
       />
     </Transition>
@@ -495,15 +495,15 @@ onUnmounted(() => {
         class="fixed inset-0 z-50 flex items-start justify-center px-4 py-[8vh] pointer-events-none"
       >
         <div
-          class="remote-path-picker-modal pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden rounded-xl border border-white/15 bg-dracula-panel shadow-2xl"
+          class="remote-path-picker-modal surface-dialog pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden rounded-2xl"
           @click.stop
         >
-          <div class="remote-path-picker-header flex items-start justify-between gap-3 border-b border-white/15 px-5 py-3">
+          <div class="remote-path-picker-header surface-divider flex items-start justify-between gap-3 border-b px-5 py-3">
             <div class="min-w-0">
-              <div class="text-sm font-semibold text-dracula-text">
+              <div class="text-sm font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
                 远程路径选择器
               </div>
-              <div class="mt-1 text-xs text-dracula-soft">
+              <div class="mt-1 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
                 {{ connectionDisplay }}
               </div>
             </div>
@@ -617,8 +617,8 @@ onUnmounted(() => {
               </NAlert>
             </div>
 
-            <div class="remote-path-picker-list-shell rounded-xl border border-white/10 bg-[rgb(var(--color-bg-elevated)/0.88)]">
-              <div class="remote-path-picker-list-header border-b border-white/8 px-3 py-2 text-[11px] text-dracula-soft">
+            <div class="remote-path-picker-list-shell rounded-xl border border-[rgb(var(--color-border-subtle)/0.56)] bg-[rgb(var(--color-bg-elevated)/0.88)]">
+              <div class="remote-path-picker-list-header surface-muted-divider border-b px-3 py-2 text-[11px] text-[rgb(var(--color-fg-muted)/0.9)]">
                 <span>名称</span>
                 <span class="text-right">类型</span>
               </div>
@@ -650,12 +650,12 @@ onUnmounted(() => {
                       size="16"
                       class="shrink-0"
                     />
-                    <div class="truncate text-sm text-dracula-text">
+                    <div class="truncate text-sm text-[rgb(var(--color-fg-base)/0.98)]">
                       {{ entry.name }}
                     </div>
                   </div>
                   <div class="flex items-center justify-end">
-                    <span class="text-xs text-dracula-soft">
+                    <span class="text-xs text-[rgb(var(--color-fg-muted)/0.9)]">
                       {{ entry.kind === 'directory' ? '目录' : '文件' }}
                     </span>
                   </div>
@@ -675,7 +675,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="remote-path-picker-footer flex items-center justify-between gap-3 border-t border-white/15 px-5 py-3">
+          <div class="remote-path-picker-footer surface-muted-divider flex items-center justify-between gap-3 border-t px-5 py-3">
             <div />
             <div class="flex items-center gap-2">
               <NButton @click="closeModal">

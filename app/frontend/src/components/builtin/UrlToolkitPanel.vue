@@ -145,7 +145,7 @@ const hint = computed(() => {
 
       <div class="mt-4 grid gap-4 xl:grid-cols-2">
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输入
           </div>
           <NInput
@@ -156,7 +156,7 @@ const hint = computed(() => {
           />
         </div>
         <div>
-          <div class="mb-2 text-sm font-medium text-dracula-text">
+          <div class="mb-2 text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             输出
           </div>
           <NInput
@@ -174,7 +174,7 @@ const hint = computed(() => {
       :bordered="true"
       class="bg-[rgb(var(--color-bg-panel)/0.78)]"
     >
-      <div class="text-sm font-medium text-dracula-text">
+      <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
         当前识别
       </div>
       <div class="mt-3 rounded-xl border border-[rgb(var(--color-border-subtle)/0.82)] bg-[rgb(var(--color-bg-elevated)/0.82)] px-4 py-3 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.95)]">

@@ -1,22 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, NIcon, NInput, NSelect, NText, NTag, type SelectOption } from 'naive-ui'
+import { NButton, NIcon, NInput, NSelect, NText, type SelectOption } from 'naive-ui'
 import {
   Play,
   Stop,
   CloudUpload,
   DownloadOutline,
   ServerOutline,
-  CodeSlash,
-  LogoPython,
-  BuildOutline,
   GlobeOutline,
-  LaptopOutline,
 } from '@vicons/ionicons5'
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
 import type { ExecutionTask, SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ExecutionTarget, ToolTabState } from '@/stores/workspace'
-import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
+import { getExecutionTheme } from '@/utils/executionTheme'
 import gsap from 'gsap'
 
 const props = defineProps<{
@@ -71,11 +67,9 @@ const isRemote = computed(() => props.tab?.executionTarget === 'remote')
 const detailTheme = computed(() => getExecutionTheme(props.tool?.kind, isRemote.value ? 'remote' : 'local'))
 const localTheme = computed(() => getExecutionTheme(props.tool?.kind, 'local'))
 const remoteTheme = computed(() => getExecutionTheme(props.tool?.kind, 'remote'))
-const toolKindTheme = computed(() => getToolKindTheme(props.tool?.kind))
 const detailAccent = computed(() => detailTheme.value.accent)
 const detailAccentHover = computed(() => detailTheme.value.accentHover)
 const detailAccentText = computed(() => detailTheme.value.accentText)
-const detailAccentSoftBg = computed(() => detailTheme.value.accentSoftBg)
 const detailAccentSoftBorder = computed(() => detailTheme.value.accentSoftBorder)
 const detailAccentSoftStrongBorder = computed(() => detailTheme.value.accentSoftStrongBorder)
 const switchTrackHoverClass = computed(() =>
@@ -229,48 +223,14 @@ onBeforeUnmount(() => {
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <NIcon
-            :component="tool.kind === 'python' ? LogoPython : tool.kind === 'rust' ? BuildOutline : CodeSlash"
-            size="13"
-            class="tool-detail-accent tool-detail-transition"
-          />
           <NText
             depth="3"
-            class="text-xs"
+            class="rounded-md border border-[rgb(var(--color-border-subtle)/0.58)] bg-[rgb(var(--color-bg-elevated)/0.56)] px-2.5 py-1 text-[11px] leading-none text-[rgb(var(--color-fg-muted)/0.9)]"
           >
-            {{ tool.category.join(' > ') }}
+            {{ tool.category.join(' / ') }}
           </NText>
-          <span class="text-dracula-soft text-xs">·</span>
-          <NTag
-            size="tiny"
-            :bordered="false"
-            class="tool-kind-tag tool-detail-transition"
-          >
-            <template #icon>
-              <NIcon
-                :component="tool.kind === 'python' ? LogoPython : tool.kind === 'rust' ? BuildOutline : CodeSlash"
-                size="10"
-                class="tool-detail-accent tool-detail-transition"
-              />
-            </template>
-            {{ tool.kind === 'python' ? 'py' : tool.kind === 'rust' ? 'rs' : 'go' }}
-          </NTag>
-          <NTag
-            v-if="isRemote"
-            size="tiny"
-            :bordered="false"
-            class="tool-mode-tag tool-detail-transition"
-          >
-            <template #icon>
-              <NIcon
-                :component="GlobeOutline"
-                size="10"
-              />
-            </template>
-            远程执行目标
-          </NTag>
         </div>
-        <h2 class="m-0 mt-1 text-lg font-semibold text-dracula-text">
+        <h2 class="m-0 mt-1 text-lg font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
           {{ tool.name }}
         </h2>
         <NText
@@ -296,24 +256,16 @@ onBeforeUnmount(() => {
           >
             <div
               ref="switchLocalPanelRef"
-              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-r-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
+              class="absolute inset-y-0 left-0 flex items-center justify-center rounded-r-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
               :style="switchLocalPanelStyle"
             >
-              <NIcon
-                :component="LaptopOutline"
-                size="12"
-              />
               <span>本地</span>
             </div>
             <div
               ref="switchRemotePanelRef"
-              class="absolute inset-y-0 left-0 flex items-center justify-center gap-x-1 rounded-l-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
+              class="absolute inset-y-0 left-0 flex items-center justify-center rounded-l-[5px] text-[12px] font-semibold tracking-[0.01em] will-change-transform"
               :style="switchRemotePanelStyle"
             >
-              <NIcon
-                :component="GlobeOutline"
-                size="12"
-              />
               <span>远程</span>
             </div>
           </div>
@@ -468,22 +420,6 @@ onBeforeUnmount(() => {
     box-shadow 160ms var(--ease-out-soft),
     fill 160ms var(--ease-out-soft),
     stroke 160ms var(--ease-out-soft);
-}
-
-.tool-detail-accent {
-  color: v-bind(detailAccent);
-}
-
-.tool-kind-tag {
-  color: v-bind(toolKindTheme.accent) !important;
-  background-color: v-bind(toolKindTheme.accentSoftBg) !important;
-  border: 1px solid v-bind(toolKindTheme.accentSoftBorder) !important;
-}
-
-.tool-mode-tag {
-  color: v-bind(detailAccent) !important;
-  background-color: v-bind(detailAccentSoftBg) !important;
-  border: 1px solid v-bind(detailAccentSoftBorder) !important;
 }
 
 .tool-detail-action-button {

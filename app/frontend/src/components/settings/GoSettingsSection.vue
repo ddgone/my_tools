@@ -355,7 +355,7 @@ onMounted(async () => {
       class="rounded-xl border px-4 py-4"
       :class="goEnv.hasUsableBinary ? 'border-emerald-400/20 bg-emerald-500/5' : 'border-amber-400/20 bg-amber-500/5'"
     >
-      <div class="text-base font-semibold text-dracula-text">
+      <div class="text-base font-semibold text-[rgb(var(--color-fg-base)/0.98)]">
         {{ goEnv.hasUsableBinary ? 'Go 环境已就绪' : '当前未检测到可用的 Go 环境' }}
       </div>
       <div class="mt-2 text-sm leading-6 text-[rgb(var(--color-fg-secondary)/0.9)]">
@@ -387,7 +387,7 @@ onMounted(async () => {
     >
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-sm font-medium text-dracula-text">
+          <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
             Go SDK 下载任务
           </div>
           <div class="mt-1 text-xs text-[rgb(var(--color-fg-secondary)/0.9)]">
@@ -407,7 +407,7 @@ onMounted(async () => {
           </div>
           <div
             v-if="formatTransferSummary()"
-            class="mt-1 text-[11px] text-dracula-cyan/90"
+            class="mt-1 text-[11px] text-[rgb(var(--color-brand-primary)/0.9)]"
           >
             {{ formatTransferSummary() }}
           </div>
@@ -466,7 +466,7 @@ onMounted(async () => {
           :href="link.href"
           target="_blank"
           rel="noreferrer"
-          class="ml-2 text-dracula-cyan hover:text-[rgb(var(--color-brand-hover)/1)] underline underline-offset-2"
+          class="ml-2 text-[rgb(var(--color-brand-primary)/0.94)] underline underline-offset-2 hover:text-[rgb(var(--color-brand-hover)/1)]"
         >
           {{ link.label }}
         </a>
@@ -616,7 +616,7 @@ onMounted(async () => {
       class="rounded-xl border border-[rgb(var(--color-border-subtle)/0.78)] bg-[rgb(var(--color-bg-elevated)/0.82)] p-4 space-y-4"
     >
       <div class="flex items-center justify-between">
-        <div class="text-sm font-medium text-dracula-text">
+        <div class="text-sm font-medium text-[rgb(var(--color-fg-base)/0.98)]">
           下载 Go SDK
         </div>
         <NButton
@@ -649,7 +649,7 @@ onMounted(async () => {
             :href="link.href"
             target="_blank"
             rel="noreferrer"
-            class="text-dracula-cyan hover:text-[rgb(var(--color-brand-hover)/1)] underline underline-offset-2"
+            class="text-[rgb(var(--color-brand-primary)/0.94)] underline underline-offset-2 hover:text-[rgb(var(--color-brand-hover)/1)]"
           >
             {{ link.label }}
           </a>

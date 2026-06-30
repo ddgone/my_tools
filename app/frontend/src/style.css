@@ -162,6 +162,37 @@ body {
   font-family: var(--font-mono);
 }
 
+.surface-panel {
+  background: rgb(var(--color-bg-panel, 36 38 45) / 0.94);
+  border: 1px solid rgb(var(--color-border-subtle, 56 60 70) / 0.72);
+}
+
+.surface-elevated {
+  background: rgb(var(--color-bg-elevated, 43 46 54) / 0.92);
+  border: 1px solid rgb(var(--color-border-subtle, 56 60 70) / 0.62);
+}
+
+.surface-dialog {
+  background:
+    linear-gradient(
+      180deg,
+      rgb(var(--color-bg-panel, 36 38 45) / 0.98) 0%,
+      rgb(var(--color-bg-elevated, 43 46 54) / 0.96) 100%
+    );
+  border: 1px solid rgb(var(--color-border-subtle, 56 60 70) / 0.82);
+  box-shadow:
+    0 20px 48px rgb(var(--color-overlay-rgb, 12 14 18) / 0.24),
+    0 1px 0 rgb(var(--color-fg-base, 231 234 240) / 0.04) inset;
+}
+
+.surface-divider {
+  border-color: rgb(var(--color-border-subtle, 56 60 70) / 0.68);
+}
+
+.surface-muted-divider {
+  border-color: rgb(var(--color-border-subtle, 56 60 70) / 0.46);
+}
+
 .ui-interactive {
   transition:
     color 0.18s var(--ease-out-soft),
@@ -175,12 +206,13 @@ body {
   transition:
     border-color 0.18s var(--ease-out-soft),
     background-color 0.18s var(--ease-out-soft),
-    box-shadow 0.18s var(--ease-out-soft);
+    box-shadow 0.18s var(--ease-out-soft),
+    transform 0.18s var(--ease-out-soft);
 }
 
 .ui-surface-hover:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  transform: translateY(-0.5px);
+  box-shadow: 0 8px 18px rgb(var(--color-overlay-rgb, 12 14 18) / 0.12);
 }
 
 .wails-drag {
@@ -197,10 +229,11 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgb(var(--color-titlebar-from, 17 24 39) / 0.94) 0%,
-      rgb(var(--color-titlebar-to, 15 23 42) / 0.86) 100%
+      rgb(var(--color-titlebar-from, 17 24 39) / 0.96) 0%,
+      rgb(var(--color-titlebar-to, 15 23 42) / 0.9) 100%
     );
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgb(var(--color-border-subtle, 56 60 70) / 0.52);
 }
 
 .workbench-tooltip {
@@ -221,6 +254,15 @@ body {
   color: rgb(var(--color-tooltip-text, 15 23 42) / 1);
   box-shadow: var(--shadow-tooltip, 0 12px 28px rgba(2, 6, 23, 0.28));
   backdrop-filter: blur(14px);
+}
+
+[data-theme='light'] .shell-bg {
+  background:
+    linear-gradient(
+      180deg,
+      rgb(var(--color-bg-shell, 229 231 235) / 0.94) 0%,
+      rgb(var(--color-bg-elevated, 238 240 243) / 1) 100%
+    );
 }
 
 .workbench-menu-divider {
