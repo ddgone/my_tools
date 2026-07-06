@@ -292,7 +292,9 @@ var bundledTools = []bundledTool{
 	{ID: "hdfs_download", Kind: "go", SourceEntry: "tools/go_tools/hdfs_download/tool.go"},
 	{ID: "pos2gis_converter", Kind: "go", SourceEntry: "tools/go_tools/pos_trajectory_to_gis/tool.go"},
 	{ID: "recursive_content_dir_diff", Kind: "go", SourceEntry: "tools/go_tools/recursive_content_dir_diff/tool.go"},
+	{ID: "trajectory_match_filter_qc", Kind: "go", SourceEntry: "tools/go_tools/trajectory_match_filter_qc/tool.go"},
 	{ID: "utm_geojson_converter", Kind: "go", SourceEntry: "tools/go_tools/utm_extract_to_gis/tool.go"},
+	{ID: "bxn_delivery_point_cloud_qc", Kind: "rust", SourceEntry: "tools/rust_tools/bxn_delivery_point_cloud_qc/src/lib.rs", ModuleDir: "tools/rust_tools/bxn_delivery_point_cloud_qc"},
 	{ID: "las_voxelizer", Kind: "rust", SourceEntry: "tools/rust_tools/las_voxelizer/src/lib.rs", ModuleDir: "tools/rust_tools/las_voxelizer"},
 }
 
