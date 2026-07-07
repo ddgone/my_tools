@@ -847,7 +847,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
           :data-tab-key="item.key"
-          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1.5 overflow-hidden border-r border-[rgb(var(--color-border-subtle)/0.64)] px-3 py-1.5 pr-8"
+          class="ui-interactive group relative flex h-9 min-w-0 max-w-[280px] flex-[1_1_0] items-center gap-1.5 overflow-hidden border-r border-[rgb(var(--color-border-subtle)/0.64)] px-3 py-1.5 pr-8"
           :class="
             isUnifiedTabActive(item)
               ? 'workspace-tab-active text-[rgb(var(--color-fg-base)/0.98)]'
