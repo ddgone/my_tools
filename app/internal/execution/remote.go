@@ -18,10 +18,11 @@ import (
 )
 
 type RemoteExecRequest struct {
-	ToolID    string `json:"toolId"`
-	ConnID    string `json:"connId"`
-	Args      string `json:"args"`
-	PythonEnv string `json:"pythonEnv"`
+	ToolID     string `json:"toolId"`
+	ConnID     string `json:"connId"`
+	InstanceID string `json:"instanceId"`
+	Args       string `json:"args"`
+	PythonEnv  string `json:"pythonEnv"`
 }
 
 type remoteExecParams struct {

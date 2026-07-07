@@ -10,8 +10,11 @@ import {
 import { buildRawArgs } from '@/utils/cliArgs'
 
 export interface ToolTabState {
-  tabId: string
+  instanceId: string
   toolId: string
+  title: string
+  isMain: boolean
+  tabId: string
   executionTarget: ExecutionTarget
   localConfig: ToolExecutionConfig
   remoteConfig: RemoteExecutionConfig
@@ -64,6 +67,7 @@ const STORAGE_KEYS = {
   toolState: 'fire-salamander:tool-state',
   pinnedTabs: 'fire-salamander:pinned-tabs',
   tabOrder: 'fire-salamander:tab-order',
+  instanceSnapshots: 'fire-salamander:instance-snapshots',
 } as const
 
 function loadJSON<T>(key: string, fallback: T): T {
@@ -114,6 +118,15 @@ interface PersistedToolState {
   updatedAt: number
 }
 
+interface InstanceSnapshot extends PersistedToolState {
+  toolId: string
+  title: string
+  isMain: boolean
+  lastTaskIds: string[]
+  recentHistory: HistoryEntry[]
+  closedAt: number
+}
+
 function normalizeSettingsTab(value: unknown): SettingsTab {
   if (value === 'theme' || value === 'export' || value === 'go' || value === 'rust' || value === 'zig' || value === 'python') {
     return value
@@ -153,6 +166,7 @@ function createTabState(
   historyEntry?: HistoryEntry,
   defaultPythonPath = 'python',
 ): ToolTabState {
+  const instanceId = tool.id
   const localConfig = persistedState?.localConfig
     ? normalizeExecutionConfig(tool, persistedState.localConfig, defaultPythonPath, 'local')
     : historyEntry
@@ -174,8 +188,11 @@ function createTabState(
     : createDefaultRemoteExecutionConfig(tool, defaultPythonPath)
 
   return {
-    tabId: `tool_${tool.id}`,
+    instanceId,
+    tabId: `tool_${instanceId}`,
     toolId: tool.id,
+    title: tool.name,
+    isMain: true,
     executionTarget: persistedState?.executionTarget === 'remote' ? 'remote' : 'local',
     localConfig,
     remoteConfig,
@@ -371,6 +388,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   )
   const pinnedTabs = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.pinnedTabs, []))
   const tabOrder = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.tabOrder, []))
+  const instanceSnapshots = ref<Record<string, InstanceSnapshot>>(
+    loadJSON<Record<string, InstanceSnapshot>>(STORAGE_KEYS.instanceSnapshots, {}),
+  )
   const pinnedTabsRestored = ref(false)
 
   watch(favorites, (v) => saveJSON(STORAGE_KEYS.favorites, v), { deep: true })
@@ -380,12 +400,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(persistedToolStates, (v) => saveJSON(STORAGE_KEYS.toolState, v), { deep: true })
   watch(pinnedTabs, (v) => saveJSON(STORAGE_KEYS.pinnedTabs, v), { deep: true })
   watch(tabOrder, (v) => saveJSON(STORAGE_KEYS.tabOrder, v), { deep: true })
+  watch(instanceSnapshots, (v) => saveJSON(STORAGE_KEYS.instanceSnapshots, v), { deep: true })
   watch(
     openTabs,
     (tabs) => {
       const nextState = { ...persistedToolStates.value }
       for (const tab of tabs) {
-        nextState[tab.toolId] = snapshotToolState(tab)
+        nextState[tab.instanceId] = snapshotToolState(tab)
       }
       persistedToolStates.value = nextState
     },
@@ -433,6 +454,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     type: 'tool' | 'builtin' | 'ssh' | 'artifact'
     key: string
     label: string
+    toolId?: string
     openedAt: number
     arrayIndex: number
     pinned: boolean
@@ -445,7 +467,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (key.startsWith('builtin:builtin_')) {
       return true
     }
-    if (key.startsWith('tool:tool_')) {
+    if (key.startsWith('tool:')) {
       return true
     }
     return key.startsWith('ssh:ssh_') && !key.startsWith('ssh:ssh_new_')
@@ -455,7 +477,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return [
       ...artifactTabs.value.map((tab) => `artifact:${tab.tabId}`),
       ...builtinTabs.value.map((tab) => `builtin:${tab.tabId}`),
-      ...openTabs.value.map((tab) => `tool:${tab.tabId}`),
+      ...openTabs.value.map((tab) => `tool:${tab.instanceId}`),
       ...sshTabs.value.map((tab) => `ssh:${tab.tabId}`),
     ]
   }
@@ -507,11 +529,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       })),
       ...openTabs.value.map((t, i) => ({
         type: 'tool' as const,
-        key: `tool:${t.tabId}`,
-        label: t.toolId,
+        key: `tool:${t.instanceId}`,
+        label: t.title,
+        toolId: t.toolId,
         openedAt: t.openedAt,
         arrayIndex: i,
-        pinned: pinnedKeySet.has(`tool:${t.tabId}`),
+        pinned: pinnedKeySet.has(`tool:${t.instanceId}`),
       })),
       ...sshTabs.value.map((s, i) => ({
         type: 'ssh' as const,
@@ -637,6 +660,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function closeUnifiedTab(item: UnifiedTabItem) {
     if (item.type === 'tool') {
+      const tab = openTabs.value[item.arrayIndex]
+      if (tab) {
+        saveInstanceSnapshot(tab)
+      }
       openTabs.value.splice(item.arrayIndex, 1)
       if (item.arrayIndex === activeTabIndex.value) {
         if (openTabs.value.length === 0) {
@@ -729,9 +756,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function openTool(tool: ToolManifest) {
-    const existing = openTabs.value.findIndex((t) => t.toolId === tool.id)
-    if (existing >= 0) {
-      activeTabIndex.value = existing
+    const mainIndex = openTabs.value.findIndex((t) => t.isMain && t.toolId === tool.id)
+    if (mainIndex >= 0) {
+      activeTabIndex.value = mainIndex
       activeBuiltinTabIndex.value = -1
       activeSSHTabIndex.value = -1
       activeArtifactTabIndex.value = -1
@@ -748,6 +775,49 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeBuiltinTabIndex.value = -1
     activeSSHTabIndex.value = -1
     activeArtifactTabIndex.value = -1
+  }
+
+  function openToolNewInstance(tool: ToolManifest) {
+    // ensure main instance exists
+    const mainIndex = openTabs.value.findIndex((t) => t.isMain && t.toolId === tool.id)
+    if (mainIndex < 0) {
+      const history = toolHistory.value[tool.id] || []
+      const lastEntry = history[0]
+      const persistedState = persistedToolStates.value[tool.id]
+      const mainTab = createTabState(tool, persistedState, lastEntry, settings.value.defaultPythonPath)
+      openTabs.value.push(mainTab)
+    }
+    // copy from the main instance
+    const sourceTab = openTabs.value.find((t) => t.isMain && t.toolId === tool.id)
+    if (sourceTab) {
+      copyToolInstance(sourceTab, tool.name)
+    }
+  }
+
+  function copyToolInstance(source: ToolTabState, toolName: string): ToolTabState {
+    const suffix = Math.random().toString(36).slice(2, 8)
+    const instanceId = `${source.toolId}_${suffix}`
+    const copyCount = openTabs.value.filter((t) => t.toolId === source.toolId && !t.isMain).length + 1
+    const tab: ToolTabState = {
+      instanceId,
+      tabId: `tool_${instanceId}`,
+      toolId: source.toolId,
+      title: copyCount === 1 ? `${toolName} #2` : `${toolName} #${copyCount + 1}`,
+      isMain: false,
+      executionTarget: source.executionTarget,
+      localConfig: cloneExecutionConfig(source.localConfig),
+      remoteConfig: cloneRemoteExecutionConfig(source.remoteConfig),
+      terminalVisible: false,
+      terminalHeight: source.terminalHeight,
+      exportTarget: source.exportTarget,
+      openedAt: Date.now(),
+    }
+    openTabs.value.push(tab)
+    activeTabIndex.value = openTabs.value.length - 1
+    activeBuiltinTabIndex.value = -1
+    activeSSHTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
+    return tab
   }
 
   function openBuiltinTool(tool: BuiltinToolDefinition) {
@@ -767,7 +837,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeArtifactTabIndex.value = -1
   }
 
+  function saveInstanceSnapshot(tab: ToolTabState) {
+    const history = toolHistory.value[tab.instanceId] || []
+    const maxHistory = settings.value.historyRetention
+    const snapshot: InstanceSnapshot = {
+      ...snapshotToolState(tab),
+      toolId: tab.toolId,
+      title: tab.title,
+      isMain: tab.isMain,
+      lastTaskIds: [],
+      recentHistory: history.slice(0, maxHistory),
+      closedAt: Date.now(),
+    }
+    instanceSnapshots.value = { ...instanceSnapshots.value, [tab.instanceId]: snapshot }
+
+    const snapshotIds = Object.keys(instanceSnapshots.value)
+    if (snapshotIds.length > maxHistory) {
+      const sorted = snapshotIds
+        .map((id) => ({ id, closedAt: instanceSnapshots.value[id].closedAt }))
+        .sort((a, b) => a.closedAt - b.closedAt)
+      const toEvict = sorted.slice(0, snapshotIds.length - maxHistory)
+      const next = { ...instanceSnapshots.value }
+      for (const { id } of toEvict) {
+        delete next[id]
+        delete toolHistory.value[id]
+      }
+      instanceSnapshots.value = next
+    }
+  }
+
   function closeTab(index: number) {
+    const tab = openTabs.value[index]
+    if (tab) {
+      saveInstanceSnapshot(tab)
+    }
     openTabs.value.splice(index, 1)
     if (index === activeTabIndex.value) {
       if (openTabs.value.length === 0) {
@@ -859,7 +962,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  function recordUsage(toolId: string, args: string, pythonEnv: string, formModel?: Record<string, string | number | boolean | null>) {
+  function recordUsage(instanceId: string, toolId: string, args: string, pythonEnv: string, formModel?: Record<string, string | number | boolean | null>) {
     const maxRecent = settings.value.recentToolsCount
 
     recentTools.value = [
@@ -867,11 +970,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ...recentTools.value.filter((r) => r.toolId !== toolId),
     ].slice(0, maxRecent)
 
-    const existing = toolHistory.value[toolId] || []
+    const existing = toolHistory.value[instanceId] || []
     const maxHistory = settings.value.historyRetention
 
     const deduped = existing.filter((h) => h.args !== args || h.pythonEnv !== pythonEnv)
-    toolHistory.value[toolId] = [
+    toolHistory.value[instanceId] = [
       { args, pythonEnv, formModel: formModel || {}, timestamp: Date.now() },
       ...deduped,
     ].slice(0, maxHistory)
@@ -1005,6 +1108,38 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  function restoreInstanceSnapshot(instanceId: string, snapshot: InstanceSnapshot, toolById: Map<string, ToolManifest>) {
+    const tool = toolById.get(snapshot.toolId)
+    if (!tool) return
+    const tab: ToolTabState = {
+      instanceId,
+      tabId: `tool_${instanceId}`,
+      toolId: snapshot.toolId,
+      title: snapshot.title,
+      isMain: snapshot.isMain,
+      executionTarget: snapshot.executionTarget,
+      localConfig: cloneExecutionConfig(snapshot.localConfig),
+      remoteConfig: cloneRemoteExecutionConfig(snapshot.remoteConfig),
+      terminalVisible: snapshot.terminalVisible,
+      terminalHeight: snapshot.terminalHeight,
+      exportTarget: snapshot.exportTarget,
+      openedAt: Date.now(),
+    }
+    openTabs.value.push(tab)
+    activeTabIndex.value = openTabs.value.length - 1
+    activeBuiltinTabIndex.value = -1
+    activeSSHTabIndex.value = -1
+    activeArtifactTabIndex.value = -1
+    // restore history
+    if (snapshot.recentHistory.length > 0) {
+      toolHistory.value = { ...toolHistory.value, [instanceId]: snapshot.recentHistory }
+    }
+    // remove from snapshots
+    const next = { ...instanceSnapshots.value }
+    delete next[instanceId]
+    instanceSnapshots.value = next
+  }
+
   function restorePinnedTabs(
     tools: ToolManifest[],
     sshConnections: SSHConnection[] = [],
@@ -1027,11 +1162,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         continue
       }
 
-      if (key.startsWith('tool:tool_')) {
-        const toolId = key.slice('tool:tool_'.length)
-        const tool = toolById.get(toolId)
-        if (tool) {
-          openTool(tool)
+      if (key.startsWith('tool:')) {
+        const toolKey = key.slice('tool:'.length)
+        // back-compat: old format "tool_<toolId>"
+        if (toolKey.startsWith('tool_')) {
+          const toolId = toolKey.slice('tool_'.length)
+          const tool = toolById.get(toolId)
+          if (tool) {
+            openTool(tool)
+          }
+          continue
+        }
+        // new format: "<instanceId>"
+        const snapshot = instanceSnapshots.value[toolKey]
+        if (snapshot) {
+          restoreInstanceSnapshot(toolKey, snapshot, toolById)
+        } else {
+          const tool = toolById.get(toolKey)
+          if (tool) {
+            openTool(tool)
+          }
         }
         continue
       }
@@ -1105,6 +1255,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     toolHistory,
     settings,
     openTool,
+    openToolNewInstance,
+    copyToolInstance,
     openBuiltinTool,
     closeTab,
     updateRawArgs,
@@ -1136,6 +1288,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     getRecentArgs,
     getPersistedToolState,
     resetAllData,
+    instanceSnapshots,
     defaultSettings,
   }
 })

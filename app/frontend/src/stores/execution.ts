@@ -57,6 +57,7 @@ export const useExecutionStore = defineStore('execution', {
       this.ensureSubscriptions()
       const task = await StartLocalExecution({
         toolId: request.toolId,
+        instanceId: request.instanceId,
         args: request.args,
         pythonEnv: request.pythonEnv ?? '',
       })
@@ -72,6 +73,7 @@ export const useExecutionStore = defineStore('execution', {
       this.ensureSubscriptions()
       const task = await StartRemoteExecution({
         toolId: request.toolId,
+        instanceId: request.instanceId,
         connId: request.connId,
         args: request.args,
         pythonEnv: request.pythonEnv ?? '',

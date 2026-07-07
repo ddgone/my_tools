@@ -5,7 +5,7 @@ import { useMessage } from 'naive-ui'
 import { Search, ServerOutline, Star, BookmarkSharp, CloudUploadOutline, GlobeOutline } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkspaceStore, type ToolTabState } from '@/stores/workspace'
 import { getBuiltinToolById, getBuiltinToolIcon } from '@/builtin/registry'
 import { useResizable } from '@/composables/useResizable'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
@@ -40,6 +40,7 @@ type UnifiedTabItem = {
   type: 'tool' | 'builtin' | 'ssh' | 'artifact'
   key: string
   label: string
+  toolId?: string
   openedAt: number
   arrayIndex: number
   pinned: boolean
@@ -217,7 +218,6 @@ const { size: terminalHeight, dividerProps: hDividerProps } = useResizable({
 
 const activeToolId = computed(() => workspace.activeToolTab?.toolId ?? '')
 const isTerminalVisible = computed(() => workspace.activeToolTerminalVisible)
-const activeTargetIsRemote = computed(() => workspace.activeToolTab?.executionTarget === 'remote')
 const activeToolTerminalHeight = computed(() =>
   workspace.activeToolTerminalHeight ?? initialTerminalHeight,
 )
@@ -307,17 +307,14 @@ const searchResults = computed(() => {
 })
 
 const activeTabTaskId = computed(() => {
-  const id = activeToolId.value
-  if (!id) return ''
-  const tasks = execution.recentTasks.filter((t) =>
-    t.toolId === id &&
-    (activeTargetIsRemote.value ? t.target.startsWith('remote:') : t.target === 'local'),
-  )
+  const tab = workspace.activeToolTab
+  if (!tab) return ''
+  const tasks = execution.recentTasks.filter((t) => t.instanceId === tab.instanceId)
   return tasks.length > 0 ? tasks[0].id : ''
 })
 
-function isTabRunning(toolId: string) {
-  return execution.tasks.some((t) => t.toolId === toolId && t.status === 'running')
+function isTabRunning(instanceId: string) {
+  return execution.tasks.some((t) => t.instanceId === instanceId && t.status === 'running')
 }
 
 const activeTask = computed(() =>
@@ -471,10 +468,14 @@ const tabContextMenuOptions = computed<WorkbenchMenuItem[]>(() => {
   return [
     ...(!isActive ? [{ label: '切换到此标签', key: 'activate' }] : []),
     ...(isTool
-      ? [{
-          label: workspace.isFavorite(item.label) ? '取消收藏工具' : '收藏工具',
-          key: 'favorite',
-        }]
+      ? [
+          { label: '复制实例', key: 'copy-instance' },
+          { type: 'divider' as const, key: 'divider-instance' },
+          {
+            label: workspace.isFavorite(item.toolId ?? '') ? '取消收藏工具' : '收藏工具',
+            key: 'favorite',
+          },
+        ]
       : []),
     ...(isTool ? [{ type: 'divider' as const, key: 'divider-tool' }] : []),
     { label: '关闭标签', key: 'close' },
@@ -534,8 +535,20 @@ async function handleTabContextMenuSelect(key: string) {
       break
     case 'favorite':
       if (current?.type === 'tool') {
-        workspace.toggleFavorite(current.label)
-        message.success(workspace.isFavorite(current.label) ? `已收藏 ${unifiedTabDisplayName(current)}` : `已取消收藏 ${unifiedTabDisplayName(current)}`)
+        const toolId = current.toolId || current.label
+        workspace.toggleFavorite(toolId)
+        message.success(workspace.isFavorite(toolId) ? `已收藏 ${unifiedTabDisplayName(current)}` : `已取消收藏 ${unifiedTabDisplayName(current)}`)
+      }
+      break
+    case 'copy-instance':
+      if (current?.type === 'tool') {
+        // find the tab by key
+        const targetTab = workspace.openTabs.find((t: ToolTabState) => `tool:${t.instanceId}` === current.key)
+        if (targetTab) {
+          const toolbar = toolById(targetTab.toolId)
+          const name = toolbar?.name || targetTab.title
+          workspace.copyToolInstance(targetTab, name)
+        }
       }
       break
     case 'close':
@@ -877,21 +890,21 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           </NTag>
           <ToolKindDevIcon
             v-if="item.type === 'tool'"
-            :kind="toolById(item.label)?.kind"
+            :kind="toolById(item.toolId ?? '')?.kind"
             :size="17"
             :slot-width="21"
             :opacity="isUnifiedTabActive(item) ? 1 : 0.96"
             title="语言标志"
           />
           <NIcon
-            v-if="item.type === 'tool' && workspace.isFavorite(item.label)"
+            v-if="item.type === 'tool' && workspace.isFavorite(item.toolId ?? '')"
             :component="Star"
             size="11"
             color="rgb(var(--color-warning) / 1)"
             class="shrink-0"
           />
           <span
-            v-if="item.type === 'tool' && isTabRunning(item.label)"
+            v-if="item.type === 'tool' && isTabRunning(item.key.slice('tool:'.length))"
             class="h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--color-success)/0.92)]"
           />
           <NIcon

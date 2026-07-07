@@ -71,6 +71,7 @@ export namespace execution {
 	export class RemoteExecRequest {
 	    toolId: string;
 	    connId: string;
+	    instanceId: string;
 	    args: string;
 	    pythonEnv: string;
 	
@@ -82,6 +83,7 @@ export namespace execution {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.toolId = source["toolId"];
 	        this.connId = source["connId"];
+	        this.instanceId = source["instanceId"];
 	        this.args = source["args"];
 	        this.pythonEnv = source["pythonEnv"];
 	    }
@@ -1171,6 +1173,7 @@ export namespace shared {
 	}
 	export class ExecutionRequest {
 	    toolId: string;
+	    instanceId: string;
 	    args: string;
 	    pythonEnv: string;
 	
@@ -1181,6 +1184,7 @@ export namespace shared {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.toolId = source["toolId"];
+	        this.instanceId = source["instanceId"];
 	        this.args = source["args"];
 	        this.pythonEnv = source["pythonEnv"];
 	    }
@@ -1188,6 +1192,7 @@ export namespace shared {
 	export class ExecutionTask {
 	    id: string;
 	    toolId: string;
+	    instanceId: string;
 	    toolName: string;
 	    status: string;
 	    target: string;
@@ -1212,6 +1217,7 @@ export namespace shared {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.toolId = source["toolId"];
+	        this.instanceId = source["instanceId"];
 	        this.toolName = source["toolName"];
 	        this.status = source["status"];
 	        this.target = source["target"];

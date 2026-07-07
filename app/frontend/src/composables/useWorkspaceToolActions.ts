@@ -150,13 +150,14 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
       workspace.setTerminalVisible(workspace.activeTabIndex, true)
     }
 
-    workspace.recordUsage(tool.id, config.rawArgs, config.pythonEnv, config.formModel)
+    workspace.recordUsage(tab.instanceId, tool.id, config.rawArgs, config.pythonEnv, config.formModel)
 
     launching.value = true
     try {
       if (tab.executionTarget === 'remote') {
         await execution.startRemoteExecution({
           toolId: tool.id,
+          instanceId: tab.instanceId,
           connId: tab.remoteConfig.connId,
           args: config.rawArgs,
           pythonEnv: tool.kind === 'python' ? config.pythonEnv : undefined,
@@ -164,6 +165,7 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
       } else {
         await execution.startLocalExecution({
           toolId: tool.id,
+          instanceId: tab.instanceId,
           args: config.rawArgs,
           pythonEnv: undefined,
         })

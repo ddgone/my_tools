@@ -8,14 +8,16 @@ import (
 // ------- execution -------
 
 type ExecutionRequest struct {
-	ToolID    string `json:"toolId"`
-	Args      string `json:"args"`
-	PythonEnv string `json:"pythonEnv"`
+	ToolID     string `json:"toolId"`
+	InstanceID string `json:"instanceId"`
+	Args       string `json:"args"`
+	PythonEnv  string `json:"pythonEnv"`
 }
 
 type ExecutionTask struct {
 	ID                         string `json:"id"`
 	ToolID                     string `json:"toolId"`
+	InstanceID                 string `json:"instanceId"`
 	ToolName                   string `json:"toolName"`
 	Status                     string `json:"status"`
 	Target                     string `json:"target"`

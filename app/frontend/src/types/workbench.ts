@@ -78,6 +78,7 @@ export interface WorkbenchBootstrap {
 
 export interface ExecutionRequest {
   toolId: string
+  instanceId: string
   args: string
   pythonEnv?: string
 }
@@ -85,6 +86,7 @@ export interface ExecutionRequest {
 export interface ExecutionTask {
   id: string
   toolId: string
+  instanceId: string
   toolName: string
   status: string
   target: string
@@ -202,6 +204,7 @@ export interface SSHConnection {
 
 export interface RemoteExecRequest {
   toolId: string
+  instanceId: string
   connId: string
   args: string
   pythonEnv?: string

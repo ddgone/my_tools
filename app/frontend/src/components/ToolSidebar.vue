@@ -401,6 +401,7 @@ const toolContextMenuOptions = computed(() => {
   if (!tool) return []
   return [
     { label: '打开工具', key: 'open', icon: OpenOutline },
+    { label: '新开实例', key: 'new-instance', icon: OpenOutline },
     {
       label: workspace.isFavorite(tool.id) ? '取消收藏' : '收藏工具',
       key: 'favorite',
@@ -438,6 +439,9 @@ function handleToolContextMenuSelect(key: string | number) {
   switch (String(key)) {
     case 'open':
       selectTool(tool)
+      break
+    case 'new-instance':
+      workspace.openToolNewInstance(tool)
       break
     case 'favorite':
       workspace.toggleFavorite(tool.id)

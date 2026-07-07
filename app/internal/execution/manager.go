@@ -50,15 +50,16 @@ func (m *Manager) StartLocalExecution(req shared.ExecutionRequest) (*shared.Exec
 	}
 
 	task := &shared.ExecutionTask{
-		ID:        fmt.Sprintf("task_%d", time.Now().UnixNano()),
-		ToolID:    req.ToolID,
-		ToolName:  toolName,
-		Status:    "running",
-		Target:    "local",
-		Args:      req.Args,
-		PythonEnv: req.PythonEnv,
-		Usage:     usage,
-		StartedAt: time.Now().UnixMilli(),
+		ID:         fmt.Sprintf("task_%d", time.Now().UnixNano()),
+		ToolID:     req.ToolID,
+		InstanceID: req.InstanceID,
+		ToolName:   toolName,
+		Status:     "running",
+		Target:     "local",
+		Args:       req.Args,
+		PythonEnv:  req.PythonEnv,
+		Usage:      usage,
+		StartedAt:  time.Now().UnixMilli(),
 	}
 
 	runCtx, _ := m.RegisterExecutionTask(task)
@@ -127,6 +128,7 @@ func (m *Manager) StartRemoteExecution(req RemoteExecRequest) (*shared.Execution
 	task := &shared.ExecutionTask{
 		ID:           fmt.Sprintf("task_%d", time.Now().UnixNano()),
 		ToolID:       req.ToolID,
+		InstanceID:   req.InstanceID,
 		ToolName:     manifest.Name,
 		Status:       "running",
 		Target:       "remote:" + target.Host,
