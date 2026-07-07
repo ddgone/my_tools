@@ -1,27 +1,59 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import goIconUrl from 'devicon/icons/go/go-original.svg'
+import { computed, type CSSProperties } from 'vue'
+import goIconUrl from '@/assets/icons/go-wordmark-tight.svg'
 import pythonIconUrl from 'devicon/icons/python/python-original.svg'
 import rustIconUrl from 'devicon/icons/rust/rust-original.svg'
 
 const props = withDefaults(defineProps<{
   kind?: string | null
   size?: number
+  slotWidth?: number
   variant?: 'compact' | 'framed'
   opacity?: number
   title?: string
 }>(), {
   kind: '',
   size: 14,
+  slotWidth: 0,
   variant: 'compact',
   opacity: 0.92,
   title: '',
 })
 
-const iconMap: Record<string, string> = {
-  go: goIconUrl,
-  python: pythonIconUrl,
-  rust: rustIconUrl,
+type IconRenderMode = 'image' | 'mask'
+
+type IconMeta = {
+  src: string
+  contentWidthRatio: number
+  renderMode: IconRenderMode
+  color?: string
+  offsetX?: number
+  offsetY?: number
+  filter?: string
+}
+
+const iconMap: Record<string, IconMeta> = {
+  go: {
+    src: goIconUrl,
+    contentWidthRatio: 1.28,
+    renderMode: 'image',
+    offsetX: -2,
+    offsetY: 0.5,
+  },
+  python: {
+    src: pythonIconUrl,
+    contentWidthRatio: 1,
+    renderMode: 'image',
+    offsetY: 0.5,
+    filter: 'saturate(1.12) contrast(1.04)',
+  },
+  rust: {
+    src: rustIconUrl,
+    contentWidthRatio: 1,
+    renderMode: 'mask',
+    color: '#ef6a1a',
+    offsetY: 0.5,
+  },
 }
 
 const normalizedKind = computed(() => {
@@ -29,13 +61,50 @@ const normalizedKind = computed(() => {
   return kind && kind in iconMap ? kind : ''
 })
 
-const iconSrc = computed(() => iconMap[normalizedKind.value] ?? '')
+const iconMeta = computed(() => iconMap[normalizedKind.value] ?? null)
+const iconSrc = computed(() => iconMeta.value?.src ?? '')
+const contentWidth = computed(() => Math.round(props.size * (iconMeta.value?.contentWidthRatio ?? 1)))
+const contentOffsetX = computed(() => iconMeta.value?.offsetX ?? 0)
+const contentOffsetY = computed(() => iconMeta.value?.offsetY ?? 0)
 
-const rootStyle = computed(() => ({
-  width: `${props.size}px`,
+const rootStyle = computed<CSSProperties>(() => ({
+  width: `${Math.max(props.slotWidth || 0, contentWidth.value)}px`,
   height: `${props.size}px`,
   opacity: String(props.opacity),
 }))
+
+const contentStyle = computed<CSSProperties>(() => ({
+  width: `${contentWidth.value}px`,
+  height: `${props.size}px`,
+  objectFit: 'contain',
+  objectPosition: 'center',
+  filter: iconMeta.value?.filter,
+  transform: contentOffsetX.value === 0 && contentOffsetY.value === 0
+    ? undefined
+    : `translate(${contentOffsetX.value}px, ${contentOffsetY.value}px)`,
+}))
+
+const maskStyle = computed<CSSProperties>(() => {
+  if (!iconMeta.value || iconMeta.value.renderMode !== 'mask') {
+    return {}
+  }
+  return {
+    width: `${contentWidth.value}px`,
+    height: `${props.size}px`,
+    transform: contentOffsetX.value === 0 && contentOffsetY.value === 0
+      ? undefined
+      : `translate(${contentOffsetX.value}px, ${contentOffsetY.value}px)`,
+    backgroundColor: iconMeta.value.color ?? 'currentColor',
+    maskImage: `url("${iconMeta.value.src}")`,
+    maskRepeat: 'no-repeat',
+    maskPosition: 'center',
+    maskSize: 'contain',
+    WebkitMaskImage: `url("${iconMeta.value.src}")`,
+    WebkitMaskRepeat: 'no-repeat',
+    WebkitMaskPosition: 'center',
+    WebkitMaskSize: 'contain',
+  }
+})
 </script>
 
 <template>
@@ -50,10 +119,17 @@ const rootStyle = computed(() => ({
     aria-hidden="true"
   >
     <img
+      v-if="iconMeta?.renderMode === 'image'"
       :src="iconSrc"
       :alt="title || normalizedKind"
-      class="block h-full w-full object-contain"
+      class="block"
+      :style="contentStyle"
       draggable="false"
     >
+    <span
+      v-else
+      class="block h-full w-full"
+      :style="maskStyle"
+    />
   </span>
 </template>

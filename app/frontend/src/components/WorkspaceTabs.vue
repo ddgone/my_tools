@@ -827,7 +827,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           v-for="item in workspace.unifiedTabs"
           :key="item.key"
           :data-tab-key="item.key"
-          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1 overflow-hidden border-r border-[rgb(var(--color-border-subtle)/0.64)] px-3 py-1.5 pr-8"
+          class="ui-interactive group relative flex h-9 min-w-[176px] max-w-[280px] flex-[1_1_280px] items-center gap-1.5 overflow-hidden border-r border-[rgb(var(--color-border-subtle)/0.64)] px-3 py-1.5 pr-8"
           :class="
             isUnifiedTabActive(item)
               ? 'workspace-tab-active text-[rgb(var(--color-fg-base)/0.98)]'
@@ -878,8 +878,9 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           <ToolKindDevIcon
             v-if="item.type === 'tool'"
             :kind="toolById(item.label)?.kind"
-            :size="13"
-            :opacity="isUnifiedTabActive(item) ? 0.98 : 0.84"
+            :size="17"
+            :slot-width="21"
+            :opacity="isUnifiedTabActive(item) ? 1 : 0.96"
             title="语言标志"
           />
           <NIcon
@@ -901,8 +902,11 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             :style="remoteIndicatorStyle(item)"
           />
           <span
-            class="min-w-0 truncate text-xs"
-            :style="item.type === 'builtin' ? builtinNameStyleForTool(item.label) : undefined"
+            class="inline-flex min-h-[17px] min-w-0 items-center truncate text-xs leading-none"
+            :style="{
+              ...(item.type === 'builtin' ? builtinNameStyleForTool(item.label) : {}),
+              transform: 'translateY(0.5px)',
+            }"
             :data-fullname="unifiedTabDisplayName(item)"
             @mouseenter="handleTabLabelMouseEnter($event, item)"
             @mouseleave="onTooltipLeave"

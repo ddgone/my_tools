@@ -514,7 +514,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     }, option.label as string)
   }
   return h('div', {
-    class: 'flex items-center gap-x-2 w-full',
+    class: 'flex items-center gap-x-1.5 w-full',
     onClick: (e: MouseEvent) => {
       e.stopPropagation()
       selectTool(tool)
@@ -528,15 +528,16 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
     }),
     h(ToolKindDevIcon, {
       kind: tool.kind,
-      size: 14,
-      variant: 'framed',
-      opacity: isToolActive(tool.id) ? 0.98 : 0.9,
+      size: 17,
+      slotWidth: 21,
+      opacity: isToolActive(tool.id) ? 1 : 0.96,
       title: '语言标志',
     }),
     h('span', {
-      class: 'truncate text-sm',
+      class: 'inline-flex min-h-[17px] items-center truncate text-sm leading-none',
       style: {
         color: isToolActive(tool.id) ? 'rgb(var(--color-fg-base) / 0.98)' : 'rgb(var(--color-fg-base) / 0.94)',
+        transform: 'translateY(0.5px)',
       },
       onMouseenter: (e: MouseEvent) => onTooltipEnter(e, tool.name),
       onMouseleave: onTooltipLeave,
