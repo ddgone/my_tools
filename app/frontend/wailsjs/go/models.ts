@@ -66,6 +66,39 @@ export namespace dialog {
 
 }
 
+export namespace exechistory {
+	
+	export class ExecRecord {
+	    id: string;
+	    toolId: string;
+	    toolName: string;
+	    args: string;
+	    status: string;
+	    target: string;
+	    remoteConnId?: string;
+	    startedAt: number;
+	    endedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExecRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.toolId = source["toolId"];
+	        this.toolName = source["toolName"];
+	        this.args = source["args"];
+	        this.status = source["status"];
+	        this.target = source["target"];
+	        this.remoteConnId = source["remoteConnId"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	    }
+	}
+
+}
+
 export namespace execution {
 	
 	export class RemoteExecRequest {

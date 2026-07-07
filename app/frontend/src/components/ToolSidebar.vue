@@ -25,12 +25,15 @@ import {
   LaptopOutline,
   OpenOutline,
   CloudUploadOutline,
+  CheckmarkCircleOutline,
+  CloseCircleOutline,
+  RemoveCircleOutline,
 } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useArtifactCenterStore } from '@/stores/artifactCenter'
-import { DeleteSSHConnection, ListSSHConnections, TestSSHConnection } from '../../wailsjs/go/main/App'
+import { DeleteSSHConnection, ListSSHConnections, ReadExecutionLog, TestSSHConnection } from '../../wailsjs/go/main/App'
 import type { ArtifactBatchTask, SSHConnection, ToolManifest } from '@/types/workbench'
 import type { ActivityBarView } from './ActivityBar.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
@@ -38,6 +41,7 @@ import BuiltinSidebarPanel from './BuiltinSidebarPanel.vue'
 import ToolKindDevIcon from './ToolKindDevIcon.vue'
 import { ANIM } from '@/utils/animation'
 import { getExecutionTheme, getToolKindTheme } from '@/utils/executionTheme'
+import { tryPopulateFormModel } from '@/utils/cliArgs'
 import gsap from 'gsap'
 import { useTruncationTooltip } from '@/composables/useTruncationTooltip'
 
@@ -45,6 +49,17 @@ const props = defineProps<{
   width: number
   activeView: ActivityBarView
 }>()
+
+type ExecRecord = {
+  id: string
+  toolId: string
+  toolName: string
+  args: string
+  status: string
+  target: string
+  remoteConnId?: string
+  startedAt: number
+}
 
 const emit = defineEmits<{
   selectConnection: [conn: SSHConnection]
@@ -264,14 +279,152 @@ const favoriteTools = computed(() => {
 })
 
 const recentToolList = computed(() => {
-  return workspace.recentTools
-    .map((r) => {
-      const tool = allTools.value.find((t) => t.id === r.toolId)
-      if (!tool) return null
-      return { tool, args: r.args }
-    })
-    .filter(Boolean) as { tool: ToolManifest; args: string }[]
+  const records = workspace.executionRecords
+  if (records.length === 0) return []
+
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterdayStart = todayStart - 86400000
+
+  const groups: { label: string; records: typeof records }[] = []
+  const todayRecords: typeof records = []
+  const yesterdayRecords: typeof records = []
+  const otherMap = new Map<string, typeof records>()
+
+  for (const r of records) {
+    const recordDate = new Date(r.startedAt)
+    const recordDayStart = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate()).getTime()
+
+    if (recordDayStart === todayStart) {
+      todayRecords.push(r)
+    } else if (recordDayStart === yesterdayStart) {
+      yesterdayRecords.push(r)
+    } else {
+      const dateKey = `${recordDate.getFullYear()}-${String(recordDate.getMonth() + 1).padStart(2, '0')}-${String(recordDate.getDate()).padStart(2, '0')}`
+      const arr = otherMap.get(dateKey) || []
+      arr.push(r)
+      otherMap.set(dateKey, arr)
+    }
+  }
+
+  if (todayRecords.length > 0) groups.push({ label: '今天', records: todayRecords })
+  if (yesterdayRecords.length > 0) groups.push({ label: '昨天', records: yesterdayRecords })
+
+  // Sort other dates descending
+  const sortedDates = [...otherMap.keys()].sort((a, b) => b.localeCompare(a))
+  for (const dateKey of sortedDates) {
+    groups.push({ label: dateKey, records: otherMap.get(dateKey)! })
+  }
+
+  return groups
 })
+
+function statusIcon(status: string) {
+  if (status === 'success') return h(NIcon, { component: CheckmarkCircleOutline, size: 14, color: 'rgb(34,197,94)' })
+  if (status === 'error') return h(NIcon, { component: CloseCircleOutline, size: 14, color: 'rgb(239,68,68)' })
+  return h(NIcon, { component: RemoveCircleOutline, size: 14, color: 'rgb(156,163,175)' })
+}
+
+function formatRecordTime(ts: number) {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+}
+
+function targetLabel(target: string) {
+  if (!target || target === 'local') return '本地'
+  if (target.startsWith('remote:')) return target.slice(7)
+  return target
+}
+
+async function openRecord(record: ExecRecord) {
+  const tool = allTools.value.find((t) => t.id === record.toolId)
+  if (!tool) return
+
+  // Check if this record already has an open tab.
+  const existingTab = workspace.getRecordTab(record.id)
+  if (existingTab) {
+    const tabIndex = workspace.openTabs.findIndex((t) => t.instanceId === existingTab.instanceId)
+    if (tabIndex >= 0) {
+      workspace.setActiveTab(tabIndex)
+      workspace.setTerminalVisible(tabIndex, true)
+      return
+    }
+  }
+
+  // Load historical log from backend before opening tab.
+  try {
+    const logText = await ReadExecutionLog(record.id)
+    if (logText) {
+      execution.logs[record.id] = logText.split('\n')
+    }
+  } catch {
+    // ignore
+  }
+
+  // Build a fresh formModel from the record's args.
+  const formModel: Record<string, string | number | boolean | null> = {}
+  for (const param of tool.params) {
+    if (param.default !== undefined) {
+      formModel[param.key] = param.default as string | number | boolean | null
+      continue
+    }
+    switch (param.type) {
+      case 'number': formModel[param.key] = null; break
+      case 'boolean': formModel[param.key] = false; break
+      default: formModel[param.key] = ''
+    }
+  }
+  tryPopulateFormModel(record.args, tool, formModel)
+
+  // Always create a non-main history tab.
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const instanceId = `${tool.id}_history_${suffix}`
+  const historyTarget: 'local' | 'remote' = record.target === 'local' || !record.target ? 'local' : 'remote'
+  const tab = {
+    instanceId,
+    tabId: `tool_${instanceId}`,
+    toolId: tool.id,
+    title: tool.name,
+    isMain: false,
+    isHistory: true,
+    executionTarget: historyTarget,
+    localConfig: {
+      panelMode: 'form' as const,
+      rawArgs: record.args,
+      pythonEnv: workspace.settings.defaultPythonPath,
+      formModel,
+    },
+    remoteConfig: {
+      panelMode: 'remote' as const,
+      rawArgs: record.args,
+      pythonEnv: workspace.settings.defaultPythonPath,
+      formModel: { ...formModel },
+      connId: record.remoteConnId ?? '',
+      lastBrowsePath: '',
+    },
+    terminalVisible: true,
+    exportTarget: '',
+    openedAt: Date.now(),
+    lastRecordId: record.id,
+  }
+  workspace.openTabs.push(tab)
+  workspace.activeTabIndex = workspace.openTabs.length - 1
+  workspace.activeBuiltinTabIndex = -1
+  workspace.activeSSHTabIndex = -1
+  workspace.activeArtifactTabIndex = -1
+  workspace.setRecordTab(record.id, instanceId)
+}
+
+// Load execution records when the view is opened.
+watch(
+  () => props.activeView,
+  (view) => {
+    if (view === 'recent') {
+      workspace.loadExecutionRecords()
+    }
+  },
+  { immediate: true },
+)
 
 const runningArtifactTask = computed(() =>
   artifactCenter.recentTasks.find((task) => task.status === 'running') ?? null,
@@ -782,7 +935,7 @@ defineExpose({
           <div
             v-else-if="activeView === 'recent'"
             key="recent"
-            class="p-2"
+            class="flex flex-col h-full"
           >
             <div
               v-if="recentToolList.length === 0"
@@ -794,43 +947,58 @@ defineExpose({
                 color="rgb(var(--color-fg-muted) / 0.72)"
               />
               <p class="mt-2 text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
-                暂无最近使用
+                暂无执行记录
               </p>
               <p class="mt-1 text-[10px] text-[rgb(var(--color-fg-muted)/0.78)]">
-                打开工具后自动记录
+                执行工具后自动记录
               </p>
             </div>
-            <div
+            <NScrollbar
               v-else
-              class="space-y-1"
+              class="flex-1"
             >
-              <NCard
-                v-for="entry in recentToolList"
-                :key="entry.tool.id"
-                size="small"
-                :bordered="true"
-                hoverable
-                class="ui-surface-hover sidebar-collection-card"
-                :class="{ 'sidebar-collection-card-active': isToolActive(entry.tool.id) }"
-                :content-style="{ padding: '8px 10px' }"
-                @click="selectTool(entry.tool)"
-                @contextmenu="openToolContextMenu($event, entry.tool)"
-              >
+              <div class="p-2 space-y-3">
                 <div
-                  class="sidebar-collection-card-content flex items-center gap-x-2 text-left"
-                  :class="{ 'sidebar-collection-card-content-active': isToolActive(entry.tool.id) }"
+                  v-for="group in recentToolList"
+                  :key="group.label"
                 >
-                  <div class="min-w-0 flex-1">
-                    <div class="truncate text-sm">
-                      {{ entry.tool.name }}
-                    </div>
-                    <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.9)]">
-                      {{ entry.args || '无参数' }}
-                    </div>
+                  <div class="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.82)]">
+                    {{ group.label }}
+                  </div>
+                  <div class="space-y-1">
+                    <NCard
+                      v-for="record in group.records"
+                      :key="record.id"
+                      size="small"
+                      :bordered="true"
+                      hoverable
+                      class="ui-surface-hover sidebar-collection-card"
+                      :content-style="{ padding: '7px 10px' }"
+                      @click="openRecord(record)"
+                    >
+                      <div class="flex items-center gap-x-1.5">
+                        <component
+                          :is="statusIcon(record.status)"
+                          class="shrink-0"
+                        />
+                        <div class="min-w-0 flex-1">
+                          <div class="truncate text-xs font-medium">
+                            {{ record.toolName }}
+                          </div>
+                          <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.85)]">
+                            {{ record.args || '无参数' }}
+                          </div>
+                        </div>
+                        <div class="flex flex-col items-end gap-y-0.5 shrink-0">
+                          <span class="text-[10px] text-[rgb(var(--color-fg-muted)/0.7)]">{{ formatRecordTime(record.startedAt) }}</span>
+                          <span class="text-[9px] text-[rgb(var(--color-fg-muted)/0.55)]">{{ targetLabel(record.target) }}</span>
+                        </div>
+                      </div>
+                    </NCard>
                   </div>
                 </div>
-              </NCard>
-            </div>
+              </div>
+            </NScrollbar>
           </div>
 
           <div

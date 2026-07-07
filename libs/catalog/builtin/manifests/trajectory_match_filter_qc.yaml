@@ -11,21 +11,21 @@ docs:
     并基于连续匹配段输出保留/舍弃判断。
 
     输入规则：
-    - `base` 支持单个点 SHP 文件或目录
-    - `input` 支持单个点 SHP 文件或目录
-    - 目录模式下只扫描当前层的点 SHP，不处理 `_line.shp`
+    - base 支持单个点 SHP 文件或目录
+    - input 支持单个点 SHP 文件或目录
+    - 目录模式下只扫描当前层的点 SHP，不处理 _line.shp
     - 如果待测集合中包含和基准集合同名同路径文件，会自动剔除
 
     输出内容：
-    - `summary.csv`：每个待测轨迹的统计结果
-    - `detail.csv`：连续匹配段明细
-    - `res.txt` / `drop.txt`：保留与舍弃名单
-    - `res_merged_point.shp` / `drop_merged_point.shp`：可选汇总点图层
+    - summary.csv：每个待测轨迹的统计结果
+    - detail.csv：连续匹配段明细
+    - res.txt / drop.txt：保留与舍弃名单
+    - res_merged_point.shp / drop_merged_point.shp：可选汇总点图层
 
     常用示例：
-    - `-base D:\base -input D:\target -output D:\qc_out`
-    - `-base D:\base\a_point.shp -input D:\target -error 0.05 -order-by timestamp`
-    - `-base D:\base -input D:\target -merge=false`
+    - -base D:\base -input D:\target -output D:\qc_out
+    - -base D:\base\a_point.shp -input D:\target -error 0.05 -order-by timestamp
+    - -base D:\base -input D:\target -merge=false
 params:
   - key: base
     argKey: base
@@ -61,7 +61,7 @@ params:
     type: boolean
     label: 输出汇总点 SHP
     default: true
-    help: 为保留结果和舍弃结果分别输出汇总点 Shapefile，同时兼容旧参数拼写 `mearge`。
+    help: 为保留结果和舍弃结果分别输出汇总点 Shapefile，同时兼容旧参数拼写 mearge。
   - key: orderBy
     argKey: order-by
     type: select

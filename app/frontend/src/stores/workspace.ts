@@ -8,12 +8,15 @@ import {
   type ThemeCustomizationSettings,
 } from '@/theme/tokens'
 import { buildRawArgs } from '@/utils/cliArgs'
+import { ListExecutionRecords } from '../../wailsjs/go/main/App'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export interface ToolTabState {
   instanceId: string
   toolId: string
   title: string
   isMain: boolean
+  isHistory: boolean
   tabId: string
   executionTarget: ExecutionTarget
   localConfig: ToolExecutionConfig
@@ -22,6 +25,7 @@ export interface ToolTabState {
   terminalHeight?: number
   exportTarget: string
   openedAt: number
+  lastRecordId?: string
 }
 
 export type ExecutionTarget = 'local' | 'remote'
@@ -43,7 +47,6 @@ export interface RemoteExecutionConfig extends ToolExecutionConfig {
 }
 
 export interface UserSettings {
-  recentToolsCount: number
   historyRetention: number
   logExportDir: string
   defaultPythonPath: string
@@ -61,7 +64,6 @@ export interface UserSettings {
 
 const STORAGE_KEYS = {
   favorites: 'fire-salamander:favorites',
-  recent: 'fire-salamander:recent',
   history: 'fire-salamander:history',
   settings: 'fire-salamander:settings',
   toolState: 'fire-salamander:tool-state',
@@ -85,7 +87,6 @@ function saveJSON(key: string, value: unknown) {
 }
 
 const defaultSettings: UserSettings = {
-  recentToolsCount: 5,
   historyRetention: 50,
   logExportDir: 'my_tools_logs',
   defaultPythonPath: 'python3',
@@ -122,6 +123,7 @@ interface InstanceSnapshot extends PersistedToolState {
   toolId: string
   title: string
   isMain: boolean
+  isHistory: boolean
   lastTaskIds: string[]
   recentHistory: HistoryEntry[]
   closedAt: number
@@ -154,10 +156,16 @@ function normalizeUserSettings(source?: Partial<UserSettings>): UserSettings {
   }
 }
 
-interface RecentEntry {
+interface ExecRecord {
+  id: string
   toolId: string
+  toolName: string
   args: string
-  timestamp: number
+  status: string
+  target: string
+  remoteConnId?: string
+  startedAt: number
+  endedAt: number
 }
 
 function createTabState(
@@ -193,6 +201,7 @@ function createTabState(
     toolId: tool.id,
     title: tool.name,
     isMain: true,
+    isHistory: false,
     executionTarget: persistedState?.executionTarget === 'remote' ? 'remote' : 'local',
     localConfig,
     remoteConfig,
@@ -226,6 +235,8 @@ function createDefaultFormModel(tool: ToolManifest): Record<string, string | num
   }
   return formModel
 }
+
+export { createDefaultFormModel }
 
 function normalizeFormModel(
   tool: ToolManifest,
@@ -380,7 +391,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const showSettings = ref(false)
 
   const favorites = ref<string[]>(loadJSON<string[]>(STORAGE_KEYS.favorites, []))
-  const recentTools = ref<RecentEntry[]>(loadJSON<RecentEntry[]>(STORAGE_KEYS.recent, []))
+  const executionRecords = ref<ExecRecord[]>([])
+  const recordTabMap = ref<Record<string, string>>({}) // recordId → instanceId
   const toolHistory = ref<Record<string, HistoryEntry[]>>(loadJSON<Record<string, HistoryEntry[]>>(STORAGE_KEYS.history, {}))
   const settings = ref<UserSettings>(normalizeUserSettings(loadJSON<Partial<UserSettings>>(STORAGE_KEYS.settings, {})))
   const persistedToolStates = ref<Record<string, PersistedToolState>>(
@@ -394,7 +406,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const pinnedTabsRestored = ref(false)
 
   watch(favorites, (v) => saveJSON(STORAGE_KEYS.favorites, v), { deep: true })
-  watch(recentTools, (v) => saveJSON(STORAGE_KEYS.recent, v), { deep: true })
   watch(toolHistory, (v) => saveJSON(STORAGE_KEYS.history, v), { deep: true })
   watch(settings, (v) => saveJSON(STORAGE_KEYS.settings, v), { deep: true })
   watch(persistedToolStates, (v) => saveJSON(STORAGE_KEYS.toolState, v), { deep: true })
@@ -455,6 +466,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     key: string
     label: string
     toolId?: string
+    isHistory: boolean
     openedAt: number
     arrayIndex: number
     pinned: boolean
@@ -515,6 +527,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         type: 'artifact' as const,
         key: `artifact:${tab.tabId}`,
         label: tab.label,
+        isHistory: false,
         openedAt: tab.openedAt,
         arrayIndex: i,
         pinned: pinnedKeySet.has(`artifact:${tab.tabId}`),
@@ -523,6 +536,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         type: 'builtin' as const,
         key: `builtin:${tab.tabId}`,
         label: tab.builtinToolId,
+        isHistory: false,
         openedAt: tab.openedAt,
         arrayIndex: i,
         pinned: pinnedKeySet.has(`builtin:${tab.tabId}`),
@@ -532,6 +546,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         key: `tool:${t.instanceId}`,
         label: t.title,
         toolId: t.toolId,
+        isHistory: t.isHistory,
         openedAt: t.openedAt,
         arrayIndex: i,
         pinned: pinnedKeySet.has(`tool:${t.instanceId}`),
@@ -540,6 +555,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         type: 'ssh' as const,
         key: `ssh:${s.tabId}`,
         label: s.label,
+        isHistory: false,
         openedAt: s.openedAt,
         arrayIndex: i,
         pinned: pinnedKeySet.has(`ssh:${s.tabId}`),
@@ -756,7 +772,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function openTool(tool: ToolManifest) {
-    const mainIndex = openTabs.value.findIndex((t) => t.isMain && t.toolId === tool.id)
+    const mainIndex = openTabs.value.findIndex((t) => t.isMain && !t.isHistory && t.toolId === tool.id)
     if (mainIndex >= 0) {
       activeTabIndex.value = mainIndex
       activeBuiltinTabIndex.value = -1
@@ -778,8 +794,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function openToolNewInstance(tool: ToolManifest) {
-    // ensure main instance exists
-    const mainIndex = openTabs.value.findIndex((t) => t.isMain && t.toolId === tool.id)
+    // ensure a non-history main instance exists
+    const mainIndex = openTabs.value.findIndex((t) => t.isMain && !t.isHistory && t.toolId === tool.id)
     if (mainIndex < 0) {
       const history = toolHistory.value[tool.id] || []
       const lastEntry = history[0]
@@ -787,8 +803,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const mainTab = createTabState(tool, persistedState, lastEntry, settings.value.defaultPythonPath)
       openTabs.value.push(mainTab)
     }
-    // copy from the main instance
-    const sourceTab = openTabs.value.find((t) => t.isMain && t.toolId === tool.id)
+    // copy from the non-history main instance
+    const sourceTab = openTabs.value.find((t) => t.isMain && !t.isHistory && t.toolId === tool.id)
     if (sourceTab) {
       copyToolInstance(sourceTab, tool.name)
     }
@@ -797,13 +813,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function copyToolInstance(source: ToolTabState, toolName: string): ToolTabState {
     const suffix = Math.random().toString(36).slice(2, 8)
     const instanceId = `${source.toolId}_${suffix}`
-    const copyCount = openTabs.value.filter((t) => t.toolId === source.toolId && !t.isMain).length + 1
+    const copyCount = openTabs.value.filter((t) => t.toolId === source.toolId && !t.isMain && !t.isHistory).length + 1
     const tab: ToolTabState = {
       instanceId,
       tabId: `tool_${instanceId}`,
       toolId: source.toolId,
       title: copyCount === 1 ? `${toolName} #2` : `${toolName} #${copyCount + 1}`,
       isMain: false,
+      isHistory: false,
       executionTarget: source.executionTarget,
       localConfig: cloneExecutionConfig(source.localConfig),
       remoteConfig: cloneRemoteExecutionConfig(source.remoteConfig),
@@ -845,6 +862,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       toolId: tab.toolId,
       title: tab.title,
       isMain: tab.isMain,
+      isHistory: tab.isHistory,
       lastTaskIds: [],
       recentHistory: history.slice(0, maxHistory),
       closedAt: Date.now(),
@@ -962,14 +980,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  function recordUsage(instanceId: string, toolId: string, args: string, pythonEnv: string, formModel?: Record<string, string | number | boolean | null>) {
-    const maxRecent = settings.value.recentToolsCount
-
-    recentTools.value = [
-      { toolId, args, timestamp: Date.now() },
-      ...recentTools.value.filter((r) => r.toolId !== toolId),
-    ].slice(0, maxRecent)
-
+  function recordHistory(instanceId: string, args: string, pythonEnv: string, formModel?: Record<string, string | number | boolean | null>) {
     const existing = toolHistory.value[instanceId] || []
     const maxHistory = settings.value.historyRetention
 
@@ -979,6 +990,47 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ...deduped,
     ].slice(0, maxHistory)
   }
+
+  async function loadExecutionRecords() {
+    try {
+      executionRecords.value = await ListExecutionRecords()
+    } catch {
+      // backend may not be ready yet, ignore
+    }
+  }
+
+  function getRecordTab(recordId: string): ToolTabState | undefined {
+    const instanceId = recordTabMap.value[recordId]
+    if (!instanceId) return undefined
+    return openTabs.value.find((t) => t.instanceId === instanceId)
+  }
+
+  function setRecordTab(recordId: string, instanceId: string) {
+    recordTabMap.value[recordId] = instanceId
+  }
+
+  // ensureMainInstance returns the main instance tab for a tool,
+  // creating it silently if it doesn't exist (without activating it).
+  function ensureMainInstance(tool: ToolManifest): ToolTabState | null {
+    const existing = openTabs.value.find((t) => t.isMain && !t.isHistory && t.toolId === tool.id)
+    if (existing) return existing
+
+    const history = toolHistory.value[tool.id] || []
+    const lastEntry = history[0]
+    const persistedState = persistedToolStates.value[tool.id]
+    const tab = createTabState(tool, persistedState, lastEntry, settings.value.defaultPythonPath)
+    openTabs.value.push(tab)
+    return tab
+  }
+
+  // Auto-refresh execution records when tasks finish.
+  function subscribeRecordUpdates() {
+    EventsOn('task:update', () => {
+      // Reload records when any task status changes to non-running.
+      loadExecutionRecords()
+    })
+  }
+  subscribeRecordUpdates()
 
   function toggleFavorite(toolId: string) {
     const idx = favorites.value.indexOf(toolId)
@@ -997,18 +1049,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return toolHistory.value[toolId] || []
   }
 
-  function getRecentArgs(toolId: string): string {
-    const entry = recentTools.value.find((r) => r.toolId === toolId)
-    return entry?.args || ''
-  }
-
   function getPersistedToolState(toolId: string): PersistedToolState | undefined {
     return persistedToolStates.value[toolId]
   }
 
   function resetAllData() {
     favorites.value = []
-    recentTools.value = []
+    executionRecords.value = []
     toolHistory.value = {}
     persistedToolStates.value = {}
     pinnedTabs.value = []
@@ -1117,6 +1164,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       toolId: snapshot.toolId,
       title: snapshot.title,
       isMain: snapshot.isMain,
+      isHistory: snapshot.isHistory,
       executionTarget: snapshot.executionTarget,
       localConfig: cloneExecutionConfig(snapshot.localConfig),
       remoteConfig: cloneRemoteExecutionConfig(snapshot.remoteConfig),
@@ -1251,7 +1299,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     showSettings,
     openSettings,
     favorites,
-    recentTools,
+    executionRecords,
     toolHistory,
     settings,
     openTool,
@@ -1281,11 +1329,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     promoteNewSSHTab,
     closeSSHTabByConnectionId,
     updateActiveSSHTabLabel,
-    recordUsage,
+    recordHistory,
+    loadExecutionRecords,
+    getRecordTab,
+    setRecordTab,
+    ensureMainInstance,
     toggleFavorite,
     isFavorite,
     getHistory,
-    getRecentArgs,
     getPersistedToolState,
     resetAllData,
     instanceSnapshots,

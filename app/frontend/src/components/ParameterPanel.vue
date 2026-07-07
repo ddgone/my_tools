@@ -29,6 +29,7 @@ import { getVisibleParams } from '@/utils/toolParams'
 const props = defineProps<{
   tool: ToolManifest | null
   executionTarget: 'local' | 'remote'
+  readonly: boolean
 }>()
 
 const emit = defineEmits<{
@@ -297,6 +298,7 @@ async function copyCli() {
                     v-if="param.type === 'text'"
                     :value="formTextValue(param)"
                     :placeholder="param.placeholder"
+                    :disabled="readonly"
                     @update:value="onTextUpdate(param, $event)"
                   />
 
@@ -310,9 +312,13 @@ async function copyCli() {
                       :placeholder="param.placeholder"
                       :autosize="{ minRows: 2, maxRows: 4 }"
                       class="flex-1"
+                      :disabled="readonly"
                       @update:value="onTextUpdate(param, $event)"
                     />
-                    <div class="flex shrink-0 flex-col gap-2">
+                    <div
+                      v-if="!readonly"
+                      class="flex shrink-0 flex-col gap-2"
+                    >
                       <NButton
                         v-for="button in pathDialogButtons(param)"
                         :key="button.key"
@@ -335,6 +341,7 @@ async function copyCli() {
                     type="textarea"
                     :placeholder="param.placeholder"
                     :autosize="{ minRows: 2, maxRows: 4 }"
+                    :disabled="readonly"
                     @update:value="onTextUpdate(param, $event)"
                   />
 
@@ -343,6 +350,7 @@ async function copyCli() {
                     :value="formNumberValue(param)"
                     :show-button="false"
                     class="w-full"
+                    :disabled="readonly"
                     @update:value="onNumberUpdate(param, $event)"
                   />
 
@@ -350,6 +358,7 @@ async function copyCli() {
                     v-else-if="param.type === 'boolean'"
                     :value="formBoolValue(param)"
                     :theme-overrides="switchThemeOverrides"
+                    :disabled="readonly"
                     @update:value="onBoolUpdate(param, $event)"
                   />
 
@@ -357,6 +366,7 @@ async function copyCli() {
                     v-else-if="param.type === 'select'"
                     :value="formSelectValue(param)"
                     :options="selectOptions(param)"
+                    :disabled="readonly"
                     @update:value="onSelectUpdate(param, $event)"
                   />
                 </NFormItem>
@@ -405,13 +415,6 @@ async function copyCli() {
             >
               使用说明
             </NTag>
-            <NText
-              v-if="tool.docs.usage"
-              depth="3"
-              class="text-[10px]"
-            >
-              已从旧版迁移
-            </NText>
           </div>
           <template v-if="tool.docs.usage">
             <pre class="m-0 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-[rgb(var(--color-fg-secondary)/0.95)]">{{ tool.docs.usage }}</pre>

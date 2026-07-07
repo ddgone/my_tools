@@ -151,8 +151,7 @@ fn discover_tasks(input: &Path, output_dir: &Path) -> Result<Vec<Task>> {
         .canonicalize()
         .ok()
         .filter(|canonical| canonical.starts_with(input));
-    collect_tasks_recursive(
-        input,
+    collect_tasks_flat(
         input,
         output_dir,
         output_under_input.as_deref(),
@@ -162,17 +161,16 @@ fn discover_tasks(input: &Path, output_dir: &Path) -> Result<Vec<Task>> {
     Ok(tasks)
 }
 
-fn collect_tasks_recursive(
-    root: &Path,
-    current: &Path,
+fn collect_tasks_flat(
+    input: &Path,
     output_dir: &Path,
     output_under_input: Option<&Path>,
     tasks: &mut Vec<Task>,
 ) -> Result<()> {
     for entry in
-        fs::read_dir(current).with_context(|| format!("无法读取目录: {}", current.display()))?
+        fs::read_dir(input).with_context(|| format!("无法读取目录: {}", input.display()))?
     {
-        let entry = entry.with_context(|| format!("无法读取目录项: {}", current.display()))?;
+        let entry = entry.with_context(|| format!("无法读取目录项: {}", input.display()))?;
         let path = entry.path();
         if let Some(output_dir) = output_under_input
             && path.starts_with(output_dir)
@@ -182,17 +180,12 @@ fn collect_tasks_recursive(
         let file_type = entry
             .file_type()
             .with_context(|| format!("无法识别路径类型: {}", path.display()))?;
-        if file_type.is_dir() {
-            collect_tasks_recursive(root, &path, output_dir, output_under_input, tasks)?;
-            continue;
-        }
         if !file_type.is_file() || !is_supported_point_cloud_path(&path) {
             continue;
         }
-        let relative_path = path
-            .strip_prefix(root)
-            .with_context(|| format!("无法构造相对路径: {}", path.display()))?
-            .to_path_buf();
+        let relative_path = PathBuf::from(
+            path.file_name().context("无法获取输入文件名")?,
+        );
         tasks.push(Task {
             input_path: path.clone(),
             output_png: build_output_png(output_dir, &relative_path)?,
@@ -207,8 +200,7 @@ fn build_output_png(output_dir: &Path, relative_path: &Path) -> Result<PathBuf> 
         .file_stem()
         .and_then(|name| name.to_str())
         .context("无法获取输入文件名")?;
-    let mut output_path = output_dir.join(relative_path);
-    output_path.set_file_name(format!("{stem}_intensity.png"));
+    let output_path = output_dir.join(stem).join(format!("{stem}_intensity.png"));
     Ok(output_path)
 }
 
@@ -665,7 +657,7 @@ mod tests {
     #[test]
     fn should_build_png_output_name() {
         let path =
-            build_output_png(Path::new("D:/out"), Path::new("nested/sample.laz")).expect("png");
-        assert_eq!(path, Path::new("D:/out/nested/sample_intensity.png"));
+            build_output_png(Path::new("D:/out"), Path::new("sample.laz")).expect("png");
+        assert_eq!(path, Path::new("D:/out/sample/sample_intensity.png"));
     }
 }

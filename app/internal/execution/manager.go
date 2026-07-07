@@ -2,15 +2,24 @@ package execution
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
 
+	"fire-salamander-desktop/internal/exechistory"
 	"fire-salamander-desktop/internal/shared"
 	"fire-salamander-desktop/internal/ssh"
 	"fire-salamander-desktop/internal/toolchain"
 	"my_tools/libs/core/toolspec"
 )
+
+func newTaskID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return "task_" + hex.EncodeToString(b)
+}
 
 // Manager orchestrates local and remote tool executions.
 type Manager struct {
@@ -22,6 +31,30 @@ type Manager struct {
 // NewManager creates a new execution Manager.
 func NewManager(state *shared.SharedState, emitter shared.TaskEventEmitter, ensureTooling func(*shared.SharedState) error) *Manager {
 	return &Manager{state: state, emitter: emitter, ensureTooling: ensureTooling}
+}
+
+func (m *Manager) prepareWriter(taskID string) *taskEventWriter {
+	w := newTaskEventWriter(taskID, m.emitter)
+	if m.state.RecordStore != nil {
+		w.SetLogSaver(m.state.RecordStore)
+	}
+	return w
+}
+
+func (m *Manager) saveRunningRecord(task *shared.ExecutionTask) {
+	if m.state.RecordStore != nil {
+		_ = m.state.RecordStore.Append(&exechistory.ExecRecord{
+			ID:           task.ID,
+			ToolID:       task.ToolID,
+			ToolName:     task.ToolName,
+			Args:         task.Args,
+			Status:       "running",
+			Target:       task.Target,
+			RemoteConnID: task.RemoteConnID,
+			StartedAt:    task.StartedAt,
+			EndedAt:      0,
+		})
+	}
 }
 
 // StartLocalExecution runs a tool on the local machine.
@@ -50,7 +83,7 @@ func (m *Manager) StartLocalExecution(req shared.ExecutionRequest) (*shared.Exec
 	}
 
 	task := &shared.ExecutionTask{
-		ID:         fmt.Sprintf("task_%d", time.Now().UnixNano()),
+		ID:         newTaskID(),
 		ToolID:     req.ToolID,
 		InstanceID: req.InstanceID,
 		ToolName:   toolName,
@@ -63,9 +96,12 @@ func (m *Manager) StartLocalExecution(req shared.ExecutionRequest) (*shared.Exec
 	}
 
 	runCtx, _ := m.RegisterExecutionTask(task)
+	m.saveRunningRecord(task)
 
 	go func() {
-		writer := &taskEventWriter{taskID: task.ID, emitter: m.emitter}
+		writer := m.prepareWriter(task.ID)
+		defer writer.Flush()
+
 		var execErr error
 		switch {
 		case manifestOK && (manifest.Kind == toolspec.ToolKindGo || manifest.Kind == toolspec.ToolKindRust):
@@ -126,7 +162,7 @@ func (m *Manager) StartRemoteExecution(req RemoteExecRequest) (*shared.Execution
 	}
 
 	task := &shared.ExecutionTask{
-		ID:           fmt.Sprintf("task_%d", time.Now().UnixNano()),
+		ID:           newTaskID(),
 		ToolID:       req.ToolID,
 		InstanceID:   req.InstanceID,
 		ToolName:     manifest.Name,
@@ -143,10 +179,11 @@ func (m *Manager) StartRemoteExecution(req RemoteExecRequest) (*shared.Execution
 	}
 
 	runCtx, cancel := m.RegisterExecutionTask(task)
+	m.saveRunningRecord(task)
 
 	go func() {
 		defer cancel()
-		writer := &taskEventWriter{taskID: task.ID, emitter: m.emitter}
+		writer := m.prepareWriter(task.ID)
 		defer writer.Flush()
 
 		outcome, execErr := ExecuteRemotely(runCtx, writer, remoteExecParams{
@@ -227,6 +264,11 @@ func (m *Manager) FinishExecutionTask(taskID string, runCtx context.Context, exe
 		m.emitter.EmitTaskLog(taskID, logMessage)
 	}
 	m.emitter.EmitTaskUpdate(&copyTask)
+
+	// Update execution record status in SQLite.
+	if m.state.RecordStore != nil {
+		_ = m.state.RecordStore.UpdateStatus(taskID, task.Status)
+	}
 }
 
 // CancelExecution cancels a running task by its ID.

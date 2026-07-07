@@ -150,7 +150,7 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
       workspace.setTerminalVisible(workspace.activeTabIndex, true)
     }
 
-    workspace.recordUsage(tab.instanceId, tool.id, config.rawArgs, config.pythonEnv, config.formModel)
+    workspace.recordHistory(tab.instanceId, config.rawArgs, config.pythonEnv, config.formModel)
 
     launching.value = true
     try {
@@ -187,6 +187,43 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
       message.error(detail || '执行失败')
     } finally {
       launching.value = false
+    }
+  }
+
+  function handleReExecute() {
+    const tab = workspace.activeToolTab
+    const tool = tab ? toolById(tab.toolId) : null
+    if (!tool || !tab) return
+
+    // Create a fresh instance tab from the history tab's config.
+    // First ensure a non-history main tab exists.
+    const mainTab = workspace.ensureMainInstance(tool)
+    if (!mainTab) return
+
+    // Copy from main to get a clean instance tab.
+    const newTab = workspace.copyToolInstance(mainTab, tool.name)
+
+    // Now copy the history tab's config into the new instance tab.
+    newTab.executionTarget = tab.executionTarget
+    newTab.localConfig = {
+      panelMode: 'form' as const,
+      rawArgs: tab.localConfig.rawArgs,
+      pythonEnv: tab.localConfig.pythonEnv,
+      formModel: { ...tab.localConfig.formModel },
+    }
+    newTab.remoteConfig = {
+      panelMode: 'remote' as const,
+      rawArgs: tab.remoteConfig.rawArgs,
+      pythonEnv: tab.remoteConfig.pythonEnv,
+      formModel: { ...tab.remoteConfig.formModel },
+      connId: tab.remoteConfig.connId,
+      lastBrowsePath: tab.remoteConfig.lastBrowsePath,
+    }
+    newTab.terminalVisible = true
+
+    const tabIndex = workspace.openTabs.findIndex((t) => t.instanceId === newTab.instanceId)
+    if (tabIndex >= 0) {
+      workspace.setTerminalVisible(tabIndex, true)
     }
   }
 
@@ -419,6 +456,7 @@ export function useWorkspaceToolActions(options: UseWorkspaceToolActionsOptions)
     handleCancel,
     handleExport,
     handleDownloadResult,
+    handleReExecute,
     handleFileDialog,
     closeRemotePathPicker,
     handleRemotePathPicked,

@@ -41,6 +41,7 @@ type UnifiedTabItem = {
   key: string
   label: string
   toolId?: string
+  isHistory: boolean
   openedAt: number
   arrayIndex: number
   pinned: boolean
@@ -335,6 +336,7 @@ const {
   handleCancel,
   handleExport,
   handleDownloadResult,
+  handleReExecute,
   handleFileDialog,
     closeRemotePathPicker,
     handleRemotePathPicked,
@@ -888,6 +890,15 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             </template>
             内置
           </NTag>
+          <NTag
+            v-if="item.type === 'tool' && item.isHistory"
+            :bordered="true"
+            size="tiny"
+            class="shrink-0"
+            style="color: rgb(var(--color-fg-muted)/0.8); border-color: rgb(var(--color-border-subtle)/0.6); background: transparent;"
+          >
+            历史
+          </NTag>
           <ToolKindDevIcon
             v-if="item.type === 'tool'"
             :kind="toolById(item.toolId ?? '')?.kind"
@@ -956,6 +967,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             :is-launching="launching"
             :is-exporting="exporting"
             :is-downloading-result="downloadingResult"
+            :is-history="workspace.activeToolTab?.isHistory ?? false"
             :export-target="activeExportTarget"
             :export-target-options="exportTargetOptions"
             :export-button-label="activeExportButtonLabel"
@@ -964,6 +976,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
             @cancel="handleCancel"
             @export="handleExport"
             @download-result="handleDownloadResult"
+            @re-execute="handleReExecute"
             @update:execution-target="onExecutionTargetUpdate"
             @update:python-env="onPythonEnvUpdate"
             @update:remote-conn-id="onRemoteConnIdUpdate"
@@ -975,6 +988,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           <ParameterPanel
             :tool="toolById(workspace.activeToolTab.toolId)"
             :execution-target="workspace.activeToolTab.executionTarget"
+            :readonly="workspace.activeToolTab?.isHistory ?? false"
             class="mt-3"
             @execute="handleExecute"
             @file-dialog="handleFileDialog"
@@ -998,6 +1012,7 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           >
             <ExecutionTerminal
               :task-id="activeTabTaskId"
+              :record-id="workspace.activeToolTab?.lastRecordId"
               :execution-target="workspace.activeToolTab.executionTarget"
               :tool-kind="toolById(workspace.activeToolTab.toolId)?.kind"
             />

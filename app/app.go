@@ -10,6 +10,7 @@ import (
 
 	"my_tools/libs/core/toolspec"
 
+	"fire-salamander-desktop/internal/exechistory"
 	"fire-salamander-desktop/internal/execution"
 
 	gosettings "fire-salamander-desktop/internal/toolchainsettings/go"
@@ -156,6 +157,9 @@ func (a *App) startup(ctx context.Context) {
 	_ = ensureTooling(a.state)
 	_ = a.state.SSHStore.LoadConfig()
 	_ = a.loadArtifactBatchTasks()
+	if a.state.RecordStore != nil {
+		_ = a.state.RecordStore.Load()
+	}
 }
 
 func (a *App) domReady(ctx context.Context) {
@@ -268,4 +272,20 @@ func (a *App) GetWorkbenchBootstrap() (*WorkbenchBootstrap, error) {
 		},
 		Tools: tools,
 	}, nil
+}
+
+// ListExecutionRecords returns all persisted execution records.
+func (a *App) ListExecutionRecords() ([]*exechistory.ExecRecord, error) {
+	if a.state.RecordStore == nil {
+		return nil, fmt.Errorf("执行记录存储未初始化")
+	}
+	return a.state.RecordStore.List(), nil
+}
+
+// ReadExecutionLog reads the full log file for a given task ID.
+func (a *App) ReadExecutionLog(taskID string) (string, error) {
+	if a.state.RecordStore == nil {
+		return "", fmt.Errorf("执行记录存储未初始化")
+	}
+	return a.state.RecordStore.ReadLog(taskID)
 }

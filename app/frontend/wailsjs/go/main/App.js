@@ -134,6 +134,10 @@ export function ListDownloadTasks() {
   return window['go']['main']['App']['ListDownloadTasks']();
 }
 
+export function ListExecutionRecords() {
+  return window['go']['main']['App']['ListExecutionRecords']();
+}
+
 export function ListOfficialGoReleases() {
   return window['go']['main']['App']['ListOfficialGoReleases']();
 }
@@ -172,6 +176,10 @@ export function PersistCurrentWindowState() {
 
 export function PreparePythonToolchainEnvironment() {
   return window['go']['main']['App']['PreparePythonToolchainEnvironment']();
+}
+
+export function ReadExecutionLog(arg1) {
+  return window['go']['main']['App']['ReadExecutionLog'](arg1);
 }
 
 export function SaveGoToolchainConfig(arg1) {

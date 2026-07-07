@@ -61,20 +61,6 @@ refreshCacheInfo()
   <div class="settings-form pt-2">
     <div class="settings-row">
       <div class="settings-label">
-        最近使用显示数量
-      </div>
-      <div class="settings-value">
-        <NSelect
-          class="settings-control"
-          :value="workspace.settings.recentToolsCount"
-          :options="[{ label: '3', value: 3 }, { label: '5', value: 5 }, { label: '10', value: 10 }]"
-          @update:value="(v: number) => workspace.settings.recentToolsCount = v"
-        />
-      </div>
-    </div>
-
-    <div class="settings-row">
-      <div class="settings-label">
         命令历史保留数量
       </div>
       <div class="settings-value">

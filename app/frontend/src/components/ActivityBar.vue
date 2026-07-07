@@ -30,7 +30,7 @@ const topItems: { key: ActivityBarView | 'tasks'; icon: typeof Apps; label: stri
   { key: 'builtin', icon: ConstructOutline, label: '内置工具' },
   { key: 'ssh', icon: ServerOutline, label: 'SSH 连接管理' },
   { key: 'favorites', icon: Star, label: '收藏夹' },
-  { key: 'recent', icon: TimeOutline, label: '最近使用' },
+  { key: 'recent', icon: TimeOutline, label: '执行记录' },
   { key: 'tasks', icon: List, label: '任务中心（开发中）' },
   { key: 'artifact', icon: CloudUpload, label: '产物中心' },
 ]

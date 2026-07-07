@@ -39,7 +39,7 @@ export const useExecutionStore = defineStore('execution', {
 
       EventsOn('task:log', (event: TaskLogEvent) => {
         const current = this.logs[event.taskId] ?? []
-        this.logs[event.taskId] = [...current, event.message].slice(-600)
+        this.logs[event.taskId] = [...current, event.message]
       })
 
       this.subscribed = true

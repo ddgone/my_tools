@@ -7,23 +7,18 @@ description: 通过 WebHDFS 批量下载 HDFS 文件或目录到本地目录。
 docs:
   summary: 支持一次输入多个 HDFS 路径，适合批量拉取测试数据并保留目录结构。
   usage: |
-    通过 WebHDFS 从 HDFS 下载单个文件或整个目录到本地目录。
+    通过 WebHDFS 从 HDFS 批量下载文件或目录到本地。
 
-    HDFS 路径列表输入方式：
-    - 多个路径请使用英文逗号 , 分隔
-    - 使用 / 开头的完整 HDFS 绝对路径
+    输入规则：
+    - 支持一次输入多个 HDFS 路径，使用英文逗号分隔
+    - 路径格式为 / 开头的完整 HDFS 绝对路径
     - 可填写文件路径或目录路径
+    - 多个同名末级目录会自动展开为最短唯一路径，避免覆盖
 
-    示例：
-    /user/test/file_001,/user/test/dir_001
-
-    参数说明：
-    - HDFS 路径列表：要下载的 HDFS 文件或目录
-    - 本地目录：下载结果保存位置；多个同名末级目录会自动展开为最短唯一路径，避免覆盖
-    - Namenode 地址：WebHDFS 的 host:port
-    - HDFS 用户名：访问 WebHDFS 时使用的用户名
-    - 并发数：同时下载的文件数，默认 4
-    - 跳过已存在文件：若本地已有同名文件且大小一致，则跳过下载
+    常用示例：
+    - 路径列表: /user/test/file_001,/user/test/dir_001
+    - 本地目录: D:\downloads
+    - Namenode: 10.11.5.136:50070
 params:
   - key: input
     argKey: input

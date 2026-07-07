@@ -5,9 +5,16 @@ category: Python 脚本
 icon: python
 description: 根据文件名中的 MGRS 百米块信息恢复原始 UTM 坐标系的 LAS 文件。
 docs:
-  summary: 旧版内嵌 Python 工具的桌面化版本，保留脚本直传与源码导出的能力模型。
+  summary: 根据文件名中 MGRS 百米块信息，将偏转后的 PCD 文件恢复为原始 UTM 坐标系的 LAS 文件。
   usage: |
-    将经过白犀牛偏转处理的 PCD 文件恢复成原始 UTM 坐标系下的 LAS 文件。
+    将经过白犀牛偏转处理的 PCD 文件恢复为原始 UTM 坐标系的 LAS 文件。
+
+    输入规则：
+    - input 为包含 .pcd 文件的目录
+    - 程序根据文件名中的 MGRS 百米块信息自动确定 UTM 坐标
+
+    常用示例：
+    - -input D:\pcd_dir -output D:\las_out -workers 4
 params:
   - key: input
     argKey: input

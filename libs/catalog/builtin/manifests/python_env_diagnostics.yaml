@@ -7,8 +7,13 @@ description: 导入 numpy 与 requests，输出当前解释器、虚拟环境与
 docs:
   summary: 验证当前 Python 工具是否真的运行在托管虚拟环境中，并生成一份诊断 JSON 文件。
   usage: |
-    导入 numpy 与 requests，执行一段小型数值计算，并把当前 Python 解释器、site-packages、
-    虚拟环境路径、依赖版本和计算结果写入 JSON 文件，帮助验收 Python 环境配置是否生效。
+    验证当前 Python 环境配置是否正确生效，生成诊断报告 JSON 文件。
+
+    工具会导入 numpy 与 requests，执行数值计算，并将当前 Python 解释器路径、
+    site-packages 位置、虚拟环境路径、依赖版本和计算结果写入 JSON 文件。
+
+    常用示例：
+    - -output D:\diag\env_report.json -count 1024 -label smoke-test
 params:
   - key: output
     argKey: output

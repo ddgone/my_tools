@@ -8,6 +8,7 @@ import {
   DownloadOutline,
   ServerOutline,
   GlobeOutline,
+  Refresh,
 } from '@vicons/ionicons5'
 import { ListSSHConnections } from '../../wailsjs/go/main/App'
 import type { ExecutionTask, SSHConnection, ToolManifest } from '@/types/workbench'
@@ -24,6 +25,7 @@ const props = defineProps<{
   isLaunching: boolean
   isExporting: boolean
   isDownloadingResult: boolean
+  isHistory: boolean
   exportTarget: string
   exportTargetOptions: SelectOption[]
   exportButtonLabel: string
@@ -35,6 +37,7 @@ const emit = defineEmits<{
   cancel: []
   export: []
   'download-result': []
+  're-execute': []
   'update:execution-target': [value: ExecutionTarget]
   'update:python-env': [value: string]
   'update:remote-conn-id': [value: string]
@@ -279,6 +282,7 @@ onBeforeUnmount(() => {
         </button>
 
         <NButton
+          v-if="!isHistory"
           v-press
           size="small"
           :disabled="isRunning || isLaunching"
@@ -293,7 +297,20 @@ onBeforeUnmount(() => {
         </NButton>
 
         <NButton
-          v-if="isRunning"
+          v-if="isHistory"
+          v-press
+          size="small"
+          class="tool-detail-action-button border shadow-sm"
+          @click="emit('re-execute')"
+        >
+          <template #icon>
+            <NIcon :component="Refresh" />
+          </template>
+          重新执行
+        </NButton>
+
+        <NButton
+          v-if="isRunning && !isHistory"
           v-press
           type="error"
           size="small"
@@ -306,6 +323,7 @@ onBeforeUnmount(() => {
         </NButton>
 
         <div
+          v-if="!isHistory"
           class="flex items-center rounded-md border border-[rgb(var(--color-border-subtle)/0.75)] bg-[rgb(var(--color-bg-elevated)/0.88)] px-1 py-1"
         >
           <NButton

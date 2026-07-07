@@ -156,3 +156,79 @@ export function validateCliArgs(input: string): string | null {
     return error instanceof Error ? error.message : '参数解析失败'
   }
 }
+
+/**
+ * Attempts to populate a form model by parsing CLI args back into parameter values.
+ * Only sets values that can be confidently matched to parameter specs.
+ */
+export function tryPopulateFormModel(
+  rawArgs: string,
+  tool: ToolManifest,
+  formModel: Record<string, string | number | boolean | null>,
+): void {
+  if (!rawArgs.trim()) return
+
+  let tokens: string[]
+  try {
+    tokens = parseCliArgs(rawArgs)
+  } catch {
+    return
+  }
+
+  const flagPrefix = tool.kind === 'rust' ? '--' : '-'
+  // Build a lookup: flag → param
+  const paramByFlag = new Map<string, typeof tool.params[0]>()
+  for (const param of tool.params) {
+    if (param.emit === false) continue
+    const argKey = param.argKey || param.key
+    paramByFlag.set(flagPrefix + argKey, param)
+  }
+
+  // Track repeatable param values
+  const repeatableValues = new Map<string, string[]>()
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (!token.startsWith(flagPrefix)) continue
+
+    const param = paramByFlag.get(token)
+    if (!param) {
+      continue
+    }
+
+    if (param.type === 'boolean') {
+      formModel[param.key] = true
+      continue
+    }
+
+    // Non-boolean: expect a value token next
+    if (i + 1 >= tokens.length) continue
+    const nextToken = tokens[i + 1]
+    if (nextToken.startsWith(flagPrefix)) continue // next is another flag, skip
+
+    const value = nextToken
+    i++ // consume the value token
+
+    if (param.type === 'number') {
+      const num = parseFloat(value)
+      if (!isNaN(num)) {
+        formModel[param.key] = num
+      }
+      continue
+    }
+
+    // For text/path/textarea/select: store string value
+    if (param.repeatable) {
+      const arr = repeatableValues.get(param.key) || []
+      arr.push(value)
+      repeatableValues.set(param.key, arr)
+    } else {
+      formModel[param.key] = value
+    }
+  }
+
+  // Apply repeatable values as newline-joined strings
+  for (const [key, values] of repeatableValues) {
+    formModel[key] = values.join('\n')
+  }
+}

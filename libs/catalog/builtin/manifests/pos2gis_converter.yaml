@@ -5,10 +5,19 @@ category: KD测试工具 > 点云处理工具
 icon: go
 description: 将 POS JSON 轨迹批量转换为 GeoJSON 与点 Shapefile。
 docs:
-  summary: 旧版 POS 轨迹转换工具的桌面化入口，支持目录批量处理、逐轨迹产物输出与输出目录覆盖。
+  summary: 将点云 POS 编译系统导出的 JSON 轨迹批量转为 GeoJSON 与点 Shapefile。
   usage: |
-    面向点云 POS 编译系统导出的 JSON 轨迹目录。
-    支持输出 GeoJSON、点 Shapefile，或同时输出两者。
+    将点云 POS 编译系统导出的 JSON 轨迹目录批量转换为 GIS 可用的 GeoJSON 与点 Shapefile。
+
+    输入规则：
+    - input 为包含 POS JSON 文件的目录，程序会遍历目录下所有 .json 文件
+
+    输出规则：
+    - 可单独输出 GeoJSON、点 Shapefile，或两者同时输出
+    - 不填写 output 时默认在输入目录下生成 output 目录
+
+    常用示例：
+    - -input D:\pos_json_dir -output D:\gis_out -artifact-set all
 params:
   - key: input
     argKey: input
@@ -24,7 +33,7 @@ params:
     pathMode: directory
     label: 输出目录
     placeholder: 留空则在输入目录下生成 output
-    help: 不填写时会沿用旧版默认行为。
+    help: 不填写时在输入目录下生成 output 目录。
   - key: artifactSet
     argKey: artifact-set
     type: select

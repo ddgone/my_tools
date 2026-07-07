@@ -59,7 +59,7 @@ const hasLongScrollableContent = computed(() => scrollHeight.value - clientHeigh
 const showJumpTop = computed(() => hasLongScrollableContent.value && scrollTop.value > 240)
 const showJumpBottom = computed(() => hasLongScrollableContent.value && scrollHeight.value - clientHeight.value - scrollTop.value > 240)
 const favoriteToolIdSet = computed(() => new Set(workspace.favorites))
-const recentToolIdSet = computed(() => new Set(workspace.recentTools.map((entry) => entry.toolId)))
+const recentToolIdSet = computed(() => new Set(workspace.executionRecords.map((entry) => entry.toolId)))
 const filteredGoTools = computed(() => goTools.value.filter((tool) => matchesToolFilter(tool)))
 const filteredRustTools = computed(() => rustTools.value.filter((tool) => matchesToolFilter(tool)))
 const filteredPythonTools = computed(() => pythonTools.value.filter((tool) => matchesToolFilter(tool)))

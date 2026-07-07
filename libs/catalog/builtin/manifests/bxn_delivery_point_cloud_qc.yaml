@@ -7,20 +7,22 @@ description: 批量处理白犀牛交付任务包，按需输出抽稀 LAZ/LAS�
 docs:
   summary: 面向白犀牛交付点云任务包的批处理预处理工具，支持目录输入、统一 origin、台账跳过，以及 LAZ/LAS/不输出 三态点云产物选择。
   usage: |
+    批量处理白犀牛交付点云任务包，对每帧点云执行体素抽稀与强度图生成，并汇总 UTM 轨迹。
+
     输入目录应为一层数据包目录集合，目录名需符合交付任务包命名规范。
-    每个数据包可直接包含 `process_result_0/deskew_cloud` 与 `opti_pose_enu.txt`，也可只提供 `process_result_0.tar.gz`。
+    每个数据包可直接包含 process_result_0/deskew_cloud 与 opti_pose_enu.txt，也可只提供 process_result_0.tar.gz。
 
     工具会为每个数据包输出：
     - 抽稀后的 LAZ 或 LAS（也可选择不输出点云文件）
     - 强度图 PNG 及侧车文件
-    - 收集后的 `utm.txt`
+    - 收集后的 utm.txt
     - 单包日志、状态文件和批次台账
 
     常用示例：
-    - 标准运行：`-input D:\jobs -output D:\qc_out -origin D:\origin.txt -threads 8 -voxel-size 0.2`
-    - 输出 LAS：`-input D:\jobs -output D:\qc_out -threads 8 -output-format las`
-    - 只生成强度图：`-input D:\jobs -output D:\qc_out -threads 8 -output-format none`
-    - 不抽稀：`-input D:\jobs -output D:\qc_out -voxel-size 0`
+    - 标准运行：-input D:\jobs -output D:\qc_out -origin D:\origin.txt -threads 8 -voxel-size 0.2
+    - 输出 LAS：-input D:\jobs -output D:\qc_out -threads 8 -output-format las
+    - 只生成强度图：-input D:\jobs -output D:\qc_out -threads 8 -output-format none
+    - 不抽稀：-input D:\jobs -output D:\qc_out -voxel-size 0
 params:
   - key: input
     argKey: input
@@ -56,14 +58,14 @@ params:
     type: number
     label: 体素大小（米）
     default: 0.2
-    help: 体素抽稀边长；`0` 表示不抽稀。
+    help: 体素抽稀边长；0 表示不抽稀。
   - key: ledger
     argKey: ledger
     type: path
     pathMode: file
     label: 已有台账文件
     placeholder: 可选，选择已有 run_ledger.json
-    help: 不填写时默认在输出目录下创建 `run_ledger.json`。
+    help: 不填写时默认在输出目录下创建 run_ledger.json。
   - key: outputFormat
     argKey: output-format
     type: select

@@ -182,8 +182,7 @@ fn discover_tasks(
         .canonicalize()
         .ok()
         .filter(|canonical| canonical.starts_with(input));
-    collect_tasks_recursive(
-        input,
+    collect_tasks_flat(
         input,
         output_dir,
         output_format,
@@ -195,9 +194,8 @@ fn discover_tasks(
     Ok(tasks)
 }
 
-fn collect_tasks_recursive(
-    root: &Path,
-    current: &Path,
+fn collect_tasks_flat(
+    input: &Path,
     output_dir: &Path,
     output_format: OutputFormat,
     voxel_size: f64,
@@ -205,9 +203,9 @@ fn collect_tasks_recursive(
     tasks: &mut Vec<Task>,
 ) -> Result<()> {
     for entry in
-        fs::read_dir(current).with_context(|| format!("无法读取目录: {}", current.display()))?
+        fs::read_dir(input).with_context(|| format!("无法读取目录: {}", input.display()))?
     {
-        let entry = entry.with_context(|| format!("无法读取目录项: {}", current.display()))?;
+        let entry = entry.with_context(|| format!("无法读取目录项: {}", input.display()))?;
         let path = entry.path();
         if let Some(output_dir) = output_under_input
             && path.starts_with(output_dir)
@@ -217,25 +215,12 @@ fn collect_tasks_recursive(
         let file_type = entry
             .file_type()
             .with_context(|| format!("无法识别路径类型: {}", path.display()))?;
-        if file_type.is_dir() {
-            collect_tasks_recursive(
-                root,
-                &path,
-                output_dir,
-                output_format,
-                voxel_size,
-                output_under_input,
-                tasks,
-            )?;
-            continue;
-        }
         if !file_type.is_file() || !is_supported_point_cloud_path(&path) {
             continue;
         }
-        let relative_path = path
-            .strip_prefix(root)
-            .with_context(|| format!("无法构造相对路径: {}", path.display()))?
-            .to_path_buf();
+        let relative_path = PathBuf::from(
+            path.file_name().context("无法获取输入文件名")?,
+        );
         tasks.push(Task {
             input_path: path.clone(),
             output_path: build_output_path(output_dir, &relative_path, output_format, voxel_size)?,

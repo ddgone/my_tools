@@ -9,6 +9,7 @@ import { getExecutionTheme } from '@/utils/executionTheme'
 
 const props = defineProps<{
   taskId: string
+  recordId?: string
   executionTarget: 'local' | 'remote'
   toolKind?: string
 }>()
@@ -33,10 +34,11 @@ const terminalModeTagStyle = computed<CSSProperties>(() => ({
 const terminalModeLabel = computed(() => (props.executionTarget === 'remote' ? '远程' : '本地'))
 const terminalModeIcon = computed(() => (props.executionTarget === 'remote' ? GlobeOutline : LaptopOutline))
 
-const logs = computed(() => execution.logsForTask(props.taskId))
+const effectiveTaskId = computed(() => props.taskId || props.recordId || '')
+const logs = computed(() => execution.logsForTask(effectiveTaskId.value))
 
 const activeTask = computed(() =>
-  props.taskId ? execution.recentTasks.find((t) => t.id === props.taskId) ?? null : null,
+  effectiveTaskId.value ? execution.recentTasks.find((t) => t.id === effectiveTaskId.value) ?? null : null,
 )
 
 function statusLabel(status?: string) {
@@ -103,8 +105,8 @@ const parsedLines = computed(() => {
 })
 
 function clearLogs() {
-  if (props.taskId) {
-    execution.logs[props.taskId] = []
+  if (effectiveTaskId.value) {
+    execution.logs[effectiveTaskId.value] = []
   }
   autoScroll.value = true
 }
@@ -193,7 +195,7 @@ watch(
   { flush: 'post' },
 )
 
-watch(() => props.taskId, async () => {
+watch(() => effectiveTaskId.value, async () => {
   autoScroll.value = true
   await scrollToBottom()
 }, { immediate: true, flush: 'post' })

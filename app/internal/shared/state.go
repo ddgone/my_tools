@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"fire-salamander-desktop/internal/exechistory"
 	"fire-salamander-desktop/internal/ssh"
 	"my_tools/libs/core/toolspec"
 )
@@ -25,9 +26,14 @@ type SharedState struct {
 	RustTask      *RustToolchainTask
 	RustCancel    context.CancelFunc
 	SSHStore      *ssh.Store
+	RecordStore   *exechistory.Store
 }
 
 func NewSharedState() *SharedState {
+	recordStore, err := exechistory.NewStore()
+	if err != nil {
+		recordStore = nil
+	}
 	return &SharedState{
 		PyTools:       map[string]*PythonToolEntry{},
 		Manifests:     map[string]toolspec.ToolManifest{},
@@ -36,5 +42,6 @@ func NewSharedState() *SharedState {
 		ArtifactTasks: map[string]*ArtifactBatchTask{},
 		Cancels:       map[string]context.CancelFunc{},
 		SSHStore:      ssh.NewStore(),
+		RecordStore:   recordStore,
 	}
 }

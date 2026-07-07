@@ -9,6 +9,7 @@ import {shared} from '../models';
 import {exportpkg} from '../models';
 import {main} from '../models';
 import {ssh} from '../models';
+import {exechistory} from '../models';
 import {dialog} from '../models';
 import {execution} from '../models';
 
@@ -78,6 +79,8 @@ export function ListArtifactBatchTasks():Promise<Array<shared.ArtifactBatchTask>
 
 export function ListDownloadTasks():Promise<Array<shared.DownloadTask>>;
 
+export function ListExecutionRecords():Promise<Array<exechistory.ExecRecord>>;
+
 export function ListOfficialGoReleases():Promise<Array<gosettings.GoOfficialRelease>>;
 
 export function ListOfficialRustReleases():Promise<Array<rustsettings.RustOfficialRelease>>;
@@ -97,6 +100,8 @@ export function OpenSaveFileDialog(arg1:dialog.FileDialogRequest):Promise<string
 export function PersistCurrentWindowState():Promise<void>;
 
 export function PreparePythonToolchainEnvironment():Promise<pythonsettings.PythonToolchainState>;
+
+export function ReadExecutionLog(arg1:string):Promise<string>;
 
 export function SaveGoToolchainConfig(arg1:gosettings.GoToolchainConfig):Promise<gosettings.GoToolchainState>;
 
