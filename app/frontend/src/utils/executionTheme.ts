@@ -1,5 +1,5 @@
 export type ExecutionAccentName = 'local' | 'remote'
-export type ToolKindAccentName = 'go' | 'python' | 'rust'
+export type ToolKindAccentName = 'go' | 'python' | 'rust' | 'zig'
 
 export interface ExecutionTheme {
   accentName: ExecutionAccentName | ToolKindAccentName
@@ -52,6 +52,7 @@ const TOOL_KIND_THEMES: Record<ToolKindAccentName, ExecutionTheme> = {
   go: buildAccentTheme('go', 'kind-go'),
   python: buildAccentTheme('python', 'kind-python'),
   rust: buildAccentTheme('rust', 'kind-rust'),
+  zig: buildAccentTheme('zig', 'kind-zig'),
 }
 
 export function resolveExecutionAccent(_kind: string | null | undefined, executionTarget: 'local' | 'remote'): ExecutionAccentName {
@@ -64,6 +65,9 @@ export function resolveToolKindAccent(kind: string | null | undefined): ToolKind
   }
   if (kind === 'rust') {
     return 'rust'
+  }
+  if (kind === 'zig') {
+    return 'zig'
   }
   return 'go'
 }

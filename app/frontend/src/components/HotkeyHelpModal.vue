@@ -1,8 +1,24 @@
 <script setup lang="ts">
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NText, NTag } from 'naive-ui'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { blurActiveElement, focusElementSafely } from '@/utils/focus'
 
 const workspace = useWorkspaceStore()
+const dialogRef = ref<HTMLElement | null>(null)
+
+function closeHotkeyHelp() {
+  blurActiveElement()
+  workspace.showHotkeyHelp = false
+}
+
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !workspace.showHotkeyHelp) {
+    return
+  }
+  event.preventDefault()
+  closeHotkeyHelp()
+}
 
 interface ShortcutGroup {
   title: string
@@ -47,6 +63,27 @@ const groups: ShortcutGroup[] = [
     ],
   },
 ]
+
+onMounted(() => {
+  document.addEventListener('keydown', handleDocumentKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
+
+watch(
+  () => workspace.showHotkeyHelp,
+  (show) => {
+    if (show) {
+      void nextTick(() => {
+        focusElementSafely(dialogRef.value)
+      })
+      return
+    }
+    blurActiveElement()
+  },
+)
 </script>
 
 <template>
@@ -55,7 +92,7 @@ const groups: ShortcutGroup[] = [
       <div
         v-if="workspace.showHotkeyHelp"
         class="fixed inset-0 z-50 bg-[rgb(var(--color-overlay-rgb)/0.42)] backdrop-blur-sm"
-        @click="workspace.showHotkeyHelp = false"
+        @click="closeHotkeyHelp"
       />
     </Transition>
     <Transition
@@ -67,7 +104,9 @@ const groups: ShortcutGroup[] = [
         class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] pointer-events-none"
       >
         <div
+          ref="dialogRef"
           class="surface-dialog pointer-events-auto w-full max-w-xl rounded-2xl"
+          tabindex="-1"
           @click.stop
         >
           <div class="surface-divider flex items-center justify-between border-b px-5 py-3">
@@ -77,7 +116,7 @@ const groups: ShortcutGroup[] = [
             <NButton
               text
               size="tiny"
-              @click="workspace.showHotkeyHelp = false"
+              @click="closeHotkeyHelp"
             >
               ESC 关闭
             </NButton>

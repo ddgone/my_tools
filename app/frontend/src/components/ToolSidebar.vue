@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, h, nextTick} from 'vue'
+import { computed, ref, watch, h, nextTick } from 'vue'
 import {
   NButton,
   NCard,
@@ -568,7 +568,7 @@ function renderNodeLabel({ option }: { option: TreeOption & { tool?: ToolManifes
 const selectedKeys = ref<string[]>([])
 const expandedKeys = ref<string[]>([])
 const treeRenderKey = computed(() =>
-  `${workspace.activeTabType}:${workspace.activeToolTab?.toolId ?? 'none'}:${workspace.activeToolTab?.executionTarget ?? 'local'}`,
+  `${workspace.activeTabType}:${workspace.activeToolTab?.toolId ?? 'none'}:${workspace.activeToolTab?.executionTarget ?? 'local'}:${searchQuery.value.trim()}:${filteredTools.value.length}`,
 )
 
 const treeRef = ref<InstanceType<typeof NTree> | null>(null)
@@ -698,7 +698,6 @@ defineExpose({
                 ref="treeRef"
                 :expanded-keys="expandedKeys"
                 :data="treeData"
-                :pattern="searchQuery"
                 :selected-keys="selectedKeys"
                 :render-label="renderNodeLabel"
                 :node-props="treeNodeProps"

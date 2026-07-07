@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { ListDownloadTasks, OpenPath, StartTaskResultDownload } from '../../wailsjs/go/main/App'
 import type { DownloadTask } from '@/types/workbench'
+import { blurActiveElement } from '@/utils/focus'
 
 function normalizeTasks(nextTasks: DownloadTask[]) {
   return [...nextTasks].sort((a, b) => b.startedAt - a.startedAt)
@@ -97,10 +98,3 @@ export const useDownloadStore = defineStore('downloads', () => {
     closeDrawer,
   }
 })
-
-function blurActiveElement() {
-  const active = document.activeElement
-  if (active instanceof HTMLElement) {
-    active.blur()
-  }
-}

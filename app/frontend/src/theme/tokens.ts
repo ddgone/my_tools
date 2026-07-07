@@ -1,7 +1,7 @@
 export type ThemePreference = 'dark' | 'light' | 'system'
 export type ResolvedThemeName = 'dark' | 'light'
 export type ModeAccentName = 'local' | 'remote'
-export type ToolKindAccentName = 'go' | 'python' | 'rust'
+export type ToolKindAccentName = 'go' | 'python' | 'rust' | 'zig'
 export interface ThemeCustomizationSettings {
   darkAccent: string
   lightAccent: string
@@ -45,6 +45,7 @@ interface ThemeTokens {
   kindGo: string
   kindPython: string
   kindRust: string
+  kindZig: string
 }
 
 const darkThemeTokens: ThemeTokens = {
@@ -81,6 +82,7 @@ const darkThemeTokens: ThemeTokens = {
   kindGo: '#58a9ff',
   kindPython: '#22c55e',
   kindRust: '#f59e0b',
+  kindZig: '#f7b733',
 }
 
 const lightThemeTokens: ThemeTokens = {
@@ -117,6 +119,7 @@ const lightThemeTokens: ThemeTokens = {
   kindGo: '#308fe8',
   kindPython: '#16a34a',
   kindRust: '#d97706',
+  kindZig: '#e59a17',
 }
 
 export const themeTokensByName: Record<ResolvedThemeName, ThemeTokens> = {
@@ -256,6 +259,7 @@ export function resolveThemeTokens(
       modeLocalHover: brandHover,
       modeLocalOn,
       kindGo: brandAccent,
+      kindZig: base.kindZig,
     }
   }
 
@@ -285,6 +289,7 @@ export function resolveThemeTokens(
     modeLocalHover: brandHover,
     modeLocalOn,
     kindGo: brandAccent,
+    kindZig: base.kindZig,
   }
 }
 
@@ -327,5 +332,6 @@ export function buildThemeCssVariables(
     '--color-kind-go': hexToRgbChannels(tokens.kindGo),
     '--color-kind-python': hexToRgbChannels(tokens.kindPython),
     '--color-kind-rust': hexToRgbChannels(tokens.kindRust),
+    '--color-kind-zig': hexToRgbChannels(tokens.kindZig),
   }
 }

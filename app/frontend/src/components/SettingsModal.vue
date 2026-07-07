@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   NButton,
   NIcon,
@@ -17,6 +17,8 @@ import GoSettingsSection from './settings/GoSettingsSection.vue'
 import PythonSettingsSection from './settings/PythonSettingsSection.vue'
 import RustSettingsSection from './settings/RustSettingsSection.vue'
 import ThemeSettingsSection from './settings/ThemeSettingsSection.vue'
+import ZigSettingsSection from './settings/ZigSettingsSection.vue'
+import { blurActiveElement, focusElementSafely } from '@/utils/focus'
 
 const workspace = useWorkspaceStore()
 const message = useMessage()
@@ -27,12 +29,47 @@ const downloadDirectory = ref('')
 const rustDownloadVersion = ref('')
 const zigDownloadVersion = ref('')
 const rustDownloadDirectory = ref('')
+const dialogRef = ref<HTMLElement | null>(null)
 
 function resetAll() {
   workspace.resetAllData()
   workspace.showSettings = false
   message.success('已恢复出厂设置')
 }
+
+function closeSettings() {
+  blurActiveElement()
+  workspace.showSettings = false
+}
+
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !workspace.showSettings) {
+    return
+  }
+  event.preventDefault()
+  closeSettings()
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleDocumentKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
+
+watch(
+  () => workspace.showSettings,
+  (show) => {
+    if (show) {
+      void nextTick(() => {
+        focusElementSafely(dialogRef.value)
+      })
+      return
+    }
+    blurActiveElement()
+  },
+)
 </script>
 
 <template>
@@ -41,7 +78,7 @@ function resetAll() {
       <div
         v-if="workspace.showSettings"
         class="fixed inset-0 z-50 bg-[rgb(var(--color-overlay-rgb)/0.42)] backdrop-blur-sm"
-        @click="workspace.showSettings = false"
+        @click="closeSettings"
       />
     </Transition>
     <Transition
@@ -53,7 +90,9 @@ function resetAll() {
         class="fixed inset-0 z-50 flex items-start justify-center px-4 py-[4vh] pointer-events-none"
       >
         <div
+          ref="dialogRef"
           class="surface-dialog pointer-events-auto flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl"
+          tabindex="-1"
           @click.stop
         >
           <div class="surface-divider flex items-start justify-between border-b px-6 py-4">
@@ -69,7 +108,7 @@ function resetAll() {
               text
               size="tiny"
               class="mt-0.5"
-              @click="workspace.showSettings = false"
+              @click="closeSettings"
             >
               ESC 关闭
             </NButton>
@@ -80,7 +119,7 @@ function resetAll() {
               type="line"
               animated
               :value="workspace.settings.lastSettingsTab"
-              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'theme' || v === 'export' || v === 'go' || v === 'rust' || v === 'python' ? v : 'general'"
+              @update:value="(v: string) => workspace.settings.lastSettingsTab = v === 'theme' || v === 'export' || v === 'go' || v === 'rust' || v === 'zig' || v === 'python' ? v : 'general'"
             >
               <NTabPane
                 name="general"
@@ -126,6 +165,16 @@ function resetAll() {
               </NTabPane>
 
               <NTabPane
+                name="zig"
+                tab="Zig"
+              >
+                <ZigSettingsSection
+                  v-model:zig-download-version="zigDownloadVersion"
+                  v-model:download-directory="rustDownloadDirectory"
+                />
+              </NTabPane>
+
+              <NTabPane
                 name="python"
                 tab="Python"
               >
@@ -153,7 +202,7 @@ function resetAll() {
             <NButton
               type="primary"
               size="small"
-              @click="workspace.showSettings = false"
+              @click="closeSettings"
             >
               <template #icon>
                 <NIcon :component="Checkmark" />

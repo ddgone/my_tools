@@ -23,7 +23,7 @@ export interface ToolTabState {
 
 export type ExecutionTarget = 'local' | 'remote'
 export type ToolPanelMode = 'form' | 'cli' | 'docs' | 'remote'
-export type SettingsTab = 'general' | 'theme' | 'export' | 'go' | 'rust' | 'python'
+export type SettingsTab = 'general' | 'theme' | 'export' | 'go' | 'rust' | 'zig' | 'python'
 export type GoExportMode = 'binary' | 'source'
 export type ThemePreference = 'dark' | 'light' | 'system'
 
@@ -115,7 +115,7 @@ interface PersistedToolState {
 }
 
 function normalizeSettingsTab(value: unknown): SettingsTab {
-  if (value === 'theme' || value === 'export' || value === 'go' || value === 'rust' || value === 'python') {
+  if (value === 'theme' || value === 'export' || value === 'go' || value === 'rust' || value === 'zig' || value === 'python') {
     return value
   }
   return 'general'
