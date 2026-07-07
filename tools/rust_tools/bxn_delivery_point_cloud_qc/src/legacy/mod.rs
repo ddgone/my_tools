@@ -11,5 +11,5 @@ mod voxel;
 pub use pcd_pipeline::process_pcd_request;
 pub use types::{
     MappingMode, PcdProcessOutcome, PcdProcessReport, PcdProcessRequest, PivotMode,
-    RepresentativeMode,
+    PointCloudOutputFormat, RepresentativeMode,
 };

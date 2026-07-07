@@ -54,23 +54,27 @@ fn run_pcd_pipeline(request: PcdProcessRequest) -> Result<PcdProcessOutcome> {
         &logger,
         "INFO",
         format!(
-            "开始处理数据包 {}: pcd_dir={}, enu={}, utm={}, output={}, preview={}, utm_output={}, threads={}, skip_laz={}",
+            "开始处理数据包 {}: pcd_dir={}, enu={}, utm={}, output={}, preview={}, utm_output={}, threads={}, point_cloud_output={}",
             request.dataset_name,
             request.pcd_dir.display(),
             request.enu_path.display(),
             request.utm_path.display(),
-            request.output.display(),
+            request
+                .output
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "none".to_string()),
             request.intensity_preview.display(),
             request.utm_output.display(),
             request.threads,
-            request.skip_laz
+            request.output_format.display_name()
         ),
     );
 
     configure_threads(Some(request.threads))?;
     preview_format(&request.intensity_preview)?;
-    if !request.skip_laz {
-        validate_output_path(&request.output, request.force, "输出文件")?;
+    if let Some(output_path) = &request.output {
+        validate_output_path(output_path, request.force, "输出文件")?;
     }
     validate_output_path(&request.intensity_preview, request.force, "强度预览图")?;
     validate_output_path(
@@ -463,43 +467,37 @@ fn run_pcd_pipeline(request: PcdProcessRequest) -> Result<PcdProcessOutcome> {
             preview_stats.sidecar_secs
         ),
     );
-    if request.skip_laz {
+    if let Some(output_path) = &request.output {
         log_process(
             &logger,
             "INFO",
             format!(
-                "跳过阶段 4/5：按参数要求不写出 LAZ，目标路径={}",
-                request.output.display()
-            ),
-        );
-    } else {
-        log_process(
-            &logger,
-            "INFO",
-            format!(
-                "开始阶段 4/5：写出 LAZ，输出点={}，路径={}",
+                "开始阶段 4/5：写出 {}，输出点={}，路径={}",
+                request.output_format.display_name().to_uppercase(),
                 selected_points.len(),
-                request.output.display()
+                output_path.display()
             ),
         );
         let (_, stage4_runtime) = run_stage_with_memory(|| {
-            write_point_cloud(
-                &request.output,
-                &output_header,
-                &selected_points,
-                request.force,
-            )
+            write_point_cloud(output_path, &output_header, &selected_points, request.force)
         })?;
         report.runtime.stage4_laz_write = stage4_runtime;
         log_process(
             &logger,
             "INFO",
             format!(
-                "完成阶段 4/5：LAZ 写出，用时 {:.2}s，峰值内存={}，路径={}",
+                "完成阶段 4/5：{} 写出，用时 {:.2}s，峰值内存={}，路径={}",
+                request.output_format.display_name().to_uppercase(),
                 report.runtime.stage4_laz_write.duration_secs,
                 format_memory_bytes(report.runtime.stage4_laz_write.peak_memory_bytes),
-                request.output.display()
+                output_path.display()
             ),
+        );
+    } else {
+        log_process(
+            &logger,
+            "INFO",
+            format!("跳过阶段 4/5：按参数要求不写出点云文件"),
         );
     }
     log_process(
@@ -693,9 +691,9 @@ fn current_process_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
         use libc::{
-            KERN_SUCCESS, MACH_TASK_BASIC_INFO, MACH_TASK_BASIC_INFO_COUNT,
-            integer_t, mach_msg_type_number_t, mach_task_basic_info_data_t, mach_task_self_,
-            task_info, task_info_t,
+            KERN_SUCCESS, MACH_TASK_BASIC_INFO, MACH_TASK_BASIC_INFO_COUNT, integer_t,
+            mach_msg_type_number_t, mach_task_basic_info_data_t, mach_task_self_, task_info,
+            task_info_t,
         };
 
         unsafe {

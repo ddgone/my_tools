@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"sort"
 
@@ -32,7 +33,7 @@ func Load() ([]toolspec.ToolManifest, error) {
 
 		var manifest toolspec.ToolManifest
 		if err := yaml.Unmarshal(payload, &manifest); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse manifest %s: %w", entry.Name(), err)
 		}
 
 		manifests = append(manifests, manifest)

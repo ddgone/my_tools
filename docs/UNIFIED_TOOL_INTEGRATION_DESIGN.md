@@ -482,10 +482,10 @@ func executeLocalBinaryTool(ctx context.Context, writer io.Writer, manifest tool
 │       └── ...
 ├── rust/
 │   ├── windows_amd64/
-│   │   ├── las_voxelizer.exe
+│   │   ├── bxn_delivery_point_cloud_qc.exe
 │   │   └── ...
 │   └── linux_amd64/
-│       ├── las_voxelizer
+│       ├── bxn_delivery_point_cloud_qc
 │       └── ...
 ```
 
@@ -863,7 +863,7 @@ scripts/new-tool/
 
 | 工具 | 改动 |
 |------|------|
-| `las_voxelizer` | `src/main.rs` → `src/lib.rs`，`fn main()` → `pub fn run()`，`Cargo.toml` 确认 `[lib]` |
+| `bxn_delivery_point_cloud_qc` | `src/main.rs` → `src/lib.rs`，`fn main()` → `pub fn run()`，`Cargo.toml` 确认 `[lib]` |
 | `sdk_demo` | 同上，或如果是纯演示则删除 |
 
 每迁移一个工具：

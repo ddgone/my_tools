@@ -1,0 +1,88 @@
+id: point_cloud_voxel_downsample
+name: LAS/LAZ点云体素抽稀
+kind: rust
+category: KD测试工具 > 点云处理工具
+icon: rust
+description: 对 LAS/LAZ 点云执行体素抽稀，支持单文件或目录批量并发处理。
+docs:
+  summary: 面向 LAS/LAZ 成品点云的独立抽稀工具，支持文件或目录输入、目录输出、体素参数配置和并发处理。
+  usage: |
+    本工具只做点云体素抽稀，不解析白犀牛任务包，不生成强度图，不做 UTM 汇总。
+
+    输入规则：
+    - `input` 支持单个 `.las/.laz` 文件
+    - `input` 也支持目录，目录模式下会递归扫描全部 `.las/.laz`
+    - 输出目录会保留相对目录结构
+
+    常用示例：
+    - `--input D:\clouds --output D:\voxel_out --voxel-size 0.2 --threads 8`
+    - `--input D:\clouds\a.laz --output D:\voxel_out --voxel-size 0.5 --output-format las`
+    - `--input D:\clouds --output D:\voxel_out --voxel-size 0 --force`
+params:
+  - key: input
+    argKey: input
+    type: path
+    pathMode: fileOrDirectory
+    label: 输入点云
+    placeholder: 选择 LAS/LAZ 文件或目录
+    required: true
+    help: 支持单个 `.las/.laz` 文件，或包含多个点云文件的目录。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: 输出目录
+    placeholder: 选择抽稀结果输出目录
+    required: true
+    help: 工具会在该目录下输出抽稀后的 LAS/LAZ，并保留相对目录结构。
+  - key: voxelSize
+    argKey: voxel-size
+    type: number
+    label: 体素大小（米）
+    default: 0.2
+    help: 体素抽稀边长；`0` 表示不抽稀，仅重写输出。
+  - key: representative
+    argKey: representative
+    type: select
+    label: 代表点策略
+    default: center
+    options:
+      - label: center
+        value: center
+      - label: first
+        value: first
+    help: "`center` 选择最接近体素中心的点，`first` 选择最早命中的点。"
+  - key: outputFormat
+    argKey: output-format
+    type: select
+    label: 输出点云格式
+    default: preserve
+    options:
+      - label: preserve
+        value: preserve
+      - label: laz
+        value: laz
+      - label: las
+        value: las
+    help: "`preserve` 保持输入扩展名，或统一输出为 `laz` / `las`。"
+  - key: threads
+    argKey: threads
+    type: number
+    label: 并发数
+    default: 4
+    help: 控制目录批处理和内部并行计算的线程数。
+  - key: force
+    argKey: force
+    type: boolean
+    label: 覆盖已有输出
+    default: false
+    help: 启用后允许覆盖已存在的目标文件。
+execution:
+  local:
+    adapter: rust-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/rust_tools/point_cloud_voxel_downsample/src/lib.rs

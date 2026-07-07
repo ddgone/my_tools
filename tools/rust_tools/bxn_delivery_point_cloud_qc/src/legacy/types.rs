@@ -1,7 +1,7 @@
 use clap::ValueEnum;
 use glam::{DQuat, DVec3};
 use las::Point;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub(crate) const WGS84_A: f64 = 6_378_137.0;
@@ -27,6 +27,50 @@ pub enum PivotMode {
 pub enum MappingMode {
     Enu,
     Flat,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PointCloudOutputFormat {
+    Laz,
+    Las,
+    None,
+}
+
+impl Default for PointCloudOutputFormat {
+    fn default() -> Self {
+        Self::Laz
+    }
+}
+
+impl PointCloudOutputFormat {
+    pub fn writes_point_cloud(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    pub fn file_extension(self) -> Option<&'static str> {
+        match self {
+            Self::Laz => Some("laz"),
+            Self::Las => Some("las"),
+            Self::None => None,
+        }
+    }
+
+    pub fn dir_suffix(self) -> &'static str {
+        match self {
+            Self::Laz => "laz",
+            Self::Las => "las",
+            Self::None => "none",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Laz => "laz",
+            Self::Las => "las",
+            Self::None => "none",
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -126,8 +170,8 @@ pub struct PcdProcessRequest {
     pub pcd_dir: PathBuf,
     pub enu_path: PathBuf,
     pub utm_path: PathBuf,
-    pub output: PathBuf,
-    pub skip_laz: bool,
+    pub output: Option<PathBuf>,
+    pub output_format: PointCloudOutputFormat,
     pub intensity_preview: PathBuf,
     pub utm_output: PathBuf,
     pub voxel_size: f64,

@@ -1,4 +1,6 @@
-use crate::legacy::{MappingMode, PcdProcessReport, PivotMode, RepresentativeMode};
+use crate::legacy::{
+    MappingMode, PcdProcessReport, PivotMode, PointCloudOutputFormat, RepresentativeMode,
+};
 use anyhow::{Context, Result, anyhow, bail};
 use flate2::read::GzDecoder;
 use std::ffi::OsStr;
@@ -31,6 +33,7 @@ pub(crate) fn discover_tasks(
     input_root: &Path,
     output_root: &Path,
     voxel_size: f64,
+    output_format: PointCloudOutputFormat,
 ) -> Result<Vec<BatchTask>> {
     let mut directories = Vec::new();
     for entry in fs::read_dir(input_root)
@@ -55,11 +58,16 @@ pub(crate) fn discover_tasks(
     directories.sort();
     Ok(directories
         .into_iter()
-        .map(|directory| build_task(directory, output_root, voxel_size))
+        .map(|directory| build_task(directory, output_root, voxel_size, output_format))
         .collect())
 }
 
-fn build_task(directory: PathBuf, output_root: &Path, voxel_size: f64) -> BatchTask {
+fn build_task(
+    directory: PathBuf,
+    output_root: &Path,
+    voxel_size: f64,
+    output_format: PointCloudOutputFormat,
+) -> BatchTask {
     let dataset_name = directory
         .file_name()
         .and_then(OsStr::to_str)
@@ -88,12 +96,14 @@ fn build_task(directory: PathBuf, output_root: &Path, voxel_size: f64) -> BatchT
         "output_full".to_string()
     };
     let voxel_dir = output_root
-        .join(format!("voxel_{voxel_tag}_laz"))
+        .join(format!("voxel_{voxel_tag}_{}", output_format.dir_suffix()))
         .join(&dataset_name);
     let intensity_dir = output_root.join("intensity_png").join(&dataset_name);
     let logs_dir = output_root.join("logs").join(&dataset_name);
     let utm_col_dir = output_root.join("utm_col");
-    let output_laz = voxel_dir.join(format!("{output_stem}.laz"));
+    let output_point_cloud = output_format
+        .file_extension()
+        .map(|ext| voxel_dir.join(format!("{output_stem}.{ext}")));
     let utm_collected_path = utm_col_dir.join(format!("{dataset_name}.utm.txt"));
     BatchTask {
         dataset_name,
@@ -105,11 +115,12 @@ fn build_task(directory: PathBuf, output_root: &Path, voxel_size: f64) -> BatchT
         pcd_dir: process_root.join("deskew_cloud"),
         enu_path: process_root.join("opti_pose_enu.txt"),
         utm_path: process_root.join("utm.txt"),
+        output_format,
         intensity_png: intensity_dir.join("intensity.png"),
         utm_collected_path,
         package_log_path: logs_dir.join(format!("{output_stem}.log")),
-        status_path: output_laz.with_extension("done.json"),
-        output_laz,
+        status_path: voxel_dir.join(format!("{output_stem}.done.json")),
+        output_point_cloud,
     }
 }
 
@@ -203,7 +214,9 @@ pub(crate) fn cleanup_consumed_task_input(task: &BatchTask) -> Result<()> {
 }
 
 pub(crate) fn ensure_task_dirs(task: &BatchTask) -> Result<()> {
-    ensure_parent_dir(&task.output_laz)?;
+    if let Some(output_path) = &task.output_point_cloud {
+        ensure_parent_dir(output_path)?;
+    }
     ensure_parent_dir(&task.intensity_png)?;
     ensure_parent_dir(&task.utm_collected_path)?;
     ensure_parent_dir(&task.status_path)?;
@@ -214,15 +227,17 @@ pub(crate) fn ensure_task_dirs(task: &BatchTask) -> Result<()> {
 pub(crate) fn required_outputs(
     task: &BatchTask,
     origin: Option<&Path>,
-    skip_laz: bool,
+    output_format: PointCloudOutputFormat,
 ) -> Vec<PathBuf> {
     let mut outputs = vec![
         task.intensity_png.clone(),
         task.utm_collected_path.clone(),
         world_file_path(&task.intensity_png),
     ];
-    if !skip_laz {
-        outputs.insert(0, task.output_laz.clone());
+    if output_format.writes_point_cloud()
+        && let Some(output_path) = &task.output_point_cloud
+    {
+        outputs.insert(0, output_path.clone());
     }
     if origin.is_some() {
         outputs.push(sidecar_path(&task.intensity_png, "prj"));
@@ -236,7 +251,7 @@ pub(crate) fn write_status_file(
     task: &BatchTask,
     report: &PcdProcessReport,
     origin: Option<&Path>,
-    skip_laz: bool,
+    output_format: PointCloudOutputFormat,
     voxel_size: f64,
 ) -> Result<()> {
     let payload = StatusFile {
@@ -250,7 +265,11 @@ pub(crate) fn write_status_file(
         pcd_dir: task.pcd_dir.display().to_string(),
         enu_path: task.enu_path.display().to_string(),
         utm_path: task.utm_path.display().to_string(),
-        output_laz: task.output_laz.display().to_string(),
+        output_point_cloud: task
+            .output_point_cloud
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        output_format,
         intensity_png: task.intensity_png.display().to_string(),
         utm_collected_path: task.utm_collected_path.display().to_string(),
         package_log: task.package_log_path.display().to_string(),
@@ -261,9 +280,9 @@ pub(crate) fn write_status_file(
         threads: report.threads_used,
         pivot: pivot_name(PivotMode::Centroid),
         mapping: mapping_name(MappingMode::Enu),
-        skip_laz,
+        output_enabled: output_format.writes_point_cloud(),
         report: report.clone(),
-        required_outputs: required_outputs(task, origin, skip_laz)
+        required_outputs: required_outputs(task, origin, output_format)
             .into_iter()
             .map(|path| path.display().to_string())
             .collect(),

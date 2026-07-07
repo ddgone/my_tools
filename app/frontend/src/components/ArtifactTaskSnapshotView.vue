@@ -191,7 +191,7 @@ function openContainingDirectory(path?: string) {
           <div class="text-xs text-[rgb(var(--color-fg-muted)/0.92)]">
             结果说明
           </div>
-          <div class="mt-1 text-sm text-[rgb(var(--color-fg-base)/0.98)]">
+          <div class="artifact-text-block mt-1 text-sm text-[rgb(var(--color-fg-base)/0.98)]">
             {{ task.exitMessage || '无' }}
           </div>
         </div>
@@ -238,11 +238,11 @@ function openContainingDirectory(path?: string) {
           :key="item.key"
           class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[rgb(var(--color-border-subtle)/0.72)] bg-[rgb(var(--color-bg-panel)/0.72)] px-3 py-2 text-xs"
         >
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <div class="font-medium text-[rgb(var(--color-fg-base)/0.98)]">
               {{ item.toolName }} · {{ item.targetOS }}/{{ item.targetArch }}
             </div>
-            <div class="mt-1 truncate text-[rgb(var(--color-fg-muted)/0.92)]">
+            <div class="artifact-text-block mt-1 text-[rgb(var(--color-fg-muted)/0.92)]">
               {{ item.message }}
             </div>
           </div>
@@ -288,3 +288,12 @@ function openContainingDirectory(path?: string) {
     </NCard>
   </div>
 </template>
+
+<style scoped>
+.artifact-text-block {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+</style>

@@ -1,6 +1,6 @@
 # Rust 工具完整接入标准
 
-本文档定义当前仓库里 Rust 工具接入桌面宿主的完整标准。范围只覆盖当前已经真实落地的接入方式，本文以现有 Rust 工具 `tools/rust_tools/las_voxelizer/` 为准。
+本文档定义当前仓库里 Rust 工具接入桌面宿主的完整标准。范围只覆盖当前已经真实落地的接入方式，本文以现有 Rust 工具 `tools/rust_tools/bxn_delivery_point_cloud_qc/` 为准。
 
 ## 1. 目标
 
@@ -453,8 +453,8 @@ source:
 ```go
 var bundledRustTools = []rustTool{
     {
-        ID:       "las_voxelizer",
-        CrateDir: filepath.Join("tools", "rust_tools", "las_voxelizer"),
+        ID:       "bxn_delivery_point_cloud_qc",
+        CrateDir: filepath.Join("tools", "rust_tools", "bxn_delivery_point_cloud_qc"),
     },
     {
         ID:       "example_tool",

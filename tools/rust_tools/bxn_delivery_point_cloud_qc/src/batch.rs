@@ -4,7 +4,8 @@ mod paths;
 mod types;
 
 use crate::legacy::{
-    self, MappingMode, PcdProcessOutcome, PcdProcessRequest, PivotMode, RepresentativeMode,
+    self, MappingMode, PcdProcessOutcome, PcdProcessRequest, PivotMode, PointCloudOutputFormat,
+    RepresentativeMode,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
@@ -81,7 +82,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
     logger.log(
         "INFO",
         format!(
-            "处理参数: voxel={} intensity={} representative={} threads={} pivot={} mapping={} origin={} laz_output={}",
+            "处理参数: voxel={} intensity={} representative={} threads={} pivot={} mapping={} origin={} point_cloud_output={}",
             format_float(cli.voxel_size),
             format_float(DEFAULT_INTENSITY_RESOLUTION),
             representative_name(RepresentativeMode::Center),
@@ -92,7 +93,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                 .as_ref()
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "none".to_string()),
-            if cli.skip_laz { "skipped" } else { "enabled" }
+            cli.output_format.display_name()
         ),
     );
     logger.log("INFO", format!("台账路径: {}", ledger_path.display()));
@@ -103,7 +104,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
         &output_root,
         global_origin.as_deref(),
     )?;
-    let tasks = discover_tasks(&input_root, &output_root, cli.voxel_size)?;
+    let tasks = discover_tasks(&input_root, &output_root, cli.voxel_size, cli.output_format)?;
     if tasks.is_empty() {
         logger.log("WARN", "未找到符合命名规范的数据包目录");
         bail!("没有可处理的数据包");
@@ -118,16 +119,21 @@ fn run_batch(cli: BatchCli) -> Result<()> {
     let mut package_summaries = Vec::new();
 
     for (index, task) in tasks.iter().cloned().enumerate() {
-        let fingerprint =
-            compute_package_fingerprint(&task, global_origin.as_deref(), cli.voxel_size).ok();
-        if should_skip_by_ledger(&task, fingerprint.as_ref(), &ledger, cli.skip_laz) {
+        let fingerprint = compute_package_fingerprint(
+            &task,
+            global_origin.as_deref(),
+            cli.voxel_size,
+            cli.output_format,
+        )
+        .ok();
+        if should_skip_by_ledger(&task, fingerprint.as_ref(), &ledger, cli.output_format) {
             ledger_skip_count += 1;
             logger.log(
                 "SKIP",
                 format!(
-                    "{} 命中台账，输入未变化且当前输出模式所需产物齐全（laz_output={}），跳过",
+                    "{} 命中台账，输入未变化且当前输出模式所需产物齐全（point_cloud_output={}），跳过",
                     task.label(),
-                    if cli.skip_laz { "skipped" } else { "enabled" }
+                    cli.output_format.display_name()
                 ),
             );
             package_summaries.push(PackageRunSummary {
@@ -135,8 +141,8 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                 status: "ledger-skipped",
                 report: None,
                 message: Some(format!(
-                    "命中台账，输入未变化且当前输出模式所需产物齐全（laz_output={}）",
-                    if cli.skip_laz { "skipped" } else { "enabled" }
+                    "命中台账，输入未变化且当前输出模式所需产物齐全（point_cloud_output={}）",
+                    cli.output_format.display_name()
                 )),
             });
             continue;
@@ -179,7 +185,11 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                         last_run_epoch_s: unix_now(),
                         message: message.clone(),
                         fingerprint,
-                        output_laz: task.output_laz.display().to_string(),
+                        output_point_cloud: task
+                            .output_point_cloud
+                            .as_ref()
+                            .map(|path| path.display().to_string()),
+                        output_format: task.output_format,
                         intensity_png: task.intensity_png.display().to_string(),
                     },
                 );
@@ -208,7 +218,11 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                         last_run_epoch_s: unix_now(),
                         message: message.clone(),
                         fingerprint,
-                        output_laz: task.output_laz.display().to_string(),
+                        output_point_cloud: task
+                            .output_point_cloud
+                            .as_ref()
+                            .map(|path| path.display().to_string()),
+                        output_format: task.output_format,
                         intensity_png: task.intensity_png.display().to_string(),
                     },
                 );
@@ -229,7 +243,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
             &tasks,
             &ledger,
             global_origin.as_deref(),
-            cli.skip_laz,
+            cli.output_format,
             cli.voxel_size,
             &mut pending_prefetch,
             &mut logger,
@@ -239,8 +253,8 @@ fn run_batch(cli: BatchCli) -> Result<()> {
             pcd_dir: task.pcd_dir.clone(),
             enu_path: task.enu_path.clone(),
             utm_path: task.utm_path.clone(),
-            output: task.output_laz.clone(),
-            skip_laz: cli.skip_laz,
+            output: task.output_point_cloud.clone(),
+            output_format: cli.output_format,
             intensity_preview: task.intensity_png.clone(),
             utm_output: task.utm_collected_path.clone(),
             voxel_size: cli.voxel_size,
@@ -266,7 +280,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                     &task,
                     &report,
                     global_origin.as_deref(),
-                    cli.skip_laz,
+                    cli.output_format,
                     cli.voxel_size,
                 ) {
                     failed_count += 1;
@@ -279,7 +293,11 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                             last_run_epoch_s: unix_now(),
                             message: message.clone(),
                             fingerprint,
-                            output_laz: task.output_laz.display().to_string(),
+                            output_point_cloud: task
+                                .output_point_cloud
+                                .as_ref()
+                                .map(|path| path.display().to_string()),
+                            output_format: task.output_format,
                             intensity_png: task.intensity_png.display().to_string(),
                         },
                     );
@@ -319,10 +337,15 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                                     &task,
                                     global_origin.as_deref(),
                                     cli.voxel_size,
+                                    cli.output_format,
                                 )
                                 .ok()
                             }),
-                            output_laz: task.output_laz.display().to_string(),
+                            output_point_cloud: task
+                                .output_point_cloud
+                                .as_ref()
+                                .map(|path| path.display().to_string()),
+                            output_format: task.output_format,
                             intensity_png: task.intensity_png.display().to_string(),
                         },
                     );
@@ -356,7 +379,11 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                         last_run_epoch_s: unix_now(),
                         message: message.clone(),
                         fingerprint,
-                        output_laz: task.output_laz.display().to_string(),
+                        output_point_cloud: task
+                            .output_point_cloud
+                            .as_ref()
+                            .map(|path| path.display().to_string()),
+                        output_format: task.output_format,
                         intensity_png: task.intensity_png.display().to_string(),
                     },
                 );
@@ -379,7 +406,11 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                         last_run_epoch_s: unix_now(),
                         message: message.clone(),
                         fingerprint,
-                        output_laz: task.output_laz.display().to_string(),
+                        output_point_cloud: task
+                            .output_point_cloud
+                            .as_ref()
+                            .map(|path| path.display().to_string()),
+                        output_format: task.output_format,
                         intensity_png: task.intensity_png.display().to_string(),
                     },
                 );
@@ -518,7 +549,7 @@ fn maybe_start_prefetch(
     tasks: &[BatchTask],
     ledger: &types::LedgerFile,
     origin: Option<&std::path::Path>,
-    skip_laz: bool,
+    output_format: PointCloudOutputFormat,
     voxel_size: f64,
     pending_prefetch: &mut Option<PendingPrefetch>,
     logger: &mut BatchLogger,
@@ -533,8 +564,8 @@ fn maybe_start_prefetch(
         return;
     }
 
-    let fingerprint = compute_package_fingerprint(&task, origin, voxel_size).ok();
-    if should_skip_by_ledger(&task, fingerprint.as_ref(), ledger, skip_laz) {
+    let fingerprint = compute_package_fingerprint(&task, origin, voxel_size, output_format).ok();
+    if should_skip_by_ledger(&task, fingerprint.as_ref(), ledger, output_format) {
         return;
     }
 

@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"my_tools/libs/catalog/builtin"
 )
 
 type Target struct {
@@ -71,6 +73,7 @@ func main() {
 	fmt.Println("   火蜥蜴工具箱 Desktop - 构建脚本")
 	fmt.Println("====================================")
 
+	validateBuiltinManifests()
 	runGoVet(rootDir, appDir)
 
 	os.RemoveAll(hostDir)
@@ -159,6 +162,36 @@ func main() {
 		fmt.Printf("   %s\n", e.Name())
 	}
 	fmt.Println("====================================")
+}
+
+func validateBuiltinManifests() {
+	fmt.Println("\n校验内置工具清单...")
+	manifests, err := builtin.Load()
+	if err != nil {
+		fmt.Printf("❌ 内置工具清单校验失败: %v\n", err)
+		os.Exit(1)
+	}
+	seen := make(map[string]struct{}, len(manifests))
+	for _, manifest := range manifests {
+		if manifest.ID == "" {
+			fmt.Println("❌ 内置工具清单校验失败: 存在空 id 的 manifest")
+			os.Exit(1)
+		}
+		if manifest.Name == "" {
+			fmt.Printf("❌ 内置工具清单校验失败: manifest %q 缺少 name\n", manifest.ID)
+			os.Exit(1)
+		}
+		if manifest.Source.Entry == "" {
+			fmt.Printf("❌ 内置工具清单校验失败: manifest %q 缺少 source.entry\n", manifest.ID)
+			os.Exit(1)
+		}
+		if _, exists := seen[manifest.ID]; exists {
+			fmt.Printf("❌ 内置工具清单校验失败: manifest id 重复 %q\n", manifest.ID)
+			os.Exit(1)
+		}
+		seen[manifest.ID] = struct{}{}
+	}
+	fmt.Printf("内置工具清单校验通过: %d 个 manifest\n", len(manifests))
 }
 
 func runGoVet(rootDir, appDir string) {
@@ -295,7 +328,8 @@ var bundledTools = []bundledTool{
 	{ID: "trajectory_match_filter_qc", Kind: "go", SourceEntry: "tools/go_tools/trajectory_match_filter_qc/tool.go"},
 	{ID: "utm_geojson_converter", Kind: "go", SourceEntry: "tools/go_tools/utm_extract_to_gis/tool.go"},
 	{ID: "bxn_delivery_point_cloud_qc", Kind: "rust", SourceEntry: "tools/rust_tools/bxn_delivery_point_cloud_qc/src/lib.rs", ModuleDir: "tools/rust_tools/bxn_delivery_point_cloud_qc"},
-	{ID: "las_voxelizer", Kind: "rust", SourceEntry: "tools/rust_tools/las_voxelizer/src/lib.rs", ModuleDir: "tools/rust_tools/las_voxelizer"},
+	{ID: "point_cloud_voxel_downsample", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_voxel_downsample/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_voxel_downsample"},
+	{ID: "point_cloud_intensity_raster", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_intensity_raster/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_intensity_raster"},
 }
 
 func buildToolCache(rootDir, runtimeDir, targetOS, targetArch string, buildAll bool) error {

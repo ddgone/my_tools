@@ -3,22 +3,23 @@ name: 白犀牛交付点云质检预处理
 kind: rust
 category: KD测试工具 > 点云处理工具
 icon: rust
-description: 批量处理白犀牛交付任务包，输出抽稀 LAZ、强度图、UTM 汇总和状态台账。
+description: 批量处理白犀牛交付任务包，按需输出抽稀 LAZ/LAS、强度图、UTM 汇总和状态台账。
 docs:
-  summary: 面向白犀牛交付点云任务包的批处理预处理工具，支持目录输入、统一 origin、台账跳过和可选跳过 LAZ 写出。
+  summary: 面向白犀牛交付点云任务包的批处理预处理工具，支持目录输入、统一 origin、台账跳过，以及 LAZ/LAS/不输出 三态点云产物选择。
   usage: |
     输入目录应为一层数据包目录集合，目录名需符合交付任务包命名规范。
     每个数据包可直接包含 `process_result_0/deskew_cloud` 与 `opti_pose_enu.txt`，也可只提供 `process_result_0.tar.gz`。
 
     工具会为每个数据包输出：
-    - 抽稀后的 LAZ（可选跳过）
+    - 抽稀后的 LAZ 或 LAS（也可选择不输出点云文件）
     - 强度图 PNG 及侧车文件
     - 收集后的 `utm.txt`
     - 单包日志、状态文件和批次台账
 
     常用示例：
     - 标准运行：`-input D:\jobs -output D:\qc_out -origin D:\origin.txt -threads 8 -voxel-size 0.2`
-    - 只生成强度图：`-input D:\jobs -output D:\qc_out -threads 8 -skip-laz`
+    - 输出 LAS：`-input D:\jobs -output D:\qc_out -threads 8 -output-format las`
+    - 只生成强度图：`-input D:\jobs -output D:\qc_out -threads 8 -output-format none`
     - 不抽稀：`-input D:\jobs -output D:\qc_out -voxel-size 0`
 params:
   - key: input
@@ -36,7 +37,7 @@ params:
     label: 输出根目录
     placeholder: 选择统一输出目录
     required: true
-    help: 输出 LAZ、强度图、UTM 汇总、日志和台账的统一根目录。
+    help: 输出 LAZ/LAS、强度图、UTM 汇总、日志和台账的统一根目录。
   - key: origin
     argKey: origin
     type: path
@@ -63,12 +64,19 @@ params:
     label: 已有台账文件
     placeholder: 可选，选择已有 run_ledger.json
     help: 不填写时默认在输出目录下创建 `run_ledger.json`。
-  - key: skipLaz
-    argKey: skip-laz
-    type: boolean
-    label: 跳过 LAZ 写出
-    default: false
-    help: 启用后仅输出强度图、侧车文件、UTM 汇总和状态文件。
+  - key: outputFormat
+    argKey: output-format
+    type: select
+    label: 点云输出格式
+    default: laz
+    options:
+      - label: laz
+        value: laz
+      - label: las
+        value: las
+      - label: none
+        value: none
+    help: 选择抽稀点云输出为 LAZ、LAS，或不输出点云文件。
 execution:
   local:
     adapter: rust-binary

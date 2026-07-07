@@ -43,6 +43,9 @@
 ## 四、默认验证命令
 
 ```bash
+# 内置工具清单校验（由 build.go 自动执行）
+go test ./libs/catalog/builtin ./app -run 'TestLoadShouldParseAllBuiltinManifests|TestLoadShouldProvideUniqueNonEmptyIDs|TestEnsureToolingLoadsPythonTools'
+
 # Go 测试
 cd app && go test ./...
 
@@ -63,4 +66,5 @@ go run scripts/build.go
 
 1. 不要在仓库根直接执行 `go test ./...`，避免扫描到 `build/` 下托管环境内容。
 2. `build/` 是运行时和构建产物目录，不纳入源码治理。
-3. `go run scripts/build.go` 更适合在提交前或交付前执行，用于做最终构建确认。
+3. `go run scripts/build.go` 更适合在提交前或交付前执行，用于做最终构建确认；脚本会先校验 `libs/catalog/builtin/manifests/*.yaml`，若存在坏 YAML、空字段或重复 `id`，必须直接失败退出。
+4. 新增或修改内置工具 manifest 时，禁止依赖“运行应用后人工发现问题”；至少要保证 `builtin.Load()` 可通过测试，并能被 `scripts/build.go` 在编译前阻断。

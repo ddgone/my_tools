@@ -1,0 +1,71 @@
+id: point_cloud_intensity_raster
+name: LAS/LAZ强度图生成
+kind: rust
+category: KD测试工具 > 点云处理工具
+icon: rust
+description: 对 LAS/LAZ 点云生成强度图 PNG 及 GIS 侧车文件，支持单文件或目录批量并发处理。
+docs:
+  summary: 面向 LAS/LAZ 成品点云的独立强度图工具，支持文件或目录输入、目录输出、分辨率配置和并发处理。
+  usage: |
+    本工具只做强度图生成，不解析白犀牛任务包，不做体素抽稀，不输出点云文件。
+
+    输入规则：
+    - `input` 支持单个 `.las/.laz` 文件
+    - `input` 也支持目录，目录模式下会递归扫描全部 `.las/.laz`
+    - 输出目录会保留相对目录结构
+
+    输出内容：
+    - `png`
+    - `pgw`
+    - `prj`
+    - `aux.xml`
+    - `vrt`
+
+    常用示例：
+    - `--input D:\clouds --output D:\raster_out --resolution 0.5 --threads 8`
+    - `--input D:\clouds\a.las --output D:\raster_out --resolution 0.2`
+    - `--input D:\clouds --output D:\raster_out --resolution 1.0 --force`
+params:
+  - key: input
+    argKey: input
+    type: path
+    pathMode: fileOrDirectory
+    label: 输入点云
+    placeholder: 选择 LAS/LAZ 文件或目录
+    required: true
+    help: 支持单个 `.las/.laz` 文件，或包含多个点云文件的目录。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: 输出目录
+    placeholder: 选择强度图输出目录
+    required: true
+    help: 工具会在该目录下输出 PNG 与 GIS 侧车文件，并保留相对目录结构。
+  - key: resolution
+    argKey: resolution
+    type: number
+    label: 分辨率（米/像素）
+    default: 0.5
+    help: 强度图的栅格分辨率。
+  - key: threads
+    argKey: threads
+    type: number
+    label: 并发数
+    default: 4
+    help: 控制目录批处理和内部栅格计算的线程数。
+  - key: force
+    argKey: force
+    type: boolean
+    label: 覆盖已有输出
+    default: false
+    help: 启用后允许覆盖已存在的目标文件。
+execution:
+  local:
+    adapter: rust-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/rust_tools/point_cloud_intensity_raster/src/lib.rs

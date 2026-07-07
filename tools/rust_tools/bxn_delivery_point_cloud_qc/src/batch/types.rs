@@ -1,4 +1,6 @@
-use crate::legacy::{MappingMode, PcdProcessReport, PivotMode, RepresentativeMode};
+use crate::legacy::{
+    MappingMode, PcdProcessReport, PivotMode, PointCloudOutputFormat, RepresentativeMode,
+};
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -17,7 +19,7 @@ pub(crate) const DEFAULT_LEDGER_NAME: &str = "run_ledger.json";
 #[command(
     author,
     version,
-    about = "批量扫描 0 阶段数据包中的 process_result_0/deskew_cloud 与 opti_pose_enu.txt，输出强度图，并可选输出最终抽稀 LAZ"
+    about = "批量扫描 0 阶段数据包中的 process_result_0/deskew_cloud 与 opti_pose_enu.txt，输出强度图，并可选输出最终抽稀 LAZ/LAS"
 )]
 pub struct BatchCli {
     #[arg(short, long, value_name = "DIR")]
@@ -39,10 +41,11 @@ pub struct BatchCli {
     pub(crate) ledger: Option<PathBuf>,
     #[arg(
         long,
-        default_value_t = false,
-        help = "跳过 LAZ 写出，仅输出强度图、侧车文件、UTM 收集结果和状态文件"
+        value_enum,
+        default_value_t = PointCloudOutputFormat::Laz,
+        help = "点云输出格式：laz / las / none；none 表示不输出点云文件，仅输出强度图、侧车文件、UTM 收集结果和状态文件"
     )]
-    pub(crate) skip_laz: bool,
+    pub(crate) output_format: PointCloudOutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +65,8 @@ pub(crate) struct BatchTask {
     pub(crate) pcd_dir: PathBuf,
     pub(crate) enu_path: PathBuf,
     pub(crate) utm_path: PathBuf,
-    pub(crate) output_laz: PathBuf,
+    pub(crate) output_point_cloud: Option<PathBuf>,
+    pub(crate) output_format: PointCloudOutputFormat,
     pub(crate) intensity_png: PathBuf,
     pub(crate) utm_collected_path: PathBuf,
     pub(crate) package_log_path: PathBuf,
@@ -84,7 +88,8 @@ pub(crate) struct StatusFile {
     pub(crate) pcd_dir: String,
     pub(crate) enu_path: String,
     pub(crate) utm_path: String,
-    pub(crate) output_laz: String,
+    pub(crate) output_point_cloud: Option<String>,
+    pub(crate) output_format: PointCloudOutputFormat,
     pub(crate) intensity_png: String,
     pub(crate) utm_collected_path: String,
     pub(crate) package_log: String,
@@ -95,7 +100,7 @@ pub(crate) struct StatusFile {
     pub(crate) threads: usize,
     pub(crate) pivot: &'static str,
     pub(crate) mapping: &'static str,
-    pub(crate) skip_laz: bool,
+    pub(crate) output_enabled: bool,
     pub(crate) report: PcdProcessReport,
     pub(crate) required_outputs: Vec<String>,
 }
@@ -126,6 +131,8 @@ pub(crate) struct PackageFingerprint {
     pub(crate) origin_file: Option<FileFingerprint>,
     #[serde(default)]
     pub(crate) voxel_setting: Option<String>,
+    #[serde(default)]
+    pub(crate) output_format: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -134,7 +141,10 @@ pub(crate) struct LedgerPackageEntry {
     pub(crate) last_run_epoch_s: u64,
     pub(crate) message: String,
     pub(crate) fingerprint: Option<PackageFingerprint>,
-    pub(crate) output_laz: String,
+    #[serde(default, alias = "output_laz")]
+    pub(crate) output_point_cloud: Option<String>,
+    #[serde(default)]
+    pub(crate) output_format: PointCloudOutputFormat,
     pub(crate) intensity_png: String,
 }
 
@@ -171,6 +181,40 @@ impl BatchLogger {
         eprintln!("{line}");
         let _ = writeln!(self.file, "{line}");
         let _ = self.file.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LedgerPackageEntry, PointCloudOutputFormat};
+
+    #[test]
+    fn should_deserialize_legacy_output_laz_field() {
+        let entry: LedgerPackageEntry = serde_json::from_str(
+            r#"{
+                "status":"success",
+                "last_run_epoch_s":123,
+                "message":"ok",
+                "fingerprint":null,
+                "output_laz":"D:\\out\\sample.laz",
+                "intensity_png":"D:\\out\\intensity.png"
+            }"#,
+        )
+        .expect("legacy ledger entry should deserialize");
+
+        assert_eq!(
+            entry.output_point_cloud.as_deref(),
+            Some(r"D:\out\sample.laz")
+        );
+        assert_eq!(entry.output_format, PointCloudOutputFormat::Laz);
+    }
+
+    #[test]
+    fn should_report_output_format_metadata() {
+        assert_eq!(PointCloudOutputFormat::Laz.file_extension(), Some("laz"));
+        assert_eq!(PointCloudOutputFormat::Las.file_extension(), Some("las"));
+        assert_eq!(PointCloudOutputFormat::None.file_extension(), None);
+        assert!(!PointCloudOutputFormat::None.writes_point_cloud());
     }
 }
 

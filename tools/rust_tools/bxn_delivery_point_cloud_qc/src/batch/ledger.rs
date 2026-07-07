@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use crate::legacy::PointCloudOutputFormat;
+
 use super::discovery::required_outputs;
 use super::paths::{ensure_parent_dir, format_float, system_time_to_epoch_ms, unix_now};
 use super::types::{
@@ -13,7 +15,7 @@ pub(crate) fn should_skip_by_ledger(
     task: &BatchTask,
     current_fingerprint: Option<&PackageFingerprint>,
     ledger: &LedgerFile,
-    skip_laz: bool,
+    output_format: PointCloudOutputFormat,
 ) -> bool {
     let Some(entry) = ledger.packages.get(&task.dataset_name) else {
         return false;
@@ -30,13 +32,23 @@ pub(crate) fn should_skip_by_ledger(
     if previous_fingerprint != current_fingerprint {
         return false;
     }
-    required_outputs(task, ledger.origin_path.as_deref().map(Path::new), skip_laz)
-        .into_iter()
-        .all(|path| path.is_file())
+    required_outputs(
+        task,
+        ledger.origin_path.as_deref().map(Path::new),
+        output_format,
+    )
+    .into_iter()
+    .all(|path| path.is_file())
         || {
-            let output_laz = PathBuf::from(&entry.output_laz);
+            let Some(output_point_cloud) = entry.output_point_cloud.as_ref() else {
+                return !output_format.writes_point_cloud()
+                    && PathBuf::from(&entry.intensity_png).is_file();
+            };
+            let output_laz = PathBuf::from(output_point_cloud);
             let intensity_png = PathBuf::from(&entry.intensity_png);
-            output_laz.is_file() && intensity_png.is_file()
+            output_laz.is_file()
+                && intensity_png.is_file()
+                && (!output_format.writes_point_cloud() || entry.output_format == output_format)
         }
 }
 
@@ -75,8 +87,10 @@ pub(crate) fn compute_package_fingerprint(
     task: &BatchTask,
     origin: Option<&Path>,
     voxel_size: f64,
+    output_format: PointCloudOutputFormat,
 ) -> Result<PackageFingerprint> {
     let voxel_setting = Some(voxel_setting_signature(voxel_size));
+    let output_format = Some(output_format.display_name().to_string());
     if let Some(archive_path) = &task.source_archive_path
         && archive_path.is_file()
     {
@@ -93,6 +107,7 @@ pub(crate) fn compute_package_fingerprint(
             pcd_latest_modified_epoch_ms: 0,
             origin_file: origin.map(file_fingerprint).transpose()?,
             voxel_setting,
+            output_format,
         });
     }
 
@@ -128,6 +143,7 @@ pub(crate) fn compute_package_fingerprint(
         pcd_latest_modified_epoch_ms,
         origin_file: origin.map(file_fingerprint).transpose()?,
         voxel_setting,
+        output_format,
     })
 }
 
