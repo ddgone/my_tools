@@ -18,6 +18,7 @@ import SSHDetailPanel from './SSHDetailPanel.vue'
 import BuiltinToolPanel from './BuiltinToolPanel.vue'
 import ArtifactCenterPanel from './ArtifactCenterPanel.vue'
 import ArtifactTaskSnapshotView from './ArtifactTaskSnapshotView.vue'
+import HistoryRecordPanel from './HistoryRecordPanel.vue'
 import WorkbenchContextMenu from './WorkbenchContextMenu.vue'
 import RemotePathPickerModal from './RemotePathPickerModal.vue'
 import ToolKindDevIcon from './ToolKindDevIcon.vue'
@@ -295,6 +296,10 @@ const showExportTargetSelector = computed(() => {
   const tool = toolById(activeToolId.value)
   return (tool?.kind === 'go' || tool?.kind === 'rust') && activeGoExportMode.value === 'binary'
 })
+
+const isHistoryTab = computed(() =>
+  workspace.activeToolTab?.isHistory ?? false,
+)
 
 const searchResults = computed(() => {
   const q = searchInput.value.trim().toLowerCase()
@@ -958,41 +963,45 @@ watch(() => workspace.unifiedTabs.map(item => item.key).join('|'), () => {
           class="overflow-y-auto p-4"
           :class="isTerminalVisible ? 'surface-muted-divider min-h-0 flex-1 border-b' : 'min-h-0 flex-1'"
         >
-          <ToolDetailPanel
-            :tool="toolById(workspace.activeToolTab.toolId)"
+          <HistoryRecordPanel
+            v-if="isHistoryTab"
             :tab="workspace.activeToolTab"
-            :active-task-id="activeTabTaskId"
-            :active-task="activeTask"
-            :is-running="activeTask?.status === 'running'"
-            :is-launching="launching"
-            :is-exporting="exporting"
-            :is-downloading-result="downloadingResult"
-            :is-history="workspace.activeToolTab?.isHistory ?? false"
-            :export-target="activeExportTarget"
-            :export-target-options="exportTargetOptions"
-            :export-button-label="activeExportButtonLabel"
-            :show-export-target-selector="showExportTargetSelector"
-            @execute="handleExecute"
-            @cancel="handleCancel"
-            @export="handleExport"
-            @download-result="handleDownloadResult"
             @re-execute="handleReExecute"
-            @update:execution-target="onExecutionTargetUpdate"
-            @update:python-env="onPythonEnvUpdate"
-            @update:remote-conn-id="onRemoteConnIdUpdate"
-            @update:export-target="onExportTargetUpdate"
           />
-          <div
-            class="workspace-tabs-divider-line mx-4 mt-3 h-px"
-          />
-          <ParameterPanel
-            :tool="toolById(workspace.activeToolTab.toolId)"
-            :execution-target="workspace.activeToolTab.executionTarget"
-            :readonly="workspace.activeToolTab?.isHistory ?? false"
-            class="mt-3"
-            @execute="handleExecute"
-            @file-dialog="handleFileDialog"
-          />
+          <template v-else>
+            <ToolDetailPanel
+              :tool="toolById(workspace.activeToolTab.toolId)"
+              :tab="workspace.activeToolTab"
+              :active-task-id="activeTabTaskId"
+              :active-task="activeTask"
+              :is-running="activeTask?.status === 'running'"
+              :is-launching="launching"
+              :is-exporting="exporting"
+              :is-downloading-result="downloadingResult"
+              :export-target="activeExportTarget"
+              :export-target-options="exportTargetOptions"
+              :export-button-label="activeExportButtonLabel"
+              :show-export-target-selector="showExportTargetSelector"
+              @execute="handleExecute"
+              @cancel="handleCancel"
+              @export="handleExport"
+              @download-result="handleDownloadResult"
+              @update:execution-target="onExecutionTargetUpdate"
+              @update:python-env="onPythonEnvUpdate"
+              @update:remote-conn-id="onRemoteConnIdUpdate"
+              @update:export-target="onExportTargetUpdate"
+            />
+            <div
+              class="workspace-tabs-divider-line mx-4 mt-3 h-px"
+            />
+            <ParameterPanel
+              :tool="toolById(workspace.activeToolTab.toolId)"
+              :execution-target="workspace.activeToolTab.executionTarget"
+              class="mt-3"
+              @execute="handleExecute"
+              @file-dialog="handleFileDialog"
+            />
+          </template>
         </div>
 
         <template v-if="isTerminalVisible">

@@ -29,7 +29,7 @@ import { getVisibleParams } from '@/utils/toolParams'
 const props = defineProps<{
   tool: ToolManifest | null
   executionTarget: 'local' | 'remote'
-  readonly: boolean
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
