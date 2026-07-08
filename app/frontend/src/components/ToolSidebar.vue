@@ -25,9 +25,7 @@ import {
   LaptopOutline,
   OpenOutline,
   CloudUploadOutline,
-  CheckmarkCircleOutline,
-  CloseCircleOutline,
-  RemoveCircleOutline,
+  CopyOutline,
 } from '@vicons/ionicons5'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useExecutionStore } from '@/stores/execution'
@@ -59,6 +57,7 @@ type ExecRecord = {
   target: string
   remoteConnId?: string
   startedAt: number
+  endedAt: number
 }
 
 const emit = defineEmits<{
@@ -319,21 +318,9 @@ const recentToolList = computed(() => {
   return groups
 })
 
-function statusIcon(status: string) {
-  if (status === 'success') return h(NIcon, { component: CheckmarkCircleOutline, size: 14, color: 'rgb(34,197,94)' })
-  if (status === 'error') return h(NIcon, { component: CloseCircleOutline, size: 14, color: 'rgb(239,68,68)' })
-  return h(NIcon, { component: RemoveCircleOutline, size: 14, color: 'rgb(156,163,175)' })
-}
-
 function formatRecordTime(ts: number) {
   const d = new Date(ts)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-}
-
-function targetLabel(target: string) {
-  if (!target || target === 'local') return '本地'
-  if (target.startsWith('remote:')) return target.slice(7)
-  return target
 }
 
 async function openRecord(record: ExecRecord) {
@@ -548,6 +535,68 @@ const sshContextMenuShow = ref(false)
 const sshContextMenuX = ref(0)
 const sshContextMenuY = ref(0)
 const sshContextMenuConn = ref<SSHConnection | null>(null)
+
+// Record context menu
+const recordContextMenuShow = ref(false)
+const recordContextMenuX = ref(0)
+const recordContextMenuY = ref(0)
+const recordContextMenuRecord = ref<ExecRecord | null>(null)
+const recordContextMenuOptions = computed(() => {
+  const record = recordContextMenuRecord.value
+  if (!record) return []
+  return [
+    { label: '打开记录', key: 'open', icon: OpenOutline },
+    { label: '复制参数', key: 'copy-args', icon: CopyOutline },
+  ]
+})
+function closeRecordContextMenu() {
+  recordContextMenuShow.value = false
+  recordContextMenuRecord.value = null
+}
+function openRecordContextMenu(event: MouseEvent, record: ExecRecord) {
+  event.preventDefault()
+  event.stopPropagation()
+  recordContextMenuRecord.value = record
+  recordContextMenuShow.value = false
+  recordContextMenuX.value = event.clientX
+  recordContextMenuY.value = event.clientY
+  nextTick(() => {
+    recordContextMenuShow.value = true
+  })
+}
+function handleRecordContextMenuSelect(key: string) {
+  const record = recordContextMenuRecord.value
+  if (!record) return
+  switch (key) {
+    case 'open':
+      void openRecord(record)
+      break
+    case 'copy-args':
+      if (record.args) {
+        void navigator.clipboard.writeText(record.args).catch(() => {})
+        message.success('参数已复制')
+      }
+      break
+  }
+  closeRecordContextMenu()
+}
+
+// Duration formatter for record list
+function recordDurationText(record: ExecRecord): string {
+  if (!record.startedAt || !record.endedAt) return ''
+  const ms = Math.max(0, record.endedAt - record.startedAt)
+  if (ms < 1000) return `${ms}ms`
+  const s = ms / 1000
+  if (s < 60) return `${s.toFixed(1)}s`
+  const totalM = Math.floor(s / 60)
+  if (totalM >= 60) return `>1h`
+  const sec = Math.floor(s % 60)
+  return `${totalM}m ${sec}s`
+}
+
+function recordKind(record: ExecRecord): string {
+  return allTools.value.find((t) => t.id === record.toolId)?.kind ?? ''
+}
 
 const toolContextMenuOptions = computed(() => {
   const tool = toolContextMenuTool.value
@@ -965,36 +1014,78 @@ defineExpose({
                   <div class="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-fg-muted)/0.82)]">
                     {{ group.label }}
                   </div>
-                  <div class="space-y-1">
-                    <NCard
+                  <div class="space-y-0.5">
+                    <div
                       v-for="record in group.records"
                       :key="record.id"
-                      size="small"
-                      :bordered="true"
-                      hoverable
-                      class="ui-surface-hover sidebar-collection-card"
-                      :content-style="{ padding: '7px 10px' }"
+                      class="sidebar-record-row group flex items-center gap-x-1.5 rounded-md px-2 py-1.5 cursor-pointer select-none"
                       @click="openRecord(record)"
+                      @contextmenu="openRecordContextMenu($event, record)"
                     >
-                      <div class="flex items-center gap-x-1.5">
-                        <component
-                          :is="statusIcon(record.status)"
-                          class="shrink-0"
-                        />
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-xs font-medium">
-                            {{ record.toolName }}
-                          </div>
-                          <div class="truncate text-[10px] text-[rgb(var(--color-fg-muted)/0.85)]">
-                            {{ record.args || '无参数' }}
-                          </div>
-                        </div>
-                        <div class="flex flex-col items-end gap-y-0.5 shrink-0">
-                          <span class="text-[10px] text-[rgb(var(--color-fg-muted)/0.7)]">{{ formatRecordTime(record.startedAt) }}</span>
-                          <span class="text-[9px] text-[rgb(var(--color-fg-muted)/0.55)]">{{ targetLabel(record.target) }}</span>
-                        </div>
+                      <ToolKindDevIcon
+                        :kind="recordKind(record)"
+                        :size="14"
+                        :slot-width="18"
+                        :opacity="0.88"
+                      />
+                      <div
+                        class="truncate text-xs font-medium text-[rgb(var(--color-fg-base)/0.90)]"
+                        :style="{ width: '30ch' }"
+                        :title="record.toolName"
+                      >
+                        {{ record.toolName }}
                       </div>
-                    </NCard>
+                      <span
+                        class="shrink-0 h-1.5 w-1.5 rounded-full"
+                        :class="{
+                          'bg-[rgb(34,197,94)]': record.status === 'success',
+                          'bg-[rgb(239,68,68)]': record.status === 'error',
+                          'bg-[rgb(156,163,175)]': record.status !== 'success' && record.status !== 'error',
+                        }"
+                      />
+                      <span
+                        class="shrink-0 mr-0.5 text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.78)]"
+                        :style="{ width: '8ch' }"
+                      >
+                        {{ formatRecordTime(record.startedAt) }}
+                      </span>
+                      <span
+                        v-if="recordDurationText(record)"
+                        class="shrink-0 mr-0.5 text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.62)]"
+                        :style="{ width: '7ch' }"
+                      >
+                        {{ recordDurationText(record) }}
+                      </span>
+                      <NIcon
+                        :component="StarIcon"
+                        size="10"
+                        color="rgb(var(--color-warning)/0.78)"
+                        class="shrink-0"
+                        :style="{ visibility: workspace.isFavorite(record.toolId) ? 'visible' : 'hidden' }"
+                      />
+                      <NIcon
+                        :component="GlobeOutline"
+                        size="11"
+                        class="shrink-0"
+                        :style="{
+                          color: 'rgb(var(--color-mode-remote)/0.82)',
+                          visibility: (record.target && record.target !== 'local') ? 'visible' : 'hidden',
+                        }"
+                      />
+                      <NButton
+                        text
+                        size="tiny"
+                        class="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        @click.stop="openRecordContextMenu($event, record)"
+                      >
+                        <template #icon>
+                          <NIcon
+                            :component="EllipsisHorizontal"
+                            size="14"
+                          />
+                        </template>
+                      </NButton>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1301,6 +1392,17 @@ defineExpose({
       @close="closeSSHContextMenu"
     />
 
+    <WorkbenchContextMenu
+      :show="recordContextMenuShow"
+      :x="recordContextMenuX"
+      :y="recordContextMenuY"
+      :title="recordContextMenuRecord?.toolName ?? ''"
+      :subtitle="recordContextMenuRecord ? formatRecordTime(recordContextMenuRecord.startedAt) : ''"
+      :items="recordContextMenuOptions"
+      @select="handleRecordContextMenuSelect"
+      @close="closeRecordContextMenu"
+    />
+
     <Teleport to="body">
       <div
         v-if="tooltipShow"
@@ -1330,6 +1432,11 @@ defineExpose({
 .sidebar-collection-card-content-active {
   color: v-bind(sidebarKindAccent);
 }
+
+.sidebar-record-row:hover {
+  background: rgb(var(--color-fg-base) / 0.05);
+}
+
 .category-tree .n-tree-node-content {
   padding-top: 2px;
   padding-bottom: 2px;
