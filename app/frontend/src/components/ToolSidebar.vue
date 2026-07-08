@@ -1018,7 +1018,7 @@ defineExpose({
                     <div
                       v-for="record in group.records"
                       :key="record.id"
-                      class="sidebar-record-row group flex items-center gap-x-1.5 rounded-md px-2 py-1.5 cursor-pointer select-none"
+                      class="sidebar-record-row group flex items-center gap-x-1 rounded-md px-2 py-1.5 cursor-pointer select-none"
                       @click="openRecord(record)"
                       @contextmenu="openRecordContextMenu($event, record)"
                     >
@@ -1027,14 +1027,18 @@ defineExpose({
                         :size="14"
                         :slot-width="18"
                         :opacity="0.88"
+                        class="shrink-0"
                       />
                       <div
                         class="truncate text-xs font-medium text-[rgb(var(--color-fg-base)/0.90)]"
-                        :style="{ width: '30ch' }"
+                        :style="{ maxWidth: '30ch', minWidth: '6ch', flexShrink: '0' }"
                         :title="record.toolName"
                       >
                         {{ record.toolName }}
                       </div>
+                      <div
+                        style="flex: 999 1 0px; min-width: 0; height: 1px"
+                      />
                       <span
                         class="shrink-0 h-1.5 w-1.5 rounded-full"
                         :class="{
@@ -1044,15 +1048,15 @@ defineExpose({
                         }"
                       />
                       <span
-                        class="shrink-0 mr-0.5 text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.78)]"
-                        :style="{ width: '8ch' }"
+                        class="text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.78)]"
+                        :style="{ width: '8ch', minWidth: '0', flexShrink: '1', overflow: 'hidden', whiteSpace: 'nowrap', marginRight: '2px' }"
                       >
                         {{ formatRecordTime(record.startedAt) }}
                       </span>
                       <span
                         v-if="recordDurationText(record)"
-                        class="shrink-0 mr-0.5 text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.62)]"
-                        :style="{ width: '7ch' }"
+                        class="text-[11px] text-right text-[rgb(var(--color-fg-muted)/0.62)]"
+                        :style="{ width: '7ch', minWidth: '0', flexShrink: '1', overflow: 'hidden', whiteSpace: 'nowrap', marginRight: '2px' }"
                       >
                         {{ recordDurationText(record) }}
                       </span>
