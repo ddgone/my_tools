@@ -286,6 +286,47 @@ body {
   transform: translateY(0.5px);
 }
 
+/* ------------------------------------------------------------------ */
+/* 全局修复：防止点击后 :focus 状态残留，表现为 hover 高亮不消失         */
+/* 保留 :focus-visible（键盘 Tab 导航）的正常焦点指示                    */
+/* ------------------------------------------------------------------ */
+
+/* 原生元素：移除鼠标点击后的默认 focus outline */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Naive UI NButton：隐藏鼠标点击后的焦点环 overlay */
+.n-button:focus:not(:focus-visible) .n-button__state-border {
+  display: none !important;
+}
+
+/* Naive UI NCheckbox / NSwitch 等表单控件：消除点击后焦点环残留 */
+.n-checkbox:focus:not(:focus-visible),
+.n-switch:focus:not(:focus-visible),
+.n-radio:focus:not(:focus-visible),
+.n-slider:focus:not(:focus-visible) {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Naive UI NTree 节点：消除鼠标点击后的焦点背景残留 */
+.n-tree .n-tree-node:focus:not(:focus-visible) {
+  background-color: transparent !important;
+}
+
+/* Naive UI NDropdown trigger / base-wave 等：消除 ripple 残留 */
+.n-base-wave:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 通用：所有可点击元素的 focus-visible 保留系统默认，仅消除非焦点导航的场景 */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
 .cursor-blink::after {
   content: '\258D';
   animation: blink 1s step-end infinite;
