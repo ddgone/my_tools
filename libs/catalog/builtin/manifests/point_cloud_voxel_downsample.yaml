@@ -1,5 +1,5 @@
 id: point_cloud_voxel_downsample
-name: LAS/LAZ点云体素抽稀
+name: LAS/LAZ 体素抽稀
 kind: rust
 category: KD测试工具 > 点云处理工具
 icon: rust

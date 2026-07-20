@@ -1,5 +1,5 @@
 id: geojson_to_shp
-name: GeoJSON转Shapefile工具
+name: GeoJSON 转 Shapefile
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go

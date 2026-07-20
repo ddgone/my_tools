@@ -1,7 +1,7 @@
 id: bxn_delivery_point_cloud_qc
 name: 白犀牛交付点云质检预处理
 kind: rust
-category: KD测试工具 > 点云处理工具
+category: KD测试工具 > 点云处理工具 > 白犀牛项目工具
 icon: rust
 description: 批量处理白犀牛交付任务包，按需输出抽稀 LAZ/LAS、强度图、UTM 汇总和状态台账。
 docs:
@@ -59,6 +59,12 @@ params:
     label: 体素大小（米）
     default: 0.2
     help: 体素抽稀边长；0 表示不抽稀。
+  - key: intensityResolution
+    argKey: intensity-resolution
+    type: number
+    label: 强度图分辨率（米）
+    default: 0.5
+    help: 强度图每个像素对应的地面分辨率；过大时增大此值（如 1.0、2.0）以减小输出图像尺寸。
   - key: ledger
     argKey: ledger
     type: path

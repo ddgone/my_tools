@@ -55,7 +55,7 @@ func TestRunConvertWritesPerTrackAndMergedArtifacts(t *testing.T) {
 	writePOSInput(t, inputDir, "track_b.json", "track_2", 3, 4)
 
 	var out bytes.Buffer
-	if err := runConvert(context.Background(), inputDir, outputDir, artifactAll, &out); err != nil {
+	if err := runConvert(context.Background(), inputDir, outputDir, artifactAll, 4, &out); err != nil {
 		t.Fatalf("expected runConvert success, got error: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestRunConvertRespectsArtifactSetSHP(t *testing.T) {
 	writePOSInput(t, inputDir, "track.json", "track_1", 1, 2)
 
 	var out bytes.Buffer
-	if err := runConvert(context.Background(), inputDir, outputDir, artifactSHP, &out); err != nil {
+	if err := runConvert(context.Background(), inputDir, outputDir, artifactSHP, 4, &out); err != nil {
 		t.Fatalf("expected runConvert success, got error: %v", err)
 	}
 
@@ -89,7 +89,7 @@ func TestRunConvertRespectsArtifactSetGeoJSON(t *testing.T) {
 	writePOSInput(t, inputDir, "track.json", "track_1", 1, 2)
 
 	var out bytes.Buffer
-	if err := runConvert(context.Background(), inputDir, outputDir, artifactGeoJSON, &out); err != nil {
+	if err := runConvert(context.Background(), inputDir, outputDir, artifactGeoJSON, 4, &out); err != nil {
 		t.Fatalf("expected runConvert success, got error: %v", err)
 	}
 

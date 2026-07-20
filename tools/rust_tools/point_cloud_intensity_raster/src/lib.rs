@@ -31,6 +31,8 @@ struct Cli {
     threads: usize,
     #[arg(long, default_value_t = false)]
     force: bool,
+    #[arg(long, default_value_t = 32650, help = "EPSG 代码，当 LAS 文件缺少 CRS 元数据时作为 fallback")]
+    epsg: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +96,7 @@ fn run_cli(cli: Cli) -> Result<()> {
     pool.install(|| {
         tasks
             .par_iter()
-            .try_for_each(|task| process_task(task, cli.resolution, cli.force))
+            .try_for_each(|task| process_task(task, cli.resolution, cli.force, cli.epsg))
     })?;
 
     eprintln!(
@@ -105,7 +107,7 @@ fn run_cli(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn process_task(task: &Task, resolution: f64, force: bool) -> Result<()> {
+fn process_task(task: &Task, resolution: f64, force: bool, epsg: u16) -> Result<()> {
     if task.output_png.exists() && !force {
         bail!(
             "输出文件已存在，如需覆盖请加 --force: {}",
@@ -120,7 +122,7 @@ fn process_task(task: &Task, resolution: f64, force: bool) -> Result<()> {
         .points()
         .collect::<std::result::Result<Vec<_>, _>>()
         .with_context(|| format!("读取点记录失败: {}", task.input_path.display()))?;
-    write_intensity_preview_points(&task.output_png, resolution, &points, &header, force)?;
+    write_intensity_preview_points(&task.output_png, resolution, &points, &header, force, epsg)?;
 
     eprintln!(
         "[point_cloud_intensity_raster] {} -> {}",
@@ -210,10 +212,11 @@ fn write_intensity_preview_points(
     points: &[Point],
     header: &Header,
     force: bool,
+    epsg: u16,
 ) -> Result<()> {
     let layout = build_raster_layout(header, resolution)?;
     let raster = accumulate_raster_points_parallel(points, &layout);
-    write_intensity_preview_from_raster(preview_path, &layout, &raster, header, force)
+    write_intensity_preview_from_raster(preview_path, &layout, &raster, header, force, epsg)
 }
 
 fn build_raster_layout(header: &Header, resolution: f64) -> Result<RasterLayout> {
@@ -314,6 +317,7 @@ fn write_intensity_preview_from_raster(
     raster: &[RasterCell],
     header: &Header,
     force: bool,
+    epsg: u16,
 ) -> Result<()> {
     let mut values = Vec::with_capacity(raster.len());
     for cell in raster {
@@ -364,9 +368,9 @@ fn write_intensity_preview_from_raster(
         layout.resolution,
         force,
     )?;
-    write_prj_file(preview_path, header, force)?;
-    write_aux_xml_file(preview_path, layout, header, force)?;
-    write_vrt_file(preview_path, layout, header, force)?;
+    write_prj_file(preview_path, header, force, epsg)?;
+    write_aux_xml_file(preview_path, layout, header, force, epsg)?;
+    write_vrt_file(preview_path, layout, header, force, epsg)?;
     Ok(())
 }
 
@@ -420,8 +424,8 @@ fn write_world_file(
     Ok(())
 }
 
-fn write_prj_file(preview_path: &Path, header: &Header, force: bool) -> Result<()> {
-    let Some(wkt) = header_crs_wkt(header)? else {
+fn write_prj_file(preview_path: &Path, header: &Header, force: bool, epsg: u16) -> Result<()> {
+    let Some(wkt) = header_crs_wkt(header, epsg)? else {
         return Ok(());
     };
     let prj_file = sidecar_path(preview_path, "prj");
@@ -441,8 +445,9 @@ fn write_aux_xml_file(
     layout: &RasterLayout,
     header: &Header,
     force: bool,
+    epsg: u16,
 ) -> Result<()> {
-    let Some(wkt) = header_crs_wkt(header)? else {
+    let Some(wkt) = header_crs_wkt(header, epsg)? else {
         return Ok(());
     };
     let aux_xml = aux_xml_path(preview_path);
@@ -470,8 +475,9 @@ fn write_vrt_file(
     layout: &RasterLayout,
     header: &Header,
     force: bool,
+    epsg: u16,
 ) -> Result<()> {
-    let Some(wkt) = header_crs_wkt(header)? else {
+    let Some(wkt) = header_crs_wkt(header, epsg)? else {
         return Ok(());
     };
     let vrt_path = vrt_path(preview_path);
@@ -541,14 +547,14 @@ fn write_vrt_file(
     Ok(())
 }
 
-fn header_crs_wkt(header: &Header) -> Result<Option<String>> {
+fn header_crs_wkt(header: &Header, epsg: u16) -> Result<Option<String>> {
     if let Some(wkt_bytes) = header.get_wkt_crs_bytes() {
         return Ok(Some(String::from_utf8_lossy(wkt_bytes).into_owned()));
     }
-    let Some(epsg) = extract_projected_epsg(header)? else {
-        return Ok(None);
+    let Some(epsg_code) = extract_projected_epsg(header)? else {
+        return Ok(Some(build_utm_wkt(epsg)?));
     };
-    Ok(Some(build_utm_wkt(epsg)?))
+    Ok(Some(build_utm_wkt(epsg_code)?))
 }
 
 fn extract_projected_epsg(header: &Header) -> Result<Option<u16>> {

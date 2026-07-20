@@ -1,0 +1,65 @@
+id: pcd_to_laz_per_frame
+name: 白犀牛资料编译 PCD 重建 LAS/LAZ
+kind: rust
+category: KD测试工具 > 点云处理工具 > 白犀牛项目工具
+icon: rust
+description: 将 PCD 逐帧转 LAZ，支持 ENU 位姿变换和 origin 坐标偏转，不抽稀、不合帧。
+docs:
+  summary: 逐帧 PCD 转 LAZ，坐标变换（ENU 位姿 + origin 偏转 + EPSG 写入 LAZ 头）。不抽稀、不合帧。
+  usage: |
+    将指定目录下的 PCD 文件逐帧转换为 LAZ。
+    可选 ENU 位姿（LiDAR局部→世界ENU）和 origin 偏转（ENU→UTM）。
+    LAZ 头会写入 EPSG GeoTIFF CRS（如提供 origin）。
+    与原版处理链完全一致，只是不合帧。
+
+    常用示例：
+    - 纯格式转换：-i D:\pcd_dir -o D:\laz_dir
+    - 带 ENU：      -i D:\pcd_dir -o D:\laz_dir -e D:\enu.txt
+    - 带偏转：      -i D:\pcd_dir -o D:\laz_dir -O D:\origin.txt
+    - 完整链路：    -i D:\pcd_dir -o D:\laz_dir -e D:\enu.txt -O D:\origin.txt
+params:
+  - key: input
+    argKey: input
+    type: path
+    pathMode: directory
+    label: PCD 输入目录
+    placeholder: 选择包含 .pcd 文件的目录（不递归子目录）
+    required: true
+    help: 只读该目录下的 .pcd 文件，不检查子目录。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: LAZ 输出目录
+    placeholder: 选择输出 LAZ 文件的目录
+    required: true
+    help: 每个 PCD 输出一个同名 .laz 文件。
+  - key: origin
+    argKey: origin
+    type: path
+    pathMode: file
+    label: 原点文件
+    placeholder: 可选，选择 origin.txt（格式：lat lon alt）
+    help: 不填写时不应用坐标偏转。
+  - key: enu
+    argKey: enu
+    type: path
+    pathMode: file
+    label: ENU 位姿文件
+    placeholder: 可选，选择 opti_pose_enu.txt
+    help: 用于将 LiDAR 局部坐标转为世界 ENU。PCD 文件名需与 ENU 时间戳匹配。
+  - key: threads
+    argKey: threads
+    type: number
+    label: 线程数
+    default: 4
+    help: 处理线程数。
+execution:
+  local:
+    adapter: rust-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/rust_tools/pcd_to_laz_per_frame/src/lib.rs

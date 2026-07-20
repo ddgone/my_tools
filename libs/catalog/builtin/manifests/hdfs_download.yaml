@@ -1,5 +1,5 @@
 id: hdfs_download
-name: HDFS 批量下载工具
+name: HDFS 批量下载
 kind: go
 category: KD测试工具 > HDFS工具
 icon: go

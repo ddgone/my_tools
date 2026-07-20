@@ -19,8 +19,7 @@ use super::paths::{
     unix_now, vrt_path, world_file_path,
 };
 use super::types::{
-    BatchTask, DEFAULT_INTENSITY_RESOLUTION, StatusFile, TaskInputKind, mapping_name, pivot_name,
-    representative_name,
+    BatchTask, StatusFile, TaskInputKind, mapping_name, pivot_name, representative_name,
 };
 
 const PROCESS_ROOT_DIR: &str = "process_result_0";
@@ -253,6 +252,7 @@ pub(crate) fn write_status_file(
     origin: Option<&Path>,
     output_format: PointCloudOutputFormat,
     voxel_size: f64,
+    intensity_resolution: f64,
 ) -> Result<()> {
     let payload = StatusFile {
         completed_at_epoch_s: unix_now(),
@@ -275,7 +275,7 @@ pub(crate) fn write_status_file(
         package_log: task.package_log_path.display().to_string(),
         origin_path: origin.map(|path| path.display().to_string()),
         voxel_size,
-        intensity_resolution: DEFAULT_INTENSITY_RESOLUTION,
+        intensity_resolution,
         representative: representative_name(RepresentativeMode::Center),
         threads: report.threads_used,
         pivot: pivot_name(PivotMode::Centroid),

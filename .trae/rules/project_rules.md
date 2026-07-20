@@ -39,6 +39,7 @@
 6. 生成代码与手写代码标准一致，不能因为是 AI 产出就放宽要求。
 7. 改完要自查，至少说明三件事：改了什么、为什么这么改、怎么验证。
 8. 优先可读性和可维护性，不追求炫技式设计。
+9. **工具修改联动 YAML**：修改工具的参数（新增、删除、改名、改默认值、改类型）时，必须同步更新 `libs/catalog/builtin/manifests/{tool_id}.yaml` 中的 `params` 列表，并在改完后跑一次 manifest 测试（`go test ./libs/catalog/builtin -run TestLoadShouldParseAllBuiltinManifests`）确认无误。
 
 ## 四、默认验证命令
 

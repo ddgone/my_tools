@@ -87,9 +87,11 @@ pub(crate) fn compute_package_fingerprint(
     task: &BatchTask,
     origin: Option<&Path>,
     voxel_size: f64,
+    intensity_resolution: f64,
     output_format: PointCloudOutputFormat,
 ) -> Result<PackageFingerprint> {
     let voxel_setting = Some(voxel_setting_signature(voxel_size));
+    let intensity_setting = Some(intensity_setting_signature(intensity_resolution));
     let output_format = Some(output_format.display_name().to_string());
     if let Some(archive_path) = &task.source_archive_path
         && archive_path.is_file()
@@ -107,6 +109,7 @@ pub(crate) fn compute_package_fingerprint(
             pcd_latest_modified_epoch_ms: 0,
             origin_file: origin.map(file_fingerprint).transpose()?,
             voxel_setting,
+            intensity_setting,
             output_format,
         });
     }
@@ -143,6 +146,7 @@ pub(crate) fn compute_package_fingerprint(
         pcd_latest_modified_epoch_ms,
         origin_file: origin.map(file_fingerprint).transpose()?,
         voxel_setting,
+        intensity_setting,
         output_format,
     })
 }
@@ -162,6 +166,10 @@ fn voxel_setting_signature(voxel_size: f64) -> String {
     } else {
         format!("voxel={}", format_float(voxel_size))
     }
+}
+
+fn intensity_setting_signature(intensity_resolution: f64) -> String {
+    format!("intensity_res={}", format_float(intensity_resolution))
 }
 
 pub(crate) fn prepare_output_root(

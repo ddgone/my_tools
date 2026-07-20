@@ -1,0 +1,77 @@
+id: point_cloud_batch_merge
+name: 单帧点云编译 PCD 重建 LAS/LAZ
+kind: rust
+category: KD测试工具 > 点云处理工具
+icon: rust
+description: 将单帧PCD点云tar.gz批量合并为LAZ/LAS，使用POS轨迹坐标定位，输出UTM投影坐标。
+docs:
+  summary: 扫描点云目录中的 tar.gz 包，匹配 POS JSON 轨迹，将多帧 PCD 合并为单个 LAZ/LAS 文件。自动解压、时间戳匹配、方位旋转、WGS84→UTM 投影。
+  usage: |
+    将单帧点云 tar.gz 包按 POS 轨迹合并为完整 LAZ/LAS。
+
+    输入目录应包含 .tar.gz 压缩包（如 44130200000001-XhJfE.tar.gz）。
+    POS 目录应包含同名 JSON 轨迹文件（如 44130200000001.json）。
+    每个压缩包输出一个 LAZ/LAS，命名与压缩包一致。
+
+    常用示例：
+    - 标准运行：-i D:\cloud_prod -p D:\pos_prod -o D:\output
+    - 输出 LAS：-i D:\cloud_prod -p D:\pos_prod -o D:\output -f las
+    - 不翻转 Z：-i D:\cloud_prod -p D:\pos_prod -o D:\output --no-flip-z
+    - 8 线程：-i D:\cloud_prod -p D:\pos_prod -o D:\output -t 8
+params:
+  - key: input
+    argKey: input
+    type: path
+    pathMode: directory
+    label: 点云输入目录
+    placeholder: 选择包含 .tar.gz 单帧点云包的目录
+    required: true
+    help: 只扫描顶层 .tar.gz 文件。
+  - key: posDir
+    argKey: pos-dir
+    type: path
+    pathMode: directory
+    label: POS 轨迹目录
+    placeholder: 选择包含 JSON 轨迹文件的目录
+    required: true
+    help: JSON 文件名取压缩包名前导数字部分匹配（如 44130200000001.json）。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: 输出目录
+    placeholder: 选择输出 LAZ/LAS 的目录
+    required: true
+    help: 每个压缩包输出一个 LAZ/LAS 文件。
+  - key: outputFormat
+    argKey: output-format
+    type: select
+    label: 输出格式
+    default: laz
+    options:
+      - label: laz
+        value: laz
+      - label: las
+        value: las
+    help: 选择输出文件格式。
+  - key: threads
+    argKey: threads
+    type: number
+    label: 线程数
+    default: 4
+    help: 单包内部并行处理的线程数。
+  - key: flipZ
+    argKey: flip-z
+    type: boolean
+    label: 翻转 Z 轴
+    default: true
+    help: 默认开启。PCD 的 Z 轴通常朝下，开启后翻转朝上。
+execution:
+  local:
+    adapter: rust-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/rust_tools/point_cloud_batch_merge/src/lib.rs

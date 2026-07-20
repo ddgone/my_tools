@@ -1,5 +1,5 @@
 id: trajectory_match_filter_qc
-name: 轨迹点匹配筛选质检
+name: 点云轨迹匹配筛选 QC
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go

@@ -23,8 +23,8 @@ use paths::{
 };
 use std::thread::{self, JoinHandle};
 use types::{
-    BatchCli, BatchLogger, BatchTask, DEFAULT_INTENSITY_RESOLUTION, DEFAULT_LEDGER_NAME,
-    LedgerPackageEntry, LedgerStatus, TaskInputKind, mapping_name, pivot_name, representative_name,
+    BatchCli, BatchLogger, BatchTask, DEFAULT_LEDGER_NAME, LedgerPackageEntry, LedgerStatus,
+    TaskInputKind, mapping_name, pivot_name, representative_name,
 };
 
 struct PendingPrefetch {
@@ -84,7 +84,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
         format!(
             "处理参数: voxel={} intensity={} representative={} threads={} pivot={} mapping={} origin={} point_cloud_output={}",
             format_float(cli.voxel_size),
-            format_float(DEFAULT_INTENSITY_RESOLUTION),
+            format_float(cli.intensity_resolution),
             representative_name(RepresentativeMode::Center),
             cli.threads,
             pivot_name(PivotMode::Centroid),
@@ -123,6 +123,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
             &task,
             global_origin.as_deref(),
             cli.voxel_size,
+            cli.intensity_resolution,
             cli.output_format,
         )
         .ok();
@@ -245,6 +246,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
             global_origin.as_deref(),
             cli.output_format,
             cli.voxel_size,
+            cli.intensity_resolution,
             &mut pending_prefetch,
             &mut logger,
         );
@@ -260,7 +262,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
             voxel_size: cli.voxel_size,
             representative: RepresentativeMode::Center,
             threads: cli.threads,
-            intensity_resolution: DEFAULT_INTENSITY_RESOLUTION,
+            intensity_resolution: cli.intensity_resolution,
             origin: global_origin.clone(),
             yaw_deg: 0.0,
             pivot: PivotMode::Centroid,
@@ -282,6 +284,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                     global_origin.as_deref(),
                     cli.output_format,
                     cli.voxel_size,
+                    cli.intensity_resolution,
                 ) {
                     failed_count += 1;
                     let message = format_task_message(format!("{error:#}"), cleanup_warning);
@@ -337,6 +340,7 @@ fn run_batch(cli: BatchCli) -> Result<()> {
                                     &task,
                                     global_origin.as_deref(),
                                     cli.voxel_size,
+                                    cli.intensity_resolution,
                                     cli.output_format,
                                 )
                                 .ok()
@@ -507,6 +511,9 @@ fn validate_cli(cli: &BatchCli) -> Result<()> {
     if !cli.voxel_size.is_finite() || cli.voxel_size < 0.0 {
         bail!("--voxel-size 必须是大于等于 0 的有限数值");
     }
+    if !(cli.intensity_resolution.is_finite() && cli.intensity_resolution > 0.0) {
+        bail!("--intensity-resolution 必须是正数");
+    }
     if let Some(origin) = &cli.origin {
         validate_origin_file(origin)?;
     }
@@ -551,6 +558,7 @@ fn maybe_start_prefetch(
     origin: Option<&std::path::Path>,
     output_format: PointCloudOutputFormat,
     voxel_size: f64,
+    intensity_resolution: f64,
     pending_prefetch: &mut Option<PendingPrefetch>,
     logger: &mut BatchLogger,
 ) {
@@ -564,7 +572,9 @@ fn maybe_start_prefetch(
         return;
     }
 
-    let fingerprint = compute_package_fingerprint(&task, origin, voxel_size, output_format).ok();
+    let fingerprint =
+        compute_package_fingerprint(&task, origin, voxel_size, intensity_resolution, output_format)
+            .ok();
     if should_skip_by_ledger(&task, fingerprint.as_ref(), ledger, output_format) {
         return;
     }

@@ -1,5 +1,5 @@
 id: point_cloud_intensity_raster
-name: LAS/LAZ强度图生成
+name: 点云强度图生成
 kind: rust
 category: KD测试工具 > 点云处理工具
 icon: rust
@@ -25,6 +25,7 @@ docs:
     - --input D:\clouds --output D:\raster_out --resolution 0.5 --threads 8
     - --input D:\clouds\a.las --output D:\raster_out --resolution 0.2
     - --input D:\clouds --output D:\raster_out --resolution 1.0 --force
+    - --input D:\clouds --output D:\raster_out --epsg 32650
 params:
   - key: input
     argKey: input
@@ -60,6 +61,12 @@ params:
     label: 覆盖已有输出
     default: false
     help: 启用后允许覆盖已存在的目标文件。
+  - key: epsg
+    argKey: epsg
+    type: number
+    label: EPSG 代码
+    default: 32650
+    help: 当 LAS 文件缺少 CRS 元数据时，使用此 EPSG 生成 GIS 投影文件。
 execution:
   local:
     adapter: rust-binary

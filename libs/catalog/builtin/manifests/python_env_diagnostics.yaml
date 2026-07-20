@@ -1,5 +1,5 @@
 id: python_env_diagnostics
-name: Python 环境诊断与依赖验证
+name: Python 环境诊断
 kind: python
 category: Python 脚本 > 环境诊断
 icon: python

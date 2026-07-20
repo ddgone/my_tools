@@ -328,8 +328,10 @@ var bundledTools = []bundledTool{
 	{ID: "trajectory_match_filter_qc", Kind: "go", SourceEntry: "tools/go_tools/trajectory_match_filter_qc/tool.go"},
 	{ID: "utm_geojson_converter", Kind: "go", SourceEntry: "tools/go_tools/utm_extract_to_gis/tool.go"},
 	{ID: "bxn_delivery_point_cloud_qc", Kind: "rust", SourceEntry: "tools/rust_tools/bxn_delivery_point_cloud_qc/src/lib.rs", ModuleDir: "tools/rust_tools/bxn_delivery_point_cloud_qc"},
+	{ID: "pcd_to_laz_per_frame", Kind: "rust", SourceEntry: "tools/rust_tools/pcd_to_laz_per_frame/src/lib.rs", ModuleDir: "tools/rust_tools/pcd_to_laz_per_frame"},
 	{ID: "point_cloud_voxel_downsample", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_voxel_downsample/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_voxel_downsample"},
 	{ID: "point_cloud_intensity_raster", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_intensity_raster/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_intensity_raster"},
+	{ID: "point_cloud_batch_merge", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_batch_merge/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_batch_merge"},
 }
 
 func buildToolCache(rootDir, runtimeDir, targetOS, targetArch string, buildAll bool) error {

@@ -1,7 +1,7 @@
 id: restore_pcd_by_mgrs
-name: 白犀牛偏转后的pcd文件转换回未偏转的las文件
+name: 白犀牛 PCD 偏转还原 LAS
 kind: python
-category: Python 脚本
+category: KD测试工具 > 点云处理工具 > 白犀牛项目工具
 icon: python
 description: 根据文件名中的 MGRS 百米块信息恢复原始 UTM 坐标系的 LAS 文件。
 docs:

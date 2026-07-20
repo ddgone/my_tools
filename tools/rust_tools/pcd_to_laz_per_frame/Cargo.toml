@@ -1,0 +1,16 @@
+[package]
+name = "pcd_to_laz_per_frame"
+version = "1.0.0"
+edition = "2024"
+
+[lib]
+name = "pcd_to_laz_per_frame"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+byteorder = "1.5"
+clap = { version = "4.5", features = ["derive"] }
+glam = "0.33.1"
+las = { version = "0.9.10", features = ["laz-parallel"] }
+rayon = "1.12"

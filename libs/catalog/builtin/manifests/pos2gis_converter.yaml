@@ -1,5 +1,5 @@
 id: pos2gis_converter
-name: 点云pos轨迹转换GeoJSON+Shapefile
+name: 点云 POS 轨迹转换 GIS
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go
@@ -17,7 +17,7 @@ docs:
     - 不填写 output 时默认在输入目录下生成 output 目录
 
     常用示例：
-    - -input D:\pos_json_dir -output D:\gis_out -artifact-set all
+    - -input D:\pos_json_dir -output D:\gis_out -artifact-set all -workers 4
 params:
   - key: input
     argKey: input
@@ -47,6 +47,12 @@ params:
         value: shp
       - label: 仅 GeoJSON
         value: geojson
+  - key: workers
+    argKey: workers
+    type: number
+    label: 并发数
+    default: 4
+    help: 并行处理 JSON 文件的线程数，量大的场景提高并发可显著加速。
 execution:
   local:
     adapter: go-binary

@@ -908,7 +908,7 @@ defineExpose({
                 :render-label="renderNodeLabel"
                 :node-props="treeNodeProps"
                 :override-default-node-click-behavior="handleNodeClickBehavior"
-                :indent="8"
+                :indent="14"
                 show-line
                 block-line
                 selectable

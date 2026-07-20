@@ -41,6 +41,13 @@ pub struct BatchCli {
     pub(crate) ledger: Option<PathBuf>,
     #[arg(
         long,
+        value_name = "METER",
+        default_value_t = DEFAULT_INTENSITY_RESOLUTION,
+        help = "强度图分辨率，单位米；默认 0.5"
+    )]
+    pub(crate) intensity_resolution: f64,
+    #[arg(
+        long,
         value_enum,
         default_value_t = PointCloudOutputFormat::Laz,
         help = "点云输出格式：laz / las / none；none 表示不输出点云文件，仅输出强度图、侧车文件、UTM 收集结果和状态文件"
@@ -131,6 +138,8 @@ pub(crate) struct PackageFingerprint {
     pub(crate) origin_file: Option<FileFingerprint>,
     #[serde(default)]
     pub(crate) voxel_setting: Option<String>,
+    #[serde(default)]
+    pub(crate) intensity_setting: Option<String>,
     #[serde(default)]
     pub(crate) output_format: Option<String>,
 }

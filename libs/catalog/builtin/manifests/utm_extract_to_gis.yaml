@@ -1,5 +1,5 @@
 id: utm_geojson_converter
-name: UTM轨迹提取与GIS转换
+name: UTM 轨迹转 GIS
 kind: go
 category: KD测试工具 > 点云处理工具
 icon: go

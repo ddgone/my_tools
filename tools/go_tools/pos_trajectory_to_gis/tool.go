@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/jonas-p/go-shp"
 )
@@ -267,7 +268,22 @@ func writeMergedArtifacts(ctx context.Context, outputDir string, points []Extrac
 	return writeTrackArtifacts(ctx, outputDir, "merged_pos", points, artifactSet, out)
 }
 
-func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, out io.Writer) error {
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *syncWriter) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
+
+func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, workers int, out io.Writer) error {
+	if workers <= 0 {
+		return fmt.Errorf("错误：-workers 必须大于 0")
+	}
+
 	info, err := os.Stat(inputDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -295,9 +311,21 @@ func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, ou
 		}
 	}
 
-	var allPoints []ExtractedPoint
-	usedBaseNames := map[string]int{}
-	converted := 0
+	if len(jsonFiles) == 0 {
+		return fmt.Errorf("未找到任何有效 POS JSON 轨迹")
+	}
+
+	sw := &syncWriter{w: out}
+
+	var (
+		wg            sync.WaitGroup
+		mu            sync.Mutex
+		allPoints     []ExtractedPoint
+		usedBaseNames = map[string]int{}
+		converted     int
+		firstErr      error
+		sem           = make(chan struct{}, workers)
+	)
 
 	for _, jsonPath := range jsonFiles {
 		select {
@@ -306,30 +334,56 @@ func runConvert(ctx context.Context, inputDir, outputDir, artifactSet string, ou
 		default:
 		}
 
-		points, err := parseJSONFile(ctx, jsonPath)
-		if err != nil {
-			if err.Error() == "任务已被取消" {
-				return err
+		wg.Add(1)
+		go func(jp string) {
+			defer wg.Done()
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			points, err := parseJSONFile(ctx, jp)
+			if err != nil {
+				if err.Error() == "任务已被取消" {
+					return
+				}
+				mu.Lock()
+				fmt.Fprintf(sw, "处理 %s 出错: %v\n", jp, err)
+				mu.Unlock()
+				return
 			}
-			fmt.Fprintf(out, "处理 %s 出错: %v\n", jsonPath, err)
-			continue
-		}
-		if len(points) == 0 {
-			continue
-		}
+			if len(points) == 0 {
+				return
+			}
 
-		baseName := allocateArtifactBase(strings.TrimSuffix(filepath.Base(jsonPath), filepath.Ext(jsonPath)), usedBaseNames)
-		fmt.Fprintf(out, "转换: %s\n", filepath.Base(jsonPath))
-		if err := writeTrackArtifacts(ctx, outputDir, baseName, points, artifactSet, out); err != nil {
-			return err
-		}
+			mu.Lock()
+			baseName := allocateArtifactBase(strings.TrimSuffix(filepath.Base(jp), filepath.Ext(jp)), usedBaseNames)
+			mu.Unlock()
 
-		allPoints = append(allPoints, points...)
-		converted++
+			fmt.Fprintf(sw, "转换: %s\n", filepath.Base(jp))
+			if err := writeTrackArtifacts(ctx, outputDir, baseName, points, artifactSet, sw); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+				return
+			}
+
+			mu.Lock()
+			allPoints = append(allPoints, points...)
+			converted++
+			mu.Unlock()
+		}(jsonPath)
+	}
+
+	wg.Wait()
+
+	if firstErr != nil {
+		return firstErr
 	}
 
 	if converted == 0 {
-		return fmt.Errorf("未找到任何有效 POS JSON 轨迹")
+		return fmt.Errorf("%d 个 JSON 文件中未找到有效轨迹数据", len(jsonFiles))
 	}
 
 	select {
@@ -355,10 +409,12 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	var inputDir string
 	var outputDir string
 	var artifactSet string
+	var workers int
 
 	fs.StringVar(&inputDir, "input", "", "")
 	fs.StringVar(&outputDir, "output", "", "")
 	fs.StringVar(&artifactSet, "artifact-set", artifactAll, "")
+	fs.IntVar(&workers, "workers", 4, "")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -376,5 +432,5 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 		outputDir = defaultOutputDir(inputDir)
 	}
 
-	return runConvert(ctx, inputDir, outputDir, artifactSet, out)
+	return runConvert(ctx, inputDir, outputDir, artifactSet, workers, out)
 }
