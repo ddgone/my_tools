@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use byteorder::{ByteOrder, LittleEndian};
 use glam::{DQuat, DVec3};
 use las::{Point, Writer};
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom};
@@ -206,46 +207,56 @@ impl PcdFile {
             .context("PCD payload 大小溢出")?;
         let mut payload = vec![0u8; payload_len];
         file.read_exact(&mut payload)
-            .with_context(|| format!("读取点记录失败: {}", self.path.display()))?;
+            .with_context(|| format!("读取点记录失败（期望 {} 字节）: {}", payload_len, self.path.display()))?;
 
-        let mut points = Vec::with_capacity(self.point_count);
-        for point_idx in 0..self.point_count {
-            let base = point_idx * self.schema.point_stride;
-            let record = &payload[base..base + self.schema.point_stride];
+        let stride = self.schema.point_stride;
+        let x_field = self.schema.x_field;
+        let y_field = self.schema.y_field;
+        let z_field = self.schema.z_field;
+        let intensity_field = self.schema.intensity_field;
 
-            let local = DVec3::new(
-                self.schema.x_field.scalar_as_f64(record).context("x 字段无效")?,
-                self.schema.y_field.scalar_as_f64(record).context("y 字段无效")?,
-                self.schema.z_field.scalar_as_f64(record).context("z 字段无效")?,
-            );
+        // 帧内并行解析点云
+        let mut points: Vec<Point> = payload
+            .par_chunks(stride)
+            .take(self.point_count)
+            .map(|record| {
+                let local = DVec3::new(
+                    x_field.scalar_as_f64(record).unwrap_or(0.0),
+                    y_field.scalar_as_f64(record).unwrap_or(0.0),
+                    z_field.scalar_as_f64(record).unwrap_or(0.0),
+                );
 
-            // 步骤1: ENU 位姿变换（原工具 load_and_transform_frame）
-            let world = if let Some(pose) = pose {
-                apply_pose(local, pose)
-            } else {
-                local
-            };
+                // 步骤1: ENU 位姿变换
+                let world = if let Some(pose) = pose {
+                    apply_pose(local, pose)
+                } else {
+                    local
+                };
 
-            let intensity = self
-                .schema
-                .intensity_field
-                .and_then(|f| f.scalar_as_f64(record))
-                .map(quantize_intensity)
-                .unwrap_or(0);
+                let intensity = intensity_field
+                    .and_then(|f| f.scalar_as_f64(record))
+                    .map(quantize_intensity)
+                    .unwrap_or(0);
 
-            let mut point = Point::default();
-            point.x = world.x;
-            point.y = world.y;
-            point.z = world.z;
-            point.intensity = intensity;
-            points.push(point);
-        }
+                let mut point = Point::default();
+                point.x = world.x;
+                point.y = world.y;
+                point.z = world.z;
+                point.intensity = intensity;
+                point
+            })
+            .collect();
 
-        // 步骤2: origin 偏转（原工具 stage2_transform）
+        // 立即释放原始 payload 内存，避免与 points 同时占用
+        drop(payload);
+
+        // 步骤2: origin 偏转（并行）
         if let Some(config) = transform {
-            for point in &mut points {
-                transform::apply_transform(point, config)?;
-            }
+            points.par_iter_mut().for_each(|point| {
+                // config 已在 build_config 中校验，此处不会失败
+                transform::apply_transform(point, config)
+                    .expect("坐标变换失败");
+            });
         }
 
         Ok(points)

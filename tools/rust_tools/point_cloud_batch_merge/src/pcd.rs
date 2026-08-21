@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use byteorder::{ByteOrder, LittleEndian};
 use glam::DMat3;
 use las::Point;
+use rayon::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct PcdSchema {
@@ -114,24 +115,34 @@ pub fn load_frame_raw(frame: &PcdFrame) -> Result<Vec<Point>> {
         .context("PCD payload 大小溢出")?;
     let mut payload = vec![0u8; payload_len];
     file.read_exact(&mut payload)
-        .with_context(|| format!("读取点记录失败: {}", frame.path.display()))?;
+        .with_context(|| format!("读取点记录失败（期望 {} 字节）: {}", payload_len, frame.path.display()))?;
 
-    let mut points = Vec::with_capacity(frame.point_count);
-    for point_idx in 0..frame.point_count {
-        let base = point_idx * frame.schema.point_stride;
-        let record = &payload[base..base + frame.schema.point_stride];
-        let mut point = Point::default();
-        point.x = frame.schema.x_field.scalar_as_f64(record).unwrap_or(0.0);
-        point.y = frame.schema.y_field.scalar_as_f64(record).unwrap_or(0.0);
-        point.z = frame.schema.z_field.scalar_as_f64(record).unwrap_or(0.0);
-        point.intensity = frame
-            .schema
-            .intensity_field
-            .and_then(|field| field.scalar_as_f64(record))
-            .map(quantize_intensity)
-            .unwrap_or(0);
-        points.push(point);
-    }
+    let stride = frame.schema.point_stride;
+    let x_field = &frame.schema.x_field;
+    let y_field = &frame.schema.y_field;
+    let z_field = &frame.schema.z_field;
+    let intensity_field = &frame.schema.intensity_field;
+
+    // 帧内并行解析点云
+    let points: Vec<Point> = payload
+        .par_chunks(stride)
+        .take(frame.point_count)
+        .map(|record| {
+            let mut point = Point::default();
+            point.x = x_field.scalar_as_f64(record).unwrap_or(0.0);
+            point.y = y_field.scalar_as_f64(record).unwrap_or(0.0);
+            point.z = z_field.scalar_as_f64(record).unwrap_or(0.0);
+            point.intensity = intensity_field
+                .and_then(|field| field.scalar_as_f64(record))
+                .map(quantize_intensity)
+                .unwrap_or(0);
+            point
+        })
+        .collect();
+
+    // 立即释放原始 payload 内存
+    drop(payload);
+
     Ok(points)
 }
 

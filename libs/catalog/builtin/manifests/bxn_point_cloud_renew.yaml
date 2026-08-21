@@ -1,0 +1,147 @@
+id: bxn_point_cloud_renew
+name: 白犀牛点云轨迹新旧包替换
+kind: go
+category: KD测试工具 > 点云处理工具 > 白犀牛项目工具
+icon: go
+description: 从老项目日志提取 field_task_id 匹配新包，按任务框范围对老包轨迹做框内替换后重新打包。
+docs:
+  summary: 点云轨迹新旧包替换工具：老包轨迹按新包任务框范围做框内匹配替换、删除与保留，点云与视频帧同步整理后重新打包输出。
+  usage: |
+    处理流程分两阶段：
+    1. 预检查：验证目录/文件存在、从老项目日志提取 field_task_id、匹配新项目对应包、按 projectId 加载任务框
+    2. 执行：解压、框内匹配替换轨迹、同步点云与视频帧、重新打包
+
+    运行模式：
+    - 批量模式：输入文件支持 csv/txt/xls/xlsx，每行 3~4 列：老包目录,新项目目录,项目ID[,框ID过滤]
+    - 单包模式：直接指定老包目录、新项目目录与项目 ID
+
+    框内匹配逻辑（以新包 utm.txt 压盖到的任务框为活跃区域）：
+    - 框内新老都有 → 用新包替换；只有老包 → 删除；只有新包 → 跳过（记警告，输出到 problem/）
+    - 框外老包轨迹原样保留
+    - deskew_cloud 点云与视频帧按相同时间戳集合同步整理
+
+    任务框缓存（任务框缓存目录）：
+    - 缓存命中则离线读取，缺失则在线拉取并保存
+    - 可在有接口的机器上先跑一遍准备缓存，再把缓存目录整体拷贝到离线服务器使用
+
+    常用示例：
+    - 批量模式：-input D:\jobs\input.csv -output D:\jobs\out -resume
+    - 单包模式：-old D:\old_pkg -new D:\new_proj -frame-project-id 60410257 -output D:\out
+params:
+  - key: mode
+    type: select
+    label: 运行模式
+    default: batch
+    emit: false
+    group: 运行模式
+    help: |
+      批量模式：从输入文件读取多行记录统一处理，支持断点续传。
+      单包模式：直接指定一个老包与新项目进行处理。
+    options:
+      - label: 批量模式
+        value: batch
+      - label: 单包模式
+        value: single
+  - key: input
+    argKey: input
+    type: path
+    pathMode: file
+    label: 输入文件
+    placeholder: 选择 csv/txt/xls/xlsx 输入文件
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+    help: |
+      每行 3~4 列：老包目录,新项目目录,项目ID[,框ID过滤]。
+      csv/txt 自动识别 UTF-8/UTF-16/GBK 编码，表头行自动跳过；输入文件不会被改写。
+  - key: oldDir
+    argKey: old
+    type: path
+    pathMode: directory
+    label: 老包目录
+    placeholder: 选择老包目录（具体到包）
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: single
+    help: 老包目录，具体到包一级，如 ...\out_source\2026-03-04-14-15-20_out_source_00028。
+  - key: newProjDir
+    argKey: new
+    type: path
+    pathMode: directory
+    label: 新项目目录
+    placeholder: 选择新项目目录（项目级别）
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: single
+    help: 新项目目录，项目一级，如 ...\BXN-0806-60410257。
+  - key: frameProjectId
+    argKey: frame-project-id
+    type: text
+    label: 项目 ID
+    placeholder: 新项目的纯数字项目 id，如 60410257
+    required: true
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: single
+    help: 用于查询任务框的新项目纯数字项目 id。
+  - key: frameIds
+    argKey: frame-ids
+    type: text
+    label: 框 ID 过滤
+    placeholder: 可选，逗号分隔；填写后只使用指定框
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: single
+    help: 可选。填写后只使用项目查询结果中指定的框，其余作废；框 ID 不存在会直接报错。
+  - key: output
+    argKey: output
+    type: path
+    pathMode: directory
+    label: 输出目录
+    placeholder: 选择输出根目录
+    required: true
+    group: 输入输出
+    help: 正常包输出到 <项目ID>/out_source/；有新包独有点被跳过的包输出到 problem/ 子目录并附问题日志。
+  - key: framesDir
+    argKey: frames
+    type: path
+    pathMode: directory
+    label: 任务框缓存目录
+    placeholder: 可选，留空则按需在线拉取
+    group: 任务框
+    help: |
+      按 projectId 缓存任务框 geojson：缓存命中直接离线读取；缺失则在线拉取并保存到该目录。
+      批量模式会先对所有 projectId 统一预拉缓存。
+  - key: resume
+    argKey: resume
+    type: boolean
+    label: 断点续传
+    default: false
+    group: 输入输出
+    visibleWhen:
+      all:
+        - key: mode
+          equals: batch
+    help: 跳过台账 ledger.json 中已完成（done）的记录，中断后可直接续跑。
+execution:
+  local:
+    adapter: go-binary
+  remote:
+    strategy: upload-binary-and-run
+export:
+  strategy: export-binary
+source:
+  entry: tools/go_tools/bxn_point_cloud_renew/tool.go

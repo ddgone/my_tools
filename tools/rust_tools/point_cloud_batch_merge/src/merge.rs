@@ -16,7 +16,7 @@ use crate::pos::{self, PosPose};
 
 struct Package {
     name: String,
-    pcd_dir: PathBuf,
+    archive_path: PathBuf,
     pos_path: PathBuf,
 }
 
@@ -30,7 +30,7 @@ pub fn run(cli: &crate::cli::Cli) -> Result<()> {
         .ok();
 
     let temp_root = cli.output.join(".pcd_merge_tmp");
-    let packages = discover_packages(&cli.input, &cli.pos_dir, &temp_root)?;
+    let packages = discover_packages(&cli.input, &cli.pos_dir)?;
     if packages.is_empty() {
         anyhow::bail!("未找到可处理的数据包");
     }
@@ -40,11 +40,27 @@ pub fn run(cli: &crate::cli::Cli) -> Result<()> {
 
     for (index, package) in packages.iter().enumerate() {
         let output_path = cli.output.join(format!("{}.{}", package.name, cli.format.extension()));
+
+        // 按包解压，带进度日志
         eprintln!(
-            "[{}/{}] 开始: {} -> {}",
+            "[{}/{}] 解压: {}",
+            index + 1, total, package.name
+        );
+        let extract_dir = temp_root.join(&package.name);
+        let pcd_dir = match extract_tar_gz(&package.archive_path, &extract_dir, &package.name) {
+            Ok(d) => d,
+            Err(err) => {
+                failed_count.fetch_add(1, Ordering::Relaxed);
+                eprintln!("[{}/{}] 解压失败: {} - {err:#}", index + 1, total, package.name);
+                continue;
+            }
+        };
+
+        eprintln!(
+            "[{}/{}] 处理: {} -> {}",
             index + 1, total, package.name, output_path.display()
         );
-        match process_package(package, &output_path, cli.format, cli.threads, cli.flip_z) {
+        match process_package(&package.name, &pcd_dir, &package.pos_path, &output_path, cli.format, cli.threads, cli.flip_z) {
             Ok(stats) => {
                 eprintln!(
                     "[{}/{}] 完成: {}，匹配 {} 帧，总点数 {}",
@@ -56,6 +72,9 @@ pub fn run(cli: &crate::cli::Cli) -> Result<()> {
                 eprintln!("[{}/{}] 失败: {} - {err:#}", index + 1, total, package.name);
             }
         }
+
+        // 处理完立即清理解压目录，释放磁盘
+        let _ = fs::remove_dir_all(&extract_dir);
     }
 
     let _ = fs::remove_dir_all(&temp_root);
@@ -75,18 +94,20 @@ struct ProcessStats {
 }
 
 fn process_package(
-    package: &Package,
+    _name: &str,
+    pcd_dir: &Path,
+    pos_path: &Path,
     output_path: &Path,
     format: OutputFormat,
     threads: usize,
     flip_z: bool,
 ) -> Result<ProcessStats> {
-    let poses = pos::load_pos(&package.pos_path)?;
+    let poses = pos::load_pos(pos_path)?;
     if poses.is_empty() {
         anyhow::bail!("POS 数据为空");
     }
 
-    let pcd_frames = pcd::scan_pcd_frames(&package.pcd_dir)?;
+    let pcd_frames = pcd::scan_pcd_frames(pcd_dir)?;
     if pcd_frames.is_empty() {
         anyhow::bail!("未找到有效 PCD 文件");
     }
@@ -133,7 +154,7 @@ fn process_package(
                 let origin_lon = pose.x;
                 let origin_alt = pose.z;
                 let world_points: Vec<Point> = local_points
-                    .into_iter()
+                    .into_par_iter()
                     .map(|mut p| {
                         let enu = rot * glam::DVec3::new(p.x, p.y, p.z);
                         let enu_z = if flip_z { -enu.z } else { enu.z };
@@ -235,7 +256,7 @@ fn compute_bbox(points: &[Point]) -> (f64, f64, f64, f64, f64, f64) {
     (min_x, min_y, min_z, max_x, max_y, max_z)
 }
 
-fn discover_packages(cloud_dir: &Path, pos_dir: &Path, temp_root: &Path) -> Result<Vec<Package>> {
+fn discover_packages(cloud_dir: &Path, pos_dir: &Path) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     let mut entries: Vec<_> = fs::read_dir(cloud_dir)?.collect::<std::result::Result<Vec<_>, _>>()?;
     entries.sort_by_key(|entry| entry.path());
@@ -260,9 +281,7 @@ fn discover_packages(cloud_dir: &Path, pos_dir: &Path, temp_root: &Path) -> Resu
             continue;
         }
 
-        let extract_dir = temp_root.join(pkg_name);
-        let pcd_dir = extract_tar_gz(&path, &extract_dir, pkg_name)?;
-        packages.push(Package { name: pkg_name.to_string(), pcd_dir, pos_path });
+        packages.push(Package { name: pkg_name.to_string(), archive_path: path, pos_path });
     }
     Ok(packages)
 }

@@ -4,10 +4,10 @@ mod transform;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use pcd::PcdFile;
-use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 use transform::TransformConfig;
 
 #[derive(Parser)]
@@ -138,15 +138,14 @@ pub fn run(args: &[String]) -> Result<()> {
             .context("初始化线程池失败")?;
     }
 
-    let results: Vec<Result<String>> = frames
-        .par_iter()
-        .map(|(pcd_path, pose)| process_one(pcd_path, &cli.output, *pose, transform.as_ref(), epsg))
-        .collect();
-
+    let total = frames.len();
     let mut ok = 0usize;
     let mut fail = 0usize;
-    for result in &results {
-        match result {
+    let start = Instant::now();
+
+    for (i, (pcd_path, pose)) in frames.iter().enumerate() {
+        eprintln!("[{}/{}] {}", i + 1, total, pcd_path.display());
+        match process_one(pcd_path, &cli.output, *pose, transform.as_ref(), epsg) {
             Ok(msg) => {
                 ok += 1;
                 eprintln!("  OK  {msg}");
@@ -157,7 +156,11 @@ pub fn run(args: &[String]) -> Result<()> {
             }
         }
     }
-    eprintln!("完成: 成功 {ok}, 失败 {fail}");
+
+    eprintln!(
+        "完成: 成功 {ok}, 失败 {fail}, 耗时 {:.1}s",
+        start.elapsed().as_secs_f64()
+    );
     if ok == 0 && fail > 0 {
         bail!("全部失败");
     }
@@ -179,6 +182,12 @@ fn process_one(
 
     let pcd_file = PcdFile::open(pcd_path)?;
     let points = pcd_file.load_points(pose, transform)?;
+
+    if points.is_empty() {
+        // 仍然写出空 LAZ 以保证输出一一对应，但标注空点云
+        pcd::write_laz(&laz_path, &points, epsg)?;
+        return Ok(format!("{stem}.pcd -> {stem}.laz (空点云)"));
+    }
 
     pcd::write_laz(&laz_path, &points, epsg)?;
     Ok(format!("{stem}.pcd -> {stem}.laz ({} 点)", points.len()))
