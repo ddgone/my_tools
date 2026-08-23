@@ -28,7 +28,7 @@ func TestBuildRemoteRunCommandForGoTool(t *testing.T) {
 }
 
 func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
-	cmd, chmodCmd, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/restore_pcd_by_mgrs.py", remoteExecParams{
+	cmd, chmodCmd, err := buildRemoteRunCommand("/tmp/fire-salamander-abcd/python_env_diagnostics.py", remoteExecParams{
 		kind:      "python",
 		pythonEnv: "python3",
 		args:      `-input "/data/source dir"`,
@@ -37,7 +37,7 @@ func TestBuildRemoteRunCommandForPythonTool(t *testing.T) {
 		t.Fatalf("buildRemoteRunCommand failed: %v", err)
 	}
 
-	expectedCmd := "cd '/tmp/fire-salamander-abcd' && 'python3' './restore_pcd_by_mgrs.py' '-input' '/data/source dir'"
+	expectedCmd := "cd '/tmp/fire-salamander-abcd' && 'python3' './python_env_diagnostics.py' '-input' '/data/source dir'"
 	if cmd != expectedCmd {
 		t.Fatalf("unexpected python command:\nwant: %s\ngot:  %s", expectedCmd, cmd)
 	}

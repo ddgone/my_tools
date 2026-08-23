@@ -53,7 +53,7 @@ func TestResolvePythonBinaryForToolRequiresDependencies(t *testing.T) {
 		t.Fatalf("PrepareManagedPythonEnvironment failed: %v", err)
 	}
 
-	_, err := ResolvePythonBinaryForTool("restore_pcd_by_mgrs")
+	_, err := ResolvePythonBinaryForTool("python_env_diagnostics")
 	if err == nil {
 		t.Fatal("expected missing dependency error")
 	}

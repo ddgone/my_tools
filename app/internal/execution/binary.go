@@ -95,16 +95,27 @@ func isSingleDashLongFlag(arg string) bool {
 }
 
 // resolveLocalBinary 获取工具的本地可执行产物。
-// 所有编译型工具统一通过 builder.BuildPackage 获取产物——优先命中缓存，
-// 缓存未命中时在源码工作区下现场构建。不再区分 assets 和缓存两条路径。
+//
+// 优先使用便携部署态下预置的编译产物（program/tools），命中即直接返回，
+// 不触发源码构建、不需要仓库与本机工具链；未命中才回退到 builder.BuildPackage
+// 现场构建流程（缓存优先，未命中时在源码工作区下现场编译）。
 func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (string, error) {
-	repoRoot, ok := LocateRepoRoot()
-	if !ok {
-		return "", fmt.Errorf("未找到源码工作区，无法获取编译型工具产物: %s", manifest.Kind)
-	}
 	layout, err := runtimeenv.ResolveLayout()
 	if err != nil {
 		return "", fmt.Errorf("解析运行时目录失败: %w", err)
+	}
+
+	if kind, err := ManifestKindToBuilderKind(manifest.Kind); err == nil {
+		if prebuilt, ok := resolveProgramPrebuilt(layout, manifest.ID, kind, runtime.GOOS, runtime.GOARCH); ok {
+			return prebuilt, nil
+		}
+	}
+
+	repoRoot, ok := LocateRepoRoot()
+	if !ok {
+		return "", fmt.Errorf(
+			"预置产物中未找到 %s/%s 平台的 %s 产物，且当前环境无源码工作区无法现场构建；请重新分发包含该平台产物的安装包",
+			runtime.GOOS, runtime.GOARCH, manifest.ID)
 	}
 	if err := layout.Ensure(); err != nil {
 		return "", fmt.Errorf("准备运行时目录失败: %w", err)
@@ -132,6 +143,20 @@ func resolveLocalBinary(manifest toolspec.ToolManifest, writer io.Writer) (strin
 		return "", err
 	}
 	return result.Path, nil
+}
+
+// resolveProgramPrebuilt 在便携部署态下尝试解析指定平台的预置产物；命中返回路径与 true。
+func resolveProgramPrebuilt(layout runtimeenv.Layout, toolID string, kind builder.ToolKind, targetOS, targetArch string) (string, bool) {
+	programToolsDir := layout.ProgramToolsDir()
+	if programToolsDir == "" {
+		return "", false
+	}
+	return builder.ResolveProgramToolPath(programToolsDir, builder.BuildRequest{
+		ToolID:     toolID,
+		Kind:       kind,
+		TargetOS:   targetOS,
+		TargetArch: targetArch,
+	})
 }
 
 // ManifestKindToBuilderKind converts toolspec.ToolKind to builder.ToolKind.

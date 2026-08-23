@@ -18,6 +18,9 @@ vendor/
 # Go build cache (shared, like Rust target/)
 tools/go_tools/build_cache/
 
+# Rust cross-compile cache (cargo-zigbuild / zig)
+tools/rust_tools/zigbuild_cache/
+
 # Build
 build/
 app/build/

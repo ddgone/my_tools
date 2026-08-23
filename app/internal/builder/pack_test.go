@@ -276,3 +276,46 @@ func TestProbeBuildCacheReportsHitAfterPythonBuild(t *testing.T) {
 		t.Fatal("expected probe to report cache hit")
 	}
 }
+
+func TestResolveProgramToolPathHitsPrebuiltArtifactWithoutSource(t *testing.T) {
+	programToolsDir := t.TempDir()
+	req := BuildRequest{
+		ToolID:     "recursive_content_dir_diff",
+		Kind:       KindGo,
+		TargetOS:   "linux",
+		TargetArch: "amd64",
+	}
+
+	// 用既有命名规则预先铺一个产物
+	artifactPath, _ := ResolveProgramToolPath(programToolsDir, req)
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(artifactPath, []byte("bin"), 0755); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+
+	got, ok := ResolveProgramToolPath(programToolsDir, req)
+	if !ok {
+		t.Fatal("expected prebuilt artifact to be found")
+	}
+	if got != artifactPath {
+		t.Fatalf("unexpected path: got=%s want=%s", got, artifactPath)
+	}
+}
+
+func TestResolveProgramToolPathReturnsFalseWhenMissingOrEmptyDir(t *testing.T) {
+	programToolsDir := t.TempDir()
+	req := BuildRequest{
+		ToolID:     "abc_tool",
+		Kind:       KindGo,
+		TargetOS:   "linux",
+		TargetArch: "arm64",
+	}
+	if _, ok := ResolveProgramToolPath(programToolsDir, req); ok {
+		t.Fatal("missing artifact should not be found")
+	}
+	if _, ok := ResolveProgramToolPath("", req); ok {
+		t.Fatal("empty program tools dir should not be found")
+	}
+}

@@ -48,13 +48,13 @@ func wailsBin() string {
 func main() {
 	rootDir, _ := os.Getwd()
 	appDir := filepath.Join(rootDir, "app")
-	imageDir := filepath.Join(rootDir, "build", "image")
-	hostDir := filepath.Join(imageDir, "host")
-	runtimeDir := filepath.Join(rootDir, "build", "runtime")
+	hostDir := filepath.Join(rootDir, "build") // 单层交付根
+	programToolsDir := filepath.Join(hostDir, "program", "tools")
+	dataDir := filepath.Join(hostDir, "data")
 
 	buildAll := false
-	targetOS := runtime.GOOS
-	targetArch := runtime.GOARCH
+	targetOS := ""
+	targetArch := ""
 	for i := 1; i < len(os.Args); i++ {
 		a := os.Args[i]
 		if a == "-all" || a == "--all" {
@@ -80,14 +80,14 @@ func main() {
 	}
 	runGoVet(rootDir, appDir)
 
-	os.RemoveAll(hostDir)
+	// 清理可重建的程序区（exe/assets），保留 data/ 用户数据与 program/ 工具预编译缓存
 	os.RemoveAll(filepath.Join(appDir, "build"))
 	os.MkdirAll(hostDir, 0755)
-	os.MkdirAll(imageDir, 0755)
+	os.MkdirAll(programToolsDir, 0755)
 
 	cleanBuildRootStale(rootDir)
 
-	initRuntimeDirs(runtimeDir)
+	initRuntimeDirs(dataDir)
 
 	if buildAll {
 		platforms := make([]string, len(allTargets))
@@ -148,13 +148,20 @@ func main() {
 		}
 	}
 
-	writeDefaultConfig(runtimeDir)
+	writeDefaultConfig(dataDir)
 
 	copyAssets(filepath.Join(rootDir, "app", "assets"), filepath.Join(hostDir, "assets"))
 
-	// 工具产物统一预热到构建缓存
-	fmt.Printf("\n预热工具缓存 (目标: %s/%s)...\n", targetOS, targetArch)
-	if err := buildToolCache(rootDir, runtimeDir, targetOS, targetArch, buildAll); err != nil {
+	// 工具产物统一预热到 build/program/tools（交付只读程序区）。
+	// 预编译不随包携带工具链：Windows 宿主编译 windows + linux/amd64，
+	// macOS 宿主编译 darwin(宿主架构) + linux/amd64，供远程 Linux 执行使用。
+	targets := resolveToolTargets(targetOS, targetArch, buildAll)
+	labels := make([]string, len(targets))
+	for i, t := range targets {
+		labels[i] = t.OS + "/" + t.Arch
+	}
+	fmt.Printf("\n预热工具缓存 (目标: %s)...\n", strings.Join(labels, ", "))
+	if err := buildToolCache(rootDir, programToolsDir, targets); err != nil {
 		fmt.Printf("\n❌ 工具缓存预热失败: %v\n", err)
 		os.Exit(1)
 	}
@@ -247,6 +254,8 @@ func runVetCommand(dir string, packages []string) {
 	}
 }
 
+// cleanBuildRootStale 清理 build/ 根目录下可重建的构建产物（exe/assets 等），
+// 保留 data/（用户可变数据）与 program/（工具预编译缓存，源码未变时命中跳过重编）。
 func cleanBuildRootStale(rootDir string) {
 	buildDir := filepath.Join(rootDir, "build")
 	entries, err := os.ReadDir(buildDir)
@@ -254,10 +263,10 @@ func cleanBuildRootStale(rootDir string) {
 		return
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.Name() == "data" || e.Name() == "program" {
 			continue
 		}
-		os.Remove(filepath.Join(buildDir, e.Name()))
+		os.RemoveAll(filepath.Join(buildDir, e.Name()))
 	}
 }
 
@@ -345,6 +354,28 @@ func copyAssets(srcDir, dstDir string) {
 	}
 }
 
+// resolveToolTargets 决定工具产物预编译的目标组合。
+// 显式 --target 时只编译指定目标；--all 编译全平台；默认按宿主平台组合：
+// Windows 宿主 → windows(宿主架构) + linux/amd64；
+// macOS 宿主 → darwin(宿主架构) + linux/amd64；其余仅宿主平台。
+func resolveToolTargets(targetOS, targetArch string, buildAll bool) []Target {
+	if targetOS != "" && targetArch != "" {
+		return []Target{{OS: targetOS, Arch: targetArch}}
+	}
+	if buildAll {
+		return allTargets
+	}
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	if host.OS != "windows" && host.OS != "darwin" {
+		return []Target{host}
+	}
+	targets := []Target{host}
+	if host.OS != "linux" || host.Arch != "amd64" {
+		targets = append(targets, Target{OS: "linux", Arch: "amd64"})
+	}
+	return targets
+}
+
 // ---- 工具缓存预热 ----
 
 type bundledTool struct {
@@ -368,17 +399,15 @@ var bundledTools = []bundledTool{
 	{ID: "point_cloud_voxel_downsample", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_voxel_downsample/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_voxel_downsample"},
 	{ID: "point_cloud_intensity_raster", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_intensity_raster/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_intensity_raster"},
 	{ID: "point_cloud_batch_merge", Kind: "rust", SourceEntry: "tools/rust_tools/point_cloud_batch_merge/src/lib.rs", ModuleDir: "tools/rust_tools/point_cloud_batch_merge"},
+	{ID: "restore_pcd_by_mgrs", Kind: "rust", SourceEntry: "tools/rust_tools/restore_pcd_by_mgrs/src/lib.rs", ModuleDir: "tools/rust_tools/restore_pcd_by_mgrs"},
 }
 
-func buildToolCache(rootDir, runtimeDir, targetOS, targetArch string, buildAll bool) error {
-	cacheDir := filepath.Join(runtimeDir, "cache", "builds")
+// buildToolCache 把内置工具预编译到 programToolsDir（即 build/program/tools），
+// 产物结构为 <toolID>/<platform>/artifact/<name>，与 builder 的预置取件路径一致。
+func buildToolCache(rootDir, programToolsDir string, targets []Target) error {
+	cacheDir := programToolsDir
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return err
-	}
-
-	targets := []Target{{OS: targetOS, Arch: targetArch}}
-	if buildAll {
-		targets = allTargets
 	}
 
 	for _, tool := range bundledTools {
@@ -630,7 +659,7 @@ func buildRustToCache(rootDir, cacheDir string, tool bundledTool, target Target)
 	buildCmd.Dir = wrapperDir
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
-	buildCmd.Env = rustBuildEnv(cargoBin)
+	buildCmd.Env = rustBuildEnv(rootDir, cargoBin)
 	// Use crate's target/ so incremental compilation works across wrapper rebuilds
 	buildCmd.Env = append(buildCmd.Env, "CARGO_TARGET_DIR="+targetDir)
 	if err := buildCmd.Run(); err != nil {
@@ -798,16 +827,68 @@ func rustTargetTriple(targetOS, targetArch string) (string, bool, error) {
 	}
 }
 
-func rustBuildEnv(cargoBinary string) []string {
+// rustBuildEnv 组装 Rust 构建命令环境：
+//  1. cargo 所在目录进入 PATH，保证 cargo-zigbuild 子命令可被发现；
+//  2. 托管 zig（build/data/toolchains/zig/<version>）通过 CARGO_ZIGBUILD_ZIG_PATH
+//     显式指定，系统 PATH 里已有 zig 时以系统优先；
+//  3. cargo-zigbuild 与 zig 的缓存指到 tools/rust_tools/ 下，避免写入用户
+//     全局目录（%LOCALAPPDATA%），构建产物可重复利用且不污染系统。
+func rustBuildEnv(rootDir, cargoBinary string) []string {
 	env := os.Environ()
-	cargoDir := filepath.Dir(cargoBinary)
-	if cargoDir != "" {
-		current := os.Getenv("PATH")
-		if current != "" && !strings.Contains(current, cargoDir) {
-			env = appendOrReplaceEnv(env, "PATH", cargoDir+string(os.PathListSeparator)+current)
+	current := os.Getenv("PATH")
+
+	if zigBin, ok := findManagedZigBinary(rootDir); ok {
+		env = appendOrReplaceEnv(env, "CARGO_ZIGBUILD_ZIG_PATH", zigBin)
+		if !strings.Contains(current, filepath.Dir(zigBin)) {
+			if current == "" {
+				current = filepath.Dir(zigBin)
+			} else {
+				current += string(os.PathListSeparator) + filepath.Dir(zigBin)
+			}
 		}
 	}
+
+	cargoDir := filepath.Dir(cargoBinary)
+	if cargoDir != "" && cargoDir != "." && !strings.Contains(current, cargoDir) {
+		if current == "" {
+			current = cargoDir
+		} else {
+			current = cargoDir + string(os.PathListSeparator) + current
+		}
+	}
+
+	if current != os.Getenv("PATH") {
+		env = appendOrReplaceEnv(env, "PATH", current)
+	}
+
+	zigbuildCache := filepath.Join(rootDir, "tools", "rust_tools", "zigbuild_cache")
+	env = appendOrReplaceEnv(env, "CARGO_ZIGBUILD_CACHE_DIR", zigbuildCache)
+	env = appendOrReplaceEnv(env, "ZIG_GLOBAL_CACHE_DIR", filepath.Join(zigbuildCache, "zig"))
 	return env
+}
+
+// findManagedZigBinary 查找应用托管的 zig 安装（build/data/toolchains/zig/<version>/zig.exe），
+// 返回其可执行文件路径；未找到时返回 false，此时依赖系统 PATH 中的 zig。
+func findManagedZigBinary(rootDir string) (string, bool) {
+	baseDir := filepath.Join(rootDir, "build", "data", "toolchains", "zig")
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return "", false
+	}
+	zigName := "zig"
+	if runtime.GOOS == "windows" {
+		zigName += ".exe"
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		bin := filepath.Join(baseDir, entry.Name(), zigName)
+		if _, err := os.Stat(bin); err == nil {
+			return bin, true
+		}
+	}
+	return "", false
 }
 
 func appendOrReplaceEnv(env []string, key, value string) []string {

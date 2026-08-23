@@ -1,8 +1,8 @@
 id: restore_pcd_by_mgrs
 name: 白犀牛 PCD 偏转还原 LAS
-kind: python
+kind: rust
 category: KD测试工具 > 点云处理工具 > 白犀牛项目工具
-icon: python
+icon: rust
 description: 根据文件名中的 MGRS 百米块信息恢复原始 UTM 坐标系的 LAS 文件。
 docs:
   summary: 根据文件名中 MGRS 百米块信息，将偏转后的 PCD 文件恢复为原始 UTM 坐标系的 LAS 文件。
@@ -10,15 +10,17 @@ docs:
     将经过白犀牛偏转处理的 PCD 文件恢复为原始 UTM 坐标系的 LAS 文件。
 
     输入规则：
-    - input 为包含 .pcd 文件的目录
+    - input 为包含 .pcd 文件的目录（也可指向单个 .pcd 文件）
     - 程序根据文件名中的 MGRS 百米块信息自动确定 UTM 坐标
+    - 文件名不含有效 MGRS 块的文件跳过并在结果中标记失败
 
     常用示例：
-    - -input D:\pcd_dir -output D:\las_out -workers 4
+    - --input D:\pcd_dir --output D:\las_out --threads 4
 params:
   - key: input
     argKey: input
     type: path
+    pathMode: directory
     label: 输入目录
     placeholder: 选择包含 .pcd 文件的目录
     required: true
@@ -26,21 +28,22 @@ params:
   - key: output
     argKey: output
     type: path
+    pathMode: directory
     label: 输出目录
     placeholder: 可选，默认在输入目录下创建 output 目录
     help: 输出 LAS 文件的目录。
-  - key: workers
-    argKey: workers
+  - key: threads
+    argKey: threads
     type: number
     label: 并发数
-    default: 1
-    help: Python 脚本并行处理的线程数。
+    default: 4
+    help: 并行处理文件的线程数。
 execution:
   local:
-    adapter: python-script
+    adapter: rust-binary
   remote:
-    strategy: upload-script-and-run
+    strategy: upload-binary-and-run
 export:
-  strategy: export-script
+  strategy: export-binary
 source:
-  entry: tools/python_tools/scripts/restore_pcd_by_mgrs.py
+  entry: tools/rust_tools/restore_pcd_by_mgrs/src/lib.rs

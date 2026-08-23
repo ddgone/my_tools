@@ -500,6 +500,19 @@ func writeCacheToken(digest hash.Hash, value string) {
 	_, _ = io.WriteString(digest, "\n")
 }
 
+// ResolveProgramToolPath 直接解析便携部署态下 program/tools 里的预置产物路径，
+// 不读取 SourceEntry、不需要仓库，只按 ToolID + 平台命名规则取件。
+// 目标产物可能不存在，由调用方用存在的布尔结果判别。
+func ResolveProgramToolPath(programToolsDir string, req BuildRequest) (artifactPath string, ok bool) {
+	if strings.TrimSpace(programToolsDir) == "" {
+		return "", false
+	}
+	platformKey := req.TargetOS + "_" + req.TargetArch
+	artifactDir := filepath.Join(programToolsDir, cacheToolDirName(req), sanitizeCachePathSegment(platformKey), "artifact")
+	path := filepath.Join(artifactDir, cacheArtifactFileName(req, ""))
+	return path, fileExists(path)
+}
+
 func resolveCachePaths(req BuildRequest, platformKey string, outputName string, sourcePath string) (artifactPath string, sourceCachePath string, cacheKeyPath string, err error) {
 	toolDir := filepath.Join(req.CacheDir, cacheToolDirName(req))
 	platformDir := filepath.Join(toolDir, sanitizeCachePathSegment(platformKey))

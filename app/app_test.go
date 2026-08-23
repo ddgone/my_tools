@@ -11,6 +11,7 @@ func TestWriteWindowConfigCreatesMissingFile(t *testing.T) {
 	t.Setenv("FIRE_SALAMANDER_RUNTIME_DIR", t.TempDir())
 
 	app := NewApp()
+	t.Cleanup(app.state.Close)
 	state := WindowState{
 		Width:      1440,
 		Height:     900,
@@ -62,6 +63,7 @@ func TestWriteWindowConfigRepairsInvalidFile(t *testing.T) {
 	}
 
 	app := NewApp()
+	t.Cleanup(app.state.Close)
 	state := WindowState{
 		Width:      1280,
 		Height:     800,

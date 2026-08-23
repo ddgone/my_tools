@@ -45,3 +45,10 @@ func NewSharedState() *SharedState {
 		RecordStore:   recordStore,
 	}
 }
+
+// Close 释放持有的持久化资源（如执行记录数据库连接）。
+func (s *SharedState) Close() {
+	if s.RecordStore != nil {
+		_ = s.RecordStore.Close()
+	}
+}

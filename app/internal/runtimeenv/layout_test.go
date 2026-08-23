@@ -70,3 +70,26 @@ func mustWriteFile(t *testing.T, path string) {
 		t.Fatalf("写入测试文件失败: %v", err)
 	}
 }
+
+func TestProgramToolsDirEmptyWhenNonPortable(t *testing.T) {
+	layout := Layout{Root: t.TempDir()}
+	if got := layout.ProgramToolsDir(); got != "" {
+		t.Fatalf("非便携态 ProgramToolsDir 应为空: got=%s", got)
+	}
+}
+
+func TestProgramToolsDirUnderPortableProgramRoot(t *testing.T) {
+	programRoot := filepath.Join(t.TempDir(), "program")
+	layout := Layout{Root: filepath.Join(t.TempDir(), "data"), ProgramRoot: programRoot}
+	want := filepath.Join(programRoot, "tools")
+	if got := layout.ProgramToolsDir(); got != want {
+		t.Fatalf("便携态 ProgramToolsDir 不正确: got=%s want=%s", got, want)
+	}
+}
+
+func TestDataRootFromPortable(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "FireSalamander")
+	if got := dataRootFromPortable(root); got != filepath.Join(root, "data") {
+		t.Fatalf("便携态数据根不正确: got=%s", got)
+	}
+}

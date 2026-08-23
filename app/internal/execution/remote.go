@@ -76,30 +76,39 @@ func ExecuteRemotely(ctx context.Context, writer io.Writer, params remoteExecPar
 		return outcome, fmt.Errorf("准备运行时目录失败: %w", err)
 	}
 
-	repoRoot, ok := LocateRepoRoot()
-	if !ok {
-		return outcome, fmt.Errorf("当前运行环境缺少源码工作区，暂时无法构建单工具远程产物")
-	}
+	// 便携部署态优先取预置产物（覆盖远程目标平台，如 linux/amd64），免现场构建
+	var pkgPath string
+	if prebuilt, ok := resolveProgramPrebuilt(layout, params.toolID, BuilderKind(params.kind), platform.OS, platform.Arch); ok {
+		pkgPath = prebuilt
+		fmt.Fprintf(writer, "[远程] 命中预置产物: %s\n", pkgPath)
+	} else {
+		repoRoot, ok := LocateRepoRoot()
+		if !ok {
+			return outcome, fmt.Errorf(
+				"预置产物中未找到 %s/%s 平台的 %s 产物，且当前环境无源码工作区无法现场构建；请重新分发包含该平台产物的安装包",
+				platform.OS, platform.Arch, params.toolName)
+		}
 
-	fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
-	buildResult, err := builder.BuildPackage(builder.BuildRequest{
-		ToolID:           params.toolID,
-		ToolName:         params.toolName,
-		Kind:             BuilderKind(params.kind),
-		OutputDir:        layout.BuildCacheDir(),
-		CacheDir:         layout.BuildCacheDir(),
-		RepoRoot:         repoRoot,
-		SourceEntry:      params.sourceEntry,
-		TargetOS:         platform.OS,
-		TargetArch:       platform.Arch,
-		UseCacheAsOutput: true,
-		Progress:         writer,
-	})
-	if err != nil {
-		return outcome, err
+		fmt.Fprintf(writer, "[远程] 正在为目标 %s 准备产物...\n", params.toolName)
+		buildResult, err := builder.BuildPackage(builder.BuildRequest{
+			ToolID:           params.toolID,
+			ToolName:         params.toolName,
+			Kind:             BuilderKind(params.kind),
+			OutputDir:        layout.BuildCacheDir(),
+			CacheDir:         layout.BuildCacheDir(),
+			RepoRoot:         repoRoot,
+			SourceEntry:      params.sourceEntry,
+			TargetOS:         platform.OS,
+			TargetArch:       platform.Arch,
+			UseCacheAsOutput: true,
+			Progress:         writer,
+		})
+		if err != nil {
+			return outcome, err
+		}
+		pkgPath = buildResult.Path
+		fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
 	}
-	pkgPath := buildResult.Path
-	fmt.Fprintf(writer, "[远程] 产物已就绪: %s\n", pkgPath)
 
 	remoteDir := buildRemoteWorkDir(params.taskID)
 	if err := executor.Execute(ctx, fmt.Sprintf("mkdir -p %s", runtime.ShellQuote(remoteDir)), writer); err != nil {

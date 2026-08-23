@@ -10,8 +10,8 @@ func TestEnsureToolingLoadsPythonTools(t *testing.T) {
 		t.Fatalf("ensureTooling failed: %v", err)
 	}
 
-	if len(app.state.PyTools) < 2 {
-		t.Fatalf("expected at least 2 Python tools, got %d", len(app.state.PyTools))
+	if len(app.state.PyTools) < 1 {
+		t.Fatalf("expected at least 1 Python tool, got %d", len(app.state.PyTools))
 	}
 
 	if _, ok := app.state.Manifests["geojson_to_shp"]; !ok {

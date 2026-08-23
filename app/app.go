@@ -170,6 +170,10 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	return a.window.BeforeClose(ctx)
 }
 
+func (a *App) shutdown(ctx context.Context) {
+	a.state.Close()
+}
+
 func (a *App) GetWindowConfig() WindowState {
 	return a.window.GetWindowConfig()
 }

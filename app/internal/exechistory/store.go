@@ -77,6 +77,18 @@ func (s *Store) Load() error {
 	return nil
 }
 
+// Close releases the underlying database connection.
+func (s *Store) Close() error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
 // Append adds a record to the database.
 func (s *Store) Append(record *ExecRecord) error {
 	s.mu.Lock()

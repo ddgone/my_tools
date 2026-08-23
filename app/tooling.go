@@ -46,7 +46,6 @@ var (
 // loadPythonTools 注册内置 Python 工具。
 func loadPythonTools() map[string]*PythonToolEntry {
 	bundled := map[string]string{
-		"restore_pcd_by_mgrs":    "restore_pcd_by_mgrs.py",
 		"python_env_diagnostics": "python_env_diagnostics.py",
 	}
 

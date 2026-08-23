@@ -10,18 +10,21 @@ import (
 const envRuntimeDir = "FIRE_SALAMANDER_RUNTIME_DIR"
 
 type Layout struct {
-	Root string
+	// Root 是可变数据根（config/logs/exports/cache 均在它下面）。
+	// ProgramRoot 是只读程序根（program/），只有便携部署态才非空。
+	Root        string
+	ProgramRoot string
 }
 
 func ResolveLayout() (Layout, error) {
-	root, err := detectRuntimeRoot()
+	layout, err := detectRuntimeLayout()
 	if err != nil {
 		return Layout{}, err
 	}
-	if err := os.MkdirAll(root, 0755); err != nil {
+	if err := os.MkdirAll(layout.Root, 0755); err != nil {
 		return Layout{}, fmt.Errorf("创建运行时目录失败: %w", err)
 	}
-	return Layout{Root: root}, nil
+	return layout, nil
 }
 
 func (l Layout) CacheDir() string {
@@ -48,6 +51,15 @@ func (l Layout) ConfigDir() string {
 	return filepath.Join(l.Root, "config")
 }
 
+// ProgramToolsDir 返回便携部署态下预置编译产物的只读目录（program/tools）。
+// 仅便携部署态（ProgramRoot 非空）有效；非便携态返回空串，由调用方回退到构建缓存。
+func (l Layout) ProgramToolsDir() string {
+	if l.ProgramRoot == "" {
+		return ""
+	}
+	return filepath.Join(l.ProgramRoot, "tools")
+}
+
 func (l Layout) Ensure() error {
 	dirs := []string{
 		l.Root,
@@ -66,20 +78,53 @@ func (l Layout) Ensure() error {
 	return nil
 }
 
-func detectRuntimeRoot() (string, error) {
+func detectRuntimeLayout() (Layout, error) {
+	if root, programRoot, ok := detectPortableLayout(); ok {
+		return Layout{Root: dataRootFromPortable(root), ProgramRoot: programRoot}, nil
+	}
+
 	if override := stringsTrimSpace(os.Getenv(envRuntimeDir)); override != "" {
-		return filepath.Clean(override), nil
+		return Layout{Root: filepath.Clean(override)}, nil
 	}
 
 	if repoRoot, ok := FindRepoRoot(); ok {
-		return filepath.Join(repoRoot, "build", "runtime"), nil
+		return Layout{
+			Root:        filepath.Join(repoRoot, "build", "data"),
+			ProgramRoot: filepath.Join(repoRoot, "build", "program"),
+		}, nil
 	}
 
 	home, err := userHomeDir()
 	if err != nil {
-		return "", err
+		return Layout{}, err
 	}
-	return filepath.Join(home, ".fire-salamander"), nil
+	return Layout{Root: filepath.Join(home, ".fire-salamander")}, nil
+}
+
+// detectPortableLayout 检测便携部署态：宿主 exe 旁同时存在 program/ 与 data/ 目录标记。
+func detectPortableLayout() (root string, programRoot string, ok bool) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", "", false
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(executablePath); resolveErr == nil {
+		executablePath = resolved
+	}
+	dir := filepath.Dir(executablePath)
+	programDir := filepath.Join(dir, "program")
+	if !isDir(programDir) || !isDir(filepath.Join(dir, "data")) {
+		return "", "", false
+	}
+	return dir, programDir, true
+}
+
+func dataRootFromPortable(root string) string {
+	return filepath.Join(root, "data")
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func FindRepoRoot() (string, bool) {
