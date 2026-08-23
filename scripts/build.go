@@ -74,6 +74,10 @@ func main() {
 	fmt.Println("====================================")
 
 	validateBuiltinManifests()
+	if err := buildFrontend(appDir); err != nil {
+		fmt.Printf("❌ 前端构建失败: %v\n", err)
+		os.Exit(1)
+	}
 	runGoVet(rootDir, appDir)
 
 	os.RemoveAll(hostDir)
@@ -200,6 +204,36 @@ func runGoVet(rootDir, appDir string) {
 	rootPackages := []string{"./libs/...", "./tools/...", "./scripts/..."}
 	runVetCommand(rootDir, rootPackages)
 	runVetCommand(appDir, []string{"./..."})
+}
+
+func buildFrontend(appDir string) error {
+	fmt.Println("\n构建前端...")
+	frontendDir := filepath.Join(appDir, "frontend")
+	npmBin, err := exec.LookPath("npm")
+	if err != nil {
+		return fmt.Errorf("未找到 npm: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(frontendDir, "node_modules")); err != nil {
+		fmt.Println("  未检测到 node_modules，执行 npm install...")
+		install := exec.Command(npmBin, "install")
+		install.Dir = frontendDir
+		install.Stdout = os.Stdout
+		install.Stderr = os.Stderr
+		if err := install.Run(); err != nil {
+			return fmt.Errorf("npm install 失败: %w", err)
+		}
+	}
+	build := exec.Command(npmBin, "run", "build")
+	build.Dir = frontendDir
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(frontendDir, "dist")); err != nil {
+		return fmt.Errorf("前端构建未生成 dist 目录: %w", err)
+	}
+	return nil
 }
 
 func runVetCommand(dir string, packages []string) {
